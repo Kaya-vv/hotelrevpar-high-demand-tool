@@ -1,0 +1,36 @@
+import type { EventCandidate, ValidationOutcome, ValidationReason } from "./types";
+
+type Window = { start: string; end: string };
+type Conflict = Extract<ValidationReason, "duplicate_uncertain" | "date_conflict" | "changed_date" | "changed_venue"> | null;
+
+export function validateCandidate(candidate: EventCandidate, window: Window, conflict: Conflict): ValidationOutcome {
+  const certainty = candidate.sourceState === "predicted" ? "provisional" : candidate.certainty;
+  const result = (state: ValidationOutcome["state"], reason: ValidationReason | null): ValidationOutcome => ({
+    state,
+    reason,
+    certainty,
+  });
+
+  if (!candidate.sourceUrl) return result("needs_review", "missing_source");
+  if (
+    !candidate.providerEventId ||
+    !candidate.title ||
+    !candidate.category ||
+    !candidate.startAt ||
+    !candidate.endAt ||
+    (!candidate.venue && !candidate.regionScope && (candidate.latitude === null || candidate.longitude === null))
+  ) {
+    return result("needs_review", "missing_fields");
+  }
+  if (candidate.sourceState === "cancelled") return result("needs_review", "cancelled");
+  if (candidate.sourceState === "postponed") return result("needs_review", "postponed");
+  if (candidate.startAt.slice(0, 10) > window.end || candidate.endAt.slice(0, 10) < window.start) {
+    return result("excluded", "out_of_window");
+  }
+  if (conflict) return result("needs_review", conflict);
+  if (candidate.provider === "claude" && !candidate.primarySourceConfirmed) {
+    return result("needs_review", "missing_primary_evidence");
+  }
+  return result("active", null);
+}
+
