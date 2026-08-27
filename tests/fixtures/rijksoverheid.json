@@ -1,0 +1,19 @@
+[
+  {
+    "id": "school-2027",
+    "canonical": "https://www.rijksoverheid.nl/onderwerpen/schoolvakanties/2027",
+    "content": [
+      {
+        "vacations": [
+          {
+            "type": "Zomervakantie",
+            "regions": [
+              { "region": "zuid", "startdate": "2027-07-10T00:00:00Z", "enddate": "2027-08-22T21:59:00Z" },
+              { "region": "noord", "startdate": "2026-07-04T00:00:00Z", "enddate": "2026-08-16T21:59:00Z" }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

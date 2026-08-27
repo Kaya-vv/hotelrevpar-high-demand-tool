@@ -1,0 +1,28 @@
+{
+  "count": 2,
+  "next": null,
+  "results": [
+    {
+      "id": "phq-1",
+      "title": "Marathon Eindhoven",
+      "category": "sports",
+      "start": "2027-10-10T08:00:00Z",
+      "end": "2027-10-10T16:00:00Z",
+      "state": "active",
+      "local_rank": 85,
+      "phq_attendance": 18000,
+      "location": [5.48, 51.44]
+    },
+    {
+      "id": "phq-2",
+      "title": "Predicted trade fair",
+      "category": "conferences",
+      "start": "2027-11-01T09:00:00Z",
+      "predicted_end": "2027-11-03T17:00:00Z",
+      "state": "predicted",
+      "local_rank": 60,
+      "phq_attendance": null,
+      "location": [5.47, 51.45]
+    }
+  ]
+}

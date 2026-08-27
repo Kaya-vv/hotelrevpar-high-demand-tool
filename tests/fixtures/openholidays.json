@@ -1,0 +1,18 @@
+[
+  {
+    "id": "new-year-2027",
+    "startDate": "2027-01-01",
+    "endDate": "2027-01-01",
+    "name": [{ "language": "NL", "text": "Nieuwjaarsdag" }],
+    "regionalScope": "National",
+    "nationwide": true
+  },
+  {
+    "id": "old-holiday",
+    "startDate": "2026-01-01",
+    "endDate": "2026-01-01",
+    "name": [{ "language": "NL", "text": "Oude feestdag" }],
+    "regionalScope": "National",
+    "nationwide": true
+  }
+]

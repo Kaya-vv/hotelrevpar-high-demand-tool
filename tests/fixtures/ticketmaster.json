@@ -1,0 +1,31 @@
+{
+  "_embedded": {
+    "events": [
+      {
+        "id": "tm-active",
+        "name": "Dutch Design Week",
+        "url": "https://ticketmaster.nl/dutch-design-week",
+        "dates": {
+          "start": { "dateTime": "2027-10-16T08:00:00Z" },
+          "end": { "dateTime": "2027-10-24T20:00:00Z" },
+          "status": { "code": "onsale" }
+        },
+        "classifications": [{ "segment": { "name": "Arts & Theatre" } }],
+        "_embedded": {
+          "venues": [{ "name": "Klokgebouw", "location": { "latitude": "51.448", "longitude": "5.458" }, "city": { "name": "Eindhoven" } }]
+        }
+      },
+      {
+        "id": "tm-cancelled",
+        "name": "Cancelled show",
+        "url": "https://ticketmaster.nl/cancelled",
+        "dates": {
+          "start": { "dateTime": "2027-11-10T18:00:00Z" },
+          "status": { "code": "cancelled" }
+        },
+        "_embedded": { "venues": [{ "name": "Muziekgebouw", "city": { "name": "Eindhoven" } }] }
+      }
+    ]
+  },
+  "page": { "number": 0, "totalPages": 2, "totalElements": 2 }
+}
