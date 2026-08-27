@@ -1,0 +1,14 @@
+allowBuilds:
+  unrs-resolver: true
+minimumReleaseAgeExclude:
+  - '@anthropic-ai/sdk@0.121.0'
+  - '@supabase/cli-darwin-arm64@2.116.0'
+  - '@supabase/cli-darwin-x64@2.116.0'
+  - '@supabase/cli-linux-arm64-musl@2.116.0'
+  - '@supabase/cli-linux-arm64@2.116.0'
+  - '@supabase/cli-linux-x64-musl@2.116.0'
+  - '@supabase/cli-linux-x64@2.116.0'
+  - '@supabase/cli-windows-arm64@2.116.0'
+  - '@supabase/cli-windows-x64@2.116.0'
+  - '@types/node@26.4.0'
+  - supabase@2.116.0

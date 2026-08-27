@@ -1,0 +1,171 @@
+:root {
+  --navy: #064b68;
+  --blue: #075f82;
+  --cyan: #0a99bd;
+  --orange: #ff5428;
+  --ink: #18313d;
+  --muted: #657983;
+  --line: #dbe6ea;
+  --surface: #f5f8f9;
+  --white: #fff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--surface);
+}
+
+body {
+  margin: 0;
+  color: var(--ink);
+  background: var(--surface);
+  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+a {
+  color: inherit;
+}
+
+button,
+a {
+  outline-offset: 3px;
+}
+
+:focus-visible {
+  outline: 3px solid var(--orange);
+}
+
+.shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+}
+
+.sidebar {
+  padding: 26px 20px;
+  color: var(--white);
+  background: var(--navy);
+}
+
+.brand {
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  margin-bottom: 40px;
+  color: var(--white);
+  text-decoration: none;
+}
+
+.brand img {
+  width: 180px;
+  height: auto;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--white);
+}
+
+.brand span {
+  color: #bce7f1;
+  font-size: 0.78rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.sidebar nav {
+  display: grid;
+  gap: 6px;
+}
+
+.sidebar nav a {
+  padding: 12px 14px;
+  border-radius: 6px;
+  text-decoration: none;
+}
+
+.sidebar nav a:hover {
+  background: rgb(255 255 255 / 12%);
+}
+
+.workspace {
+  min-width: 0;
+}
+
+.workspace-header {
+  min-height: 88px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px 32px;
+  border-bottom: 1px solid var(--line);
+  background: var(--white);
+}
+
+.workspace-header div {
+  display: grid;
+  gap: 2px;
+}
+
+.eyebrow {
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.workspace-content {
+  padding: 32px;
+}
+
+.primary {
+  min-height: 44px;
+  padding: 10px 20px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--white);
+  background: var(--orange);
+  box-shadow: 0 3px 8px rgb(72 34 24 / 22%);
+  cursor: pointer;
+}
+
+.primary:hover {
+  background: #e94620;
+}
+
+@media (max-width: 800px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    padding: 16px;
+  }
+
+  .brand {
+    justify-items: start;
+    margin-bottom: 18px;
+  }
+
+  .brand img {
+    width: 150px;
+  }
+
+  .sidebar nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .workspace-header,
+  .workspace-content {
+    padding: 18px;
+  }
+}
