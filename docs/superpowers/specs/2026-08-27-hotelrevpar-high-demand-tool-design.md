@@ -2,7 +2,7 @@
 - provide a server secret for collection and provisHotelRevPar High Demand Tool: Version-One Design
 
 Date: 2026-08-27
-Status: Approved design, awaiting written-spec review
+Status: Approved for implementation planning
 
 ## 1. Purpose
 
