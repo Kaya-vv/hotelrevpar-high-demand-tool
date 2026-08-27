@@ -2,21 +2,23 @@ import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-const links = [
+const links: Array<[string, string]> = [
   ["/calendar", "Vraagkalender"],
   ["/review", "Te beoordelen"],
   ["/portfolio", "Hotels & regio's"],
   ["/export", "Exporteren"],
   ["/account", "Account"],
-] as const;
+];
 
 type AppShellProps = {
   accountName: string;
   children: ReactNode;
   refreshAction?: () => void | Promise<void>;
+  isPlatformAdmin?: boolean;
 };
 
-export function AppShell({ accountName, children, refreshAction }: AppShellProps) {
+export function AppShell({ accountName, children, refreshAction, isPlatformAdmin = false }: AppShellProps) {
+  const navigation = isPlatformAdmin ? [...links, ["/admin/source-health", "Bronstatus"] as [string, string]] : links;
   return (
     <div className="shell">
       <aside className="sidebar">
@@ -25,7 +27,7 @@ export function AppShell({ accountName, children, refreshAction }: AppShellProps
           <span>High Demand Tool</span>
         </Link>
         <nav aria-label="Hoofdnavigatie">
-          {links.map(([href, label]) => (
+          {navigation.map(([href, label]) => (
             <Link key={href} href={href}>
               {label}
             </Link>

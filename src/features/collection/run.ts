@@ -143,6 +143,8 @@ export async function runCollection(
       sourceResults[source] = {
         state: unique.size ? "success" : "zero",
         candidates: unique.size,
+        found: result.value.candidates.length,
+        unique: unique.size,
         requests: result.value.requests,
         reviews: reviewCount,
         duplicates: duplicateCount,
