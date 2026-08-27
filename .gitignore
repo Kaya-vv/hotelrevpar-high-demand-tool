@@ -7,5 +7,7 @@ coverage/
 .env.*
 !.env.example
 .supabase/
+supabase/.branches/
+supabase/.temp/
 .superpowers/
 refs/

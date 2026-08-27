@@ -299,16 +299,21 @@ a {
   list-style: none;
 }
 
-.saved-list li {
+.saved-list summary {
   display: flex;
   justify-content: space-between;
   gap: 12px;
   padding: 11px 0;
   border-top: 1px solid var(--line);
+  cursor: pointer;
 }
 
 .saved-list span {
   color: var(--muted);
+}
+
+.saved-list .form-grid {
+  padding: 12px 0 20px;
 }
 
 .filter-bar {

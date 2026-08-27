@@ -11,13 +11,16 @@ export async function createSubscriberAccount(formData: FormData) {
   const accountName = String(formData.get("accountName") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   if (!accountName || !email) throw new Error("Accountnaam en e-mailadres zijn verplicht.");
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+  if (!siteUrl) throw new Error("NEXT_PUBLIC_SITE_URL ontbreekt.");
 
   const admin = createAdminClient();
   await provisionSubscriber(
     { accountName, email },
     {
       inviteUser: async (inviteEmail) => {
-        const { data, error } = await admin.auth.admin.inviteUserByEmail(inviteEmail);
+        const redirectTo = new URL("/auth/confirm?next=/auth/set-password", siteUrl).toString();
+        const { data, error } = await admin.auth.admin.inviteUserByEmail(inviteEmail, { redirectTo });
         if (error || !data.user) throw error ?? new Error("De uitnodiging is mislukt.");
         return data.user.id;
       },
@@ -56,4 +59,3 @@ export async function disableAccount(formData: FormData) {
   if (error) throw error;
   revalidatePath("/admin/accounts");
 }
-

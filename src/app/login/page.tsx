@@ -5,6 +5,7 @@ import { login } from "./actions";
 const errorMessages: Record<string, string> = {
   account: "Dit account is niet actief. Neem contact op met HotelRevPar.",
   credentials: "Controleer je e-mailadres en wachtwoord.",
+  invite: "De uitnodiging is verlopen of ongeldig. Vraag HotelRevPar om een nieuwe uitnodiging.",
 };
 
 export default async function LoginPage({
@@ -40,4 +41,3 @@ export default async function LoginPage({
     </main>
   );
 }
-

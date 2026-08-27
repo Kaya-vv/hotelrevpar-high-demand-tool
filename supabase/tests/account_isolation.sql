@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(3);
+select plan(6);
 
 insert into auth.users (
   instance_id,
@@ -110,6 +110,18 @@ select throws_ok(
 );
 
 select is((select count(*) from accounts), 1::bigint, 'operator sees one account');
+select ok(
+  not has_table_privilege('authenticated', 'account_events', 'INSERT'),
+  'operators cannot create account-event links'
+);
+select ok(
+  not has_column_privilege('authenticated', 'hotel_event_scores', 'total', 'UPDATE'),
+  'operators cannot rewrite calculated totals'
+);
+select ok(
+  has_column_privilege('authenticated', 'hotel_event_scores', 'importance_override', 'UPDATE'),
+  'operators can override importance'
+);
 select * from finish();
 
 rollback;

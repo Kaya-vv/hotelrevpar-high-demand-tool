@@ -4,7 +4,7 @@ Record the evidence for each gate before inviting a paying subscriber.
 
 | # | Release gate | Date | Operator | Result | Link or file |
 |---:|---|---|---|---|---|
-| 1 | Configure Supabase, Vercel, Ticketmaster, PredictHQ, Anthropic, and Cron secrets. |  |  |  |  |
+| 1 | Configure Supabase, Vercel, Ticketmaster, PredictHQ, Anthropic, and Cron secrets. Set the Supabase invite email URL to `{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=invite` and allow the production `/auth/confirm` redirect URL. |  |  |  |  |
 | 2 | Create Robert's platform account and operator portfolio. |  |  |  |  |
 | 3 | Add Eindhoven and Rotterdam areas and known hotels. |  |  |  |  |
 | 4 | Confirm the PredictHQ plan or trial extension exposes the full 12-month window. |  |  |  |  |

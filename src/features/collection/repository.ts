@@ -4,6 +4,7 @@ import { scoreHotelEvent } from "@/features/events/score";
 import type { ValidationReason } from "@/features/events/types";
 import { validateCandidate } from "@/features/events/validate";
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { Json } from "@/lib/supabase/database.types";
 
 import type { CollectionContext, CollectionRepository, RunCollectionInput } from "./run";
 import { sourceChange } from "./source-change";
@@ -251,7 +252,7 @@ export function createCollectionRepository(): CollectionRepository {
         .from("collection_runs")
         .update({
           finished_at: new Date().toISOString(),
-          source_results: sourceResults,
+          source_results: sourceResults as Json,
           cost_usage: costUsage,
           error_summary: errorSummary ?? null,
         })

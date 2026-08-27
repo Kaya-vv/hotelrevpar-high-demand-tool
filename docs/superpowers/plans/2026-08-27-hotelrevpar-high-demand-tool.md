@@ -329,7 +329,7 @@ create index account_events_state_idx on account_events(account_id, state);
 
 - [ ] **Step 3: Add Row Level Security and auth clients**
 
-Create `is_account_member(target uuid)` as a stable `security definer` SQL function with `set search_path = public`. It must require `accounts.active` and `account_members.user_id = auth.uid()`. Enable RLS on every table. Use membership policies for accounts, hotels, areas, account events, account-event area links, scores, and runs. Let a user read an event or source only through an `account_events` row in an account they belong to. Do not grant authenticated clients insert access to canonical events, sources, scores, area links, or runs.
+Create `is_account_member(target uuid)` as a stable `security definer` SQL function with `set search_path = public`. It must require `accounts.active` and `account_members.user_id = auth.uid()`. Enable RLS on every table. Use membership policies for accounts, hotels, areas, account events, account-event area links, scores, and runs. Let a user read an event or source only through an `account_events` row in an account they belong to. Do not grant authenticated clients insert access to canonical events, sources, account-event links, scores, area links, or runs. Limit authenticated score updates to `importance_override` and `override_note`, and account-event updates to decision and override columns.
 
 ```ts
 // src/lib/supabase/server.ts
@@ -354,13 +354,13 @@ export async function createServerClient() {
 
 Use `signInWithPassword` in the login Server Action. `requireAccount()` must call `auth.getClaims()`, load the user's single active membership, and redirect missing memberships to `/login?error=account`.
 
-`createSubscriberAccount(formData)` must require `platform_admin`, invite the email through `auth.admin.inviteUserByEmail`, insert the account and membership, and delete the invited auth user if the database insert fails. `disableAccount(accountId)` sets `accounts.active = false`; it does not delete portfolio data.
+`createSubscriberAccount(formData)` must require `platform_admin`, invite the email through `auth.admin.inviteUserByEmail`, insert the account and membership, and delete the invited auth user if the database insert fails. The invite uses `/auth/confirm` to verify the token and sends the subscriber to `/auth/set-password`. `disableAccount(accountId)` sets `accounts.active = false`; it does not delete portfolio data.
 
 - [ ] **Step 5: Reset, test, generate types, and commit**
 
 Run: `pnpm supabase start && pnpm supabase db reset && pnpm supabase test db`
 
-Expected: three pgTAP assertions pass.
+Expected: six pgTAP assertions pass.
 
 Run: `pnpm supabase gen types typescript --local > src/lib/supabase/database.types.ts && pnpm test && pnpm lint && pnpm typecheck`
 
