@@ -1,0 +1,36 @@
+import { z } from "zod";
+
+export const sourceName = z.enum([
+  "rijksoverheid",
+  "openholidays",
+  "ticketmaster",
+  "predicthq",
+  "claude",
+]);
+
+export const hotelInput = z.object({
+  id: z.preprocess((value) => value || undefined, z.uuid().optional()),
+  name: z.string().trim().min(1, "Vul een hotelnaam in."),
+  revcontrolCode: z.string().trim().min(1, "Vul de RevControl-code in."),
+  address: z.string().trim(),
+  latitude: z.coerce.number().min(-90).max(90),
+  longitude: z.coerce.number().min(-180).max(180),
+  demandRadiusKm: z.coerce.number().positive().max(250),
+  holidayRegion: z.preprocess(
+    (value) => value || null,
+    z.enum(["north", "middle", "south"]).nullable(),
+  ),
+});
+
+export const collectionAreaInput = z.object({
+  id: z.preprocess((value) => value || undefined, z.uuid().optional()),
+  name: z.string().trim().min(1, "Vul een regionaam in."),
+  latitude: z.coerce.number().min(-90).max(90),
+  longitude: z.coerce.number().min(-180).max(180),
+  radiusKm: z.coerce.number().positive().max(250),
+  enabledSources: z.array(sourceName).min(1, "Kies minstens één bron."),
+});
+
+export type HotelInput = z.infer<typeof hotelInput>;
+export type CollectionAreaInput = z.infer<typeof collectionAreaInput>;
+
