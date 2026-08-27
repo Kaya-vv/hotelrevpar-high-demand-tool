@@ -311,6 +311,255 @@ a {
   color: var(--muted);
 }
 
+.filter-bar {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(120px, 1fr)) auto;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 20px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--white);
+}
+
+.filter-bar label {
+  display: grid;
+  gap: 5px;
+  font-size: 0.82rem;
+}
+
+.calendar-layout {
+  display: grid;
+  grid-template-columns: minmax(520px, 1.35fr) minmax(360px, 0.65fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.month-panel,
+.event-card,
+.source-health,
+.review-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--white);
+}
+
+.month-panel {
+  overflow: hidden;
+}
+
+.weekday-row,
+.month-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.weekday-row span {
+  padding: 9px;
+  color: var(--muted);
+  background: #eaf2f5;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.month-day {
+  min-height: 110px;
+  padding: 8px;
+  border-top: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+}
+
+.month-day time {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--muted);
+}
+
+.month-day.empty {
+  background: #fafcfc;
+}
+
+.calendar-chip {
+  display: block;
+  overflow: hidden;
+  margin: 4px 0;
+  padding: 5px 6px;
+  border-left: 3px solid var(--orange);
+  border-radius: 3px;
+  color: var(--navy);
+  background: #e9f5f8;
+  font-size: 0.73rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.event-list,
+.review-list {
+  display: grid;
+  gap: 14px;
+}
+
+.event-card,
+.review-card,
+.source-health {
+  padding: 18px;
+}
+
+.event-card > header,
+.review-card > header,
+.hotel-scores section > div:first-child,
+.source-health li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.event-card h2,
+.review-card h2 {
+  margin: 3px 0 0;
+  font-size: 1.15rem;
+}
+
+.status,
+.importance {
+  align-self: start;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+}
+
+.status.provisional {
+  color: #765600;
+  background: #fff1bd;
+}
+
+.status.review {
+  color: #8c2915;
+  background: #ffede8;
+}
+
+.importance.high {
+  color: #8c2915;
+  background: #ffddd5;
+}
+
+.importance.medium {
+  color: #765600;
+  background: #fff1bd;
+}
+
+.importance.low {
+  color: #155f44;
+  background: #e5f6ef;
+}
+
+.hotel-scores {
+  display: grid;
+  gap: 8px;
+}
+
+.hotel-scores section {
+  display: grid;
+  gap: 5px;
+  padding: 11px;
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.score-total {
+  color: var(--blue);
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+.hotel-scores small {
+  color: var(--muted);
+}
+
+.score-override {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 7px;
+  margin-top: 5px;
+}
+
+.source-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.source-links a {
+  color: var(--blue);
+  font-size: 0.82rem;
+}
+
+.source-health > span {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+}
+
+.source-health ul {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.source-health li {
+  padding: 5px 0;
+}
+
+.source-failed,
+.source-unlicensed,
+.source-stale {
+  color: #a5321b;
+}
+
+.source-success,
+.source-zero {
+  color: #155f44;
+}
+
+.empty-state {
+  padding: 24px;
+  border: 1px dashed #b8cbd2;
+  border-radius: 8px;
+  color: var(--muted);
+  background: var(--white);
+}
+
+.review-card {
+  display: grid;
+  gap: 14px;
+}
+
+.review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  align-items: start;
+}
+
+.review-actions > form {
+  display: flex;
+  gap: 7px;
+}
+
+.review-actions details {
+  width: 100%;
+}
+
+.review-actions summary {
+  cursor: pointer;
+}
+
+.form-grid.compact {
+  margin-top: 12px;
+}
+
 .inline-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
@@ -366,7 +615,9 @@ td {
   }
 
   .portfolio-grid,
-  .form-grid {
+  .form-grid,
+  .calendar-layout,
+  .filter-bar {
     grid-template-columns: 1fr;
   }
 

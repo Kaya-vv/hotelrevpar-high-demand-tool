@@ -169,6 +169,7 @@ export function createCollectionRepository(): CollectionRepository {
           local_rank: candidate.localRank,
           attendance: candidate.attendance,
           venue_capacity: candidate.venueCapacity,
+          primary_source_confirmed: candidate.primarySourceConfirmed,
           checked_at: new Date().toISOString(),
         },
         { onConflict: "provider,provider_event_id" },
@@ -195,6 +196,13 @@ export function createCollectionRepository(): CollectionRepository {
         review_reason: validation.reason,
       });
       if (decisionError) throw decisionError;
+
+      const { error: areaLinkError } = await supabase.from("account_event_areas").upsert({
+        account_id: context.area.accountId,
+        event_id: eventId,
+        collection_area_id: context.area.id,
+      });
+      if (areaLinkError) throw areaLinkError;
 
       for (const hotel of context.hotels) {
         const { data: storedScores, error: scoreReadError } = await supabase

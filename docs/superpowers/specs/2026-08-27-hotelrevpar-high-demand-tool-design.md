@@ -217,6 +217,7 @@ The minimum tables are:
 - provider and provider event ID;
 - source URL;
 - extracted title, date, location, and evidence text;
+- whether the adapter fetched and confirmed a primary owner page;
 - source check time, source state, and certainty;
 - provider rank, attendance, or venue-capacity values when available.
 
@@ -226,6 +227,12 @@ The minimum tables are:
 - state: `active`, `needs_review`, `excluded`, or `ended`;
 - review reason and operator note;
 - decision time and deciding user.
+
+### `account_event_areas`
+
+- account ID, event ID, and collection-area ID;
+- one row for each area that discovered the event;
+- supplies the account-scoped region filter without assigning a global event to one subscriber area.
 
 ### `hotel_event_scores`
 

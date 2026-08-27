@@ -244,7 +244,7 @@ rollback;
 
 - [ ] **Step 2: Create the schema and native run lock**
 
-Create enums for `account_role`, `account_event_state`, `event_certainty`, and `run_trigger`. Create the nine approved tables with UUID primary keys and timestamps. Add these implementation fields required by approved behavior:
+Create enums for `account_role`, `account_event_state`, `event_certainty`, and `run_trigger`. Create the approved tables with UUID primary keys and timestamps. Add these implementation fields required by approved behavior:
 
 ```sql
 create extension if not exists pgcrypto;
@@ -289,6 +289,7 @@ create table event_sources (
   provider text not null, provider_event_id text not null, source_url text not null,
   extracted_title text not null, extracted_start_at timestamptz not null, extracted_location text,
   evidence_text text, source_state text not null, certainty event_certainty not null default 'confirmed',
+  primary_source_confirmed boolean not null default false,
   local_rank integer, attendance integer, venue_capacity integer,
   checked_at timestamptz not null default now(),
   unique(provider, provider_event_id)
@@ -299,6 +300,13 @@ create table account_events (
   override_title text, override_start_at timestamptz, override_end_at timestamptz, override_venue text,
   merged_into_event_id uuid references events, decided_at timestamptz, decided_by uuid references auth.users,
   primary key(account_id, event_id)
+);
+create table account_event_areas (
+  account_id uuid not null, event_id uuid not null,
+  collection_area_id uuid not null references collection_areas on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key(account_id, event_id, collection_area_id),
+  foreign key(account_id, event_id) references account_events(account_id, event_id) on delete cascade
 );
 create table hotel_event_scores (
   hotel_id uuid not null references hotels on delete cascade, event_id uuid not null references events on delete cascade,
@@ -321,7 +329,7 @@ create index account_events_state_idx on account_events(account_id, state);
 
 - [ ] **Step 3: Add Row Level Security and auth clients**
 
-Create `is_account_member(target uuid)` as a stable `security definer` SQL function with `set search_path = public`. It must require `accounts.active` and `account_members.user_id = auth.uid()`. Enable RLS on all nine tables. Use membership policies for accounts, hotels, areas, account events, scores, and runs. Let a user read an event or source only through an `account_events` row in an account they belong to. Do not grant authenticated clients insert access to canonical events, sources, scores, or runs.
+Create `is_account_member(target uuid)` as a stable `security definer` SQL function with `set search_path = public`. It must require `accounts.active` and `account_members.user_id = auth.uid()`. Enable RLS on every table. Use membership policies for accounts, hotels, areas, account events, account-event area links, scores, and runs. Let a user read an event or source only through an `account_events` row in an account they belong to. Do not grant authenticated clients insert access to canonical events, sources, scores, area links, or runs.
 
 ```ts
 // src/lib/supabase/server.ts
@@ -585,7 +593,7 @@ Expected: FAIL because `run.ts` does not exist.
 
 Insert `collection_runs` first and treat Postgres code `23505` from `one_active_run_per_area` as `already_running`. Before insert, mark an unfinished run older than one hour as finished with `error_summary = 'stale run recovered'`; this releases a lock left by a timed-out Vercel function.
 
-`runCollection({ accountId, areaId, trigger }, deps)` runs enabled adapters with `Promise.allSettled`. For each candidate: normalize, match provider ID, classify cross-source match, upsert the source with metric provenance, validate, upsert `account_events`, and score account hotels. Save per-source counts, failures, zero-result success, duplicate counts, review counts, request counts, and Anthropic token and search usage. Finish the run in a `finally` block.
+`runCollection({ accountId, areaId, trigger }, deps)` runs enabled adapters with `Promise.allSettled`. For each candidate: normalize, match provider ID, classify cross-source match, upsert the source with metric and primary-evidence provenance, validate, upsert `account_events`, link it to the discovery area, and score account hotels. Save per-source counts, failures, zero-result success, duplicate counts, review counts, request counts, and Anthropic token and search usage. Finish the run in a `finally` block.
 
 - [ ] **Step 4: Add secured routes**
 
