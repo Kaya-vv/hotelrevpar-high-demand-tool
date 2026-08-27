@@ -15,4 +15,10 @@ describe("AppShell", () => {
     expect(screen.getByRole("button", { name: "Nu verversen" })).toBeEnabled();
     expect(screen.getByText("Robert")).toBeVisible();
   });
+
+  it("shows subscriber management to platform administrators", () => {
+    render(<AppShell accountName="Robert" isPlatformAdmin><p>Inhoud</p></AppShell>);
+
+    expect(screen.getByRole("link", { name: "Abonnees" })).toHaveAttribute("href", "/admin/accounts");
+  });
 });

@@ -18,7 +18,9 @@ type AppShellProps = {
 };
 
 export function AppShell({ accountName, children, refreshAction, isPlatformAdmin = false }: AppShellProps) {
-  const navigation = isPlatformAdmin ? [...links, ["/admin/source-health", "Bronstatus"] as [string, string]] : links;
+  const navigation = isPlatformAdmin
+    ? [...links, ["/admin/accounts", "Abonnees"] as [string, string], ["/admin/source-health", "Bronstatus"] as [string, string]]
+    : links;
   return (
     <div className="shell">
       <aside className="sidebar">
