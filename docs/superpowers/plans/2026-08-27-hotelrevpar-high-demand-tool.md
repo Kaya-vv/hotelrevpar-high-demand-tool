@@ -22,7 +22,8 @@
 - Keep Plug&Pay, hotel-client logins, subscriber submissions, RevControl API access, machine learning, and a job queue outside version one.
 - Keep `refs/` untracked. Copy only `refs/logo.webp` into `public/logo.webp` as a product asset.
 - Keep all provider keys, `SUPABASE_SERVICE_ROLE_KEY`, and `CRON_SECRET` in server-side environment variables.
-- Use current provider contracts: Ticketmaster city and date filters, PredictHQ `within` and start filters, Rijksoverheid school-holiday open data, and Anthropic Web Search plus Web Fetch.
+- Use current provider contracts: Ticketmaster city and date filters, PredictHQ `within`, start, and predicted-state filters, Rijksoverheid school-holiday open data, OpenHolidaysAPI public holidays, and Anthropic Web Search plus Web Fetch.
+- Keep PredictHQ data out of Anthropic requests. Retain provider provenance for source-owned metrics and support provider-data deletion plus score recalculation.
 - Use `proxy.ts` for session refresh, `@supabase/ssr` cookie `getAll` and `setAll`, and `Authorization: Bearer ${CRON_SECRET}` for Vercel Cron.
 
 ## File Map
@@ -243,12 +244,13 @@ rollback;
 
 - [ ] **Step 2: Create the schema and native run lock**
 
-Create enums for `account_role`, `account_event_state`, and `run_trigger`. Create the nine approved tables with UUID primary keys and timestamps. Add these implementation fields required by approved behavior:
+Create enums for `account_role`, `account_event_state`, `event_certainty`, and `run_trigger`. Create the nine approved tables with UUID primary keys and timestamps. Add these implementation fields required by approved behavior:
 
 ```sql
 create extension if not exists pgcrypto;
 create type account_role as enum ('operator', 'platform_admin');
 create type account_event_state as enum ('active', 'needs_review', 'excluded', 'ended');
+create type event_certainty as enum ('confirmed', 'provisional');
 create type run_trigger as enum ('cron', 'manual');
 
 create table accounts (
@@ -272,21 +274,23 @@ create table collection_areas (
   id uuid primary key default gen_random_uuid(), account_id uuid not null references accounts on delete cascade,
   name text not null, latitude double precision not null, longitude double precision not null,
   radius_km double precision not null check (radius_km > 0),
-  enabled_sources text[] not null default array['rijksoverheid','ticketmaster','predicthq','claude'],
+  enabled_sources text[] not null default array['rijksoverheid','openholidays','ticketmaster','predicthq','claude'],
   created_at timestamptz not null default now(), unique(account_id, name)
 );
 create table events (
   id uuid primary key default gen_random_uuid(), normalized_identity text not null,
   title text not null, category text not null, venue text, latitude double precision, longitude double precision,
   region_scope text, start_at timestamptz not null, end_at timestamptz not null,
-  source_state text not null default 'active', local_rank integer, attendance integer, venue_capacity integer,
+  source_state text not null default 'active', certainty event_certainty not null default 'confirmed',
   created_at timestamptz not null default now(), updated_at timestamptz not null default now()
 );
 create table event_sources (
   id uuid primary key default gen_random_uuid(), event_id uuid not null references events on delete cascade,
   provider text not null, provider_event_id text not null, source_url text not null,
   extracted_title text not null, extracted_start_at timestamptz not null, extracted_location text,
-  evidence_text text, source_state text not null, checked_at timestamptz not null default now(),
+  evidence_text text, source_state text not null, certainty event_certainty not null default 'confirmed',
+  local_rank integer, attendance integer, venue_capacity integer,
+  checked_at timestamptz not null default now(),
   unique(provider, provider_event_id)
 );
 create table account_events (
@@ -300,6 +304,7 @@ create table hotel_event_scores (
   hotel_id uuid not null references hotels on delete cascade, event_id uuid not null references events on delete cascade,
   distance_km double precision, impact_points integer not null, distance_points integer not null,
   stay_pressure_points integer not null, total integer not null, suggested_importance text not null,
+  impact_basis text not null,
   importance_override text, override_note text, primary key(hotel_id, event_id)
 );
 create table collection_runs (
@@ -396,7 +401,7 @@ Expected: FAIL because `schema.ts` does not exist.
 - [ ] **Step 3: Implement the schemas and account-scoped actions**
 
 ```ts
-export const sourceName = z.enum(["rijksoverheid", "ticketmaster", "predicthq", "claude"]);
+export const sourceName = z.enum(["rijksoverheid", "openholidays", "ticketmaster", "predicthq", "claude"]);
 export const hotelInput = z.object({
   id: z.uuid().optional(), name: z.string().trim().min(1), revcontrolCode: z.string().trim().min(1),
   address: z.string().trim(), latitude: z.coerce.number().min(-90).max(90),
@@ -442,17 +447,18 @@ git commit -m "feat: add hotel and area management"
 - [ ] **Step 1: Define the shared candidate type and failing checks**
 
 ```ts
-export type SourceName = "rijksoverheid" | "ticketmaster" | "predicthq" | "claude";
+export type SourceName = "rijksoverheid" | "openholidays" | "ticketmaster" | "predicthq" | "claude";
 export type EventCandidate = {
   provider: SourceName; providerEventId: string; sourceUrl: string; title: string; category: string;
   venue: string | null; latitude: number | null; longitude: number | null; regionScope: string | null;
-  startAt: string; endAt: string; sourceState: "active" | "cancelled" | "postponed";
+  startAt: string; endAt: string; sourceState: "active" | "predicted" | "cancelled" | "postponed";
+  certainty: "confirmed" | "provisional";
   localRank: number | null; attendance: number | null; venueCapacity: number | null;
   evidenceText: string | null; primarySourceConfirmed: boolean;
 };
 ```
 
-Write one table-driven Vitest suite that asserts: accents and punctuation normalize; provider IDs match exactly; title/date/venue duplicates merge; similar title/date candidates become `uncertain`; Claude without fetched primary evidence needs review; rank 100 maps to 60; 15,000 attendees map to 60; radius edge maps to 0; an eligible regional holiday maps to 25 distance points; and totals map to Low, Medium, and High boundaries.
+Write one table-driven Vitest suite that asserts: accents and punctuation normalize; provider IDs match exactly; title/date/venue duplicates merge; similar title/date candidates become `uncertain`; Claude without fetched primary evidence needs review; a complete predicted event stays active with provisional certainty; rank 100 maps to 60 with `local_rank` basis; 15,000 attendees map to 60 with `attendance` basis; radius edge maps to 0; an eligible regional holiday maps to 25 distance points; and totals map to Low, Medium, and High boundaries.
 
 - [ ] **Step 2: Run the suite and confirm failure**
 
@@ -464,7 +470,7 @@ Expected: FAIL because the domain modules do not exist.
 
 Normalize with `String.normalize("NFD")`, remove combining marks and punctuation, collapse whitespace, and use the local start date plus normalized venue or region in `normalizedIdentity`. `classifyMatch` returns `exact`, `uncertain`, or `new`: provider ID and normalized identity are exact; same date plus title-token Jaccard score of at least `0.8` is uncertain; the rest are new.
 
-`validateCandidate(candidate, window, conflict)` returns active only when required fields exist, the event falls inside the rolling window, no conflict exists, and Claude has `primarySourceConfirmed`. Map missing source, missing fields, out-of-window, duplicate uncertainty, date conflict, changed date or venue, cancelled, and postponed to stable reason codes.
+`validateCandidate(candidate, window, conflict)` returns active when required fields exist, the event falls inside the rolling window, no conflict exists, and Claude candidates have `primarySourceConfirmed`. A predicted structured event with usable dates and location remains active with provisional certainty. Map missing source, missing fields, out-of-window, duplicate uncertainty, date conflict, changed date or venue, cancelled, and postponed to stable reason codes.
 
 - [ ] **Step 4: Implement scoring**
 
@@ -472,13 +478,13 @@ Normalize with `String.normalize("NFD")`, remove combining marks and punctuation
 export function importance(total: number) {
   return total >= 70 ? "High" : total >= 40 ? "Medium" : "Low";
 }
-export function impactPoints(input: { localRank: number | null; attendance: number | null; venueCapacity: number | null; category: string }) {
-  if (input.localRank !== null) return Math.round(input.localRank * 0.6);
+export function impact(input: { localRank: number | null; attendance: number | null; venueCapacity: number | null; category: string }) {
+  if (input.localRank !== null) return { points: Math.round(input.localRank * 0.6), basis: "local_rank" as const };
   const people = input.attendance ?? input.venueCapacity;
-  if (people !== null) return people >= 15000 ? 60 : people >= 5000 ? 45 : people >= 2000 ? 35 : people >= 500 ? 20 : 10;
-  if (input.category === "school_holiday") return 30;
-  if (input.category === "public_holiday") return 25;
-  return 20;
+  if (people !== null) return { points: people >= 15000 ? 60 : people >= 5000 ? 45 : people >= 2000 ? 35 : people >= 500 ? 20 : 10, basis: input.attendance !== null ? "attendance" as const : "venue_capacity" as const };
+  if (input.category === "school_holiday") return { points: 30, basis: "holiday_rule" as const };
+  if (input.category === "public_holiday") return { points: 25, basis: "holiday_rule" as const };
+  return { points: 20, basis: "default" as const };
 }
 ```
 
@@ -501,17 +507,19 @@ git commit -m "feat: add event matching and hotel scoring"
 - Create: `src/features/collection/types.ts`
 - Create: `src/features/collection/http.ts`
 - Create: `src/features/collection/sources/rijksoverheid.ts`
+- Create: `src/features/collection/sources/openholidays.ts`
 - Create: `src/features/collection/sources/ticketmaster.ts`
 - Create: `src/features/collection/sources/predicthq.ts`
 - Create: `src/features/collection/sources/claude.ts`
 - Create: `src/features/collection/sources/sources.test.ts`
 - Create: `tests/fixtures/rijksoverheid.json`
+- Create: `tests/fixtures/openholidays.json`
 - Create: `tests/fixtures/ticketmaster.json`
 - Create: `tests/fixtures/predicthq.json`
 
 **Interfaces:**
 - Consumes: `EventCandidate`.
-- Produces: `collectRijksoverheid(input)`, `collectTicketmaster(input)`, `collectPredictHq(input)`, and `collectClaude(input)` returning `Promise<SourceResult>`.
+- Produces: `collectRijksoverheid(input)`, `collectOpenHolidays(input)`, `collectTicketmaster(input)`, `collectPredictHq(input)`, and `collectClaude(input)` returning `Promise<SourceResult>`.
 - `SourceResult = { source: SourceName; candidates: EventCandidate[]; requests: number; usage: Record<string, number> }`.
 
 - [ ] **Step 1: Write adapter contract tests with compact fixtures**
@@ -529,8 +537,9 @@ Expected: FAIL because the adapters do not exist.
 Use `fetchJson(url, schema, fetcher)` with `AbortSignal.timeout(15_000)`, non-2xx rejection, and Zod parsing. Do not retry inside adapters; the collection runner records one source failure without blocking the other sources.
 
 - Rijksoverheid: request `https://opendata.rijksoverheid.nl/v1/infotypes/schoolholidays`, filter `startdate` and `enddate` to the window, and map `region` to `regionScope`.
+- OpenHolidaysAPI: request `/PublicHolidays` for `countryIsoCode=NL`, Dutch labels, and the rolling window. Map national holidays to `public_holiday` with country scope. It is the public-holiday source and a school-holiday fallback check, not the primary school calendar.
 - Ticketmaster: request `/discovery/v2/events.json` with `apikey`, `city`, `countryCode=NL`, UTC `startDateTime`, UTC `endDateTime`, `size=200`, `page`, and `sort=date,asc`. Stop at the final page or the documented 1,000-item deep-paging limit. Map `dates.status.code` to source state.
-- PredictHQ: request `https://api.predicthq.com/v1/events/` with bearer auth, `within={radius}km@{lat},{lon}`, `start.gte`, `start.lte`, `state=active,deleted`, and attendance categories. Map `local_rank`, `phq_attendance`, predicted end, and event state.
+- PredictHQ: request `https://api.predicthq.com/v1/events/` with bearer auth, `within={radius}km@{lat},{lon}`, `start.gte`, `start.lte`, `state=active,predicted,deleted`, and attendance categories. Map `local_rank`, `phq_attendance`, predicted end, and event state. Map `predicted` to provisional certainty without sending the event to review for certainty alone.
 
 - [ ] **Step 4: Implement two-stage Claude discovery and verification**
 
@@ -576,7 +585,7 @@ Expected: FAIL because `run.ts` does not exist.
 
 Insert `collection_runs` first and treat Postgres code `23505` from `one_active_run_per_area` as `already_running`. Before insert, mark an unfinished run older than one hour as finished with `error_summary = 'stale run recovered'`; this releases a lock left by a timed-out Vercel function.
 
-`runCollection({ accountId, areaId, trigger }, deps)` runs enabled adapters with `Promise.allSettled`. For each candidate: normalize, match provider ID, classify cross-source match, upsert the source, validate, upsert `account_events`, and score account hotels. Save per-source counts, failures, duplicate counts, review counts, request counts, and Anthropic token and search usage. Finish the run in a `finally` block.
+`runCollection({ accountId, areaId, trigger }, deps)` runs enabled adapters with `Promise.allSettled`. For each candidate: normalize, match provider ID, classify cross-source match, upsert the source with metric provenance, validate, upsert `account_events`, and score account hotels. Save per-source counts, failures, zero-result success, duplicate counts, review counts, request counts, and Anthropic token and search usage. Finish the run in a `finally` block.
 
 - [ ] **Step 4: Add secured routes**
 
@@ -606,12 +615,12 @@ git commit -m "feat: add resilient event collection"
 - Create: `src/app/(protected)/review/page.tsx`
 
 **Interfaces:**
-- Produces: `CalendarEvent` with account overrides, per-hotel scores, evidence confidence, and source links.
+- Produces: `CalendarEvent` with account overrides, per-hotel scores, certainty, impact basis, evidence confidence, source links, and latest source status.
 - Produces: `acceptEvent`, `editEvent`, `excludeEvent`, `mergeEvent`, and `overrideImportance` Server Actions.
 
 - [ ] **Step 1: Write component tests**
 
-Render one multi-day event and one review event. Assert month cells, event title, textual Importance, score components, source link, review reason, and Accept/Edit/Exclude/Merge controls. Assert a portfolio event shows separate hotel scores.
+Render one multi-day event, one provisional event, and one review event. Assert month cells, event title, textual Importance, impact basis, `Voorlopig` label, score components, source link, review reason, and Accept/Edit/Exclude/Merge controls. Assert a portfolio event shows separate hotel scores.
 
 - [ ] **Step 2: Run tests and confirm failure**
 
@@ -621,7 +630,7 @@ Expected: FAIL because the components do not exist.
 
 - [ ] **Step 3: Implement the account-scoped calendar query and split view**
 
-Use URL parameters `month`, `hotel`, `area`, `category`, `maxDistance`, and `importance`. Default `month` to the current Amsterdam month. Query only `account_events.state = active`, apply account overrides, and join scores for account-owned hotels. Render a CSS Grid month on the left and the filtered event list on the right. Use text plus color for Low, Medium, High, and review state.
+Use URL parameters `month`, `hotel`, `area`, `category`, `maxDistance`, and `importance`. Default `month` to the current Amsterdam month. Query only `account_events.state = active`, apply account overrides, and join scores for account-owned hotels. Render a CSS Grid month on the left and the filtered event list on the right. Use text plus color for Low, Medium, High, provisional, and review state. Show the last collection time and distinguish success with zero results from failed, disabled, unlicensed, or stale sources.
 
 - [ ] **Step 4: Implement account-scoped review actions**
 
@@ -731,15 +740,18 @@ Include these exact gates with evidence fields for date, operator, result, and l
 1. Configure Supabase, Vercel, Ticketmaster, PredictHQ, Anthropic, and Cron secrets.
 2. Create Robert's platform account and operator portfolio.
 3. Add Eindhoven and Rotterdam areas and known hotels.
-4. Run the 12-month comparison and record unique events, duplicates, conflicts, missed known events, source failures, and review count per source.
-5. Confirm one verified Claude event enters the calendar and one conflicting event enters review.
-6. Confirm one event receives different hotel scores based on distance.
-7. Exclude an event and confirm it leaves that account's export.
-8. Import the generated workbook into RevControl without repairing headers or dates.
-9. Repeat collection and confirm provider IDs do not create duplicates.
-10. Obtain written confirmation for PredictHQ storage and customer-facing use and check Ticketmaster attribution terms.
-11. Confirm RLS isolation tests, full tests, lint, typecheck, and production build pass.
-12. Compare the app colors against the live HotelRevPar website CSS and record any token correction.
+4. Confirm the PredictHQ plan or trial extension exposes the full 12-month window.
+5. Run the 12-month comparison and record known-event recall by category, first-discovery lead time, unique events, duplicates, false positives, conflicts, missed known events, source failures, and review count.
+6. Confirm one verified Claude event enters the calendar and one conflicting event enters review.
+7. Confirm one PredictHQ predicted event appears as `Voorlopig` without entering the exception queue.
+8. Confirm one event receives different hotel scores based on distance and shows its impact basis.
+9. Exclude an event and confirm it leaves that account's export.
+10. Import the generated workbook into RevControl without repairing headers or dates.
+11. Repeat collection and confirm provider IDs do not create duplicates.
+12. Obtain written PredictHQ confirmation for storage, combination, subscriber display, XLSX export, attribution, approved application use, and termination handling. Check Ticketmaster attribution terms.
+13. Run a historical KOOP permit sample for Eindhoven and Rotterdam and record useful-event precision and publication lead time before deciding on an adapter.
+14. Confirm RLS isolation tests, full tests, lint, typecheck, and production build pass.
+15. Compare the app colors against the live HotelRevPar website CSS and record any token correction.
 
 - [ ] **Step 5: Run the complete verification suite**
 
@@ -768,5 +780,6 @@ Review after Tasks 2, 6, and 8. Those checkpoints prove account isolation, sourc
 - Ticketmaster Discovery API v2: <https://developer.ticketmaster.com/products-and-docs/apis/discovery-api/v2/>
 - PredictHQ Events API: <https://docs.predicthq.com/api/events/search-events>
 - Rijksoverheid school-holiday open data: <https://www.rijksoverheid.nl/opendata/schoolvakanties>
+- OpenHolidaysAPI: <https://www.openholidaysapi.org/en/>
 - Anthropic Web Search, Web Fetch, and structured outputs: <https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool>
 - ExcelJS workbook and table API: <https://github.com/exceljs/exceljs>

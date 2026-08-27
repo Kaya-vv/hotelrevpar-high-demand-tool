@@ -1,5 +1,4 @@
-# y;
-- provide a server secret for collection and provisHotelRevPar High Demand Tool: Version-One Design
+# HotelRevPar High Demand Tool: Version-One Design
 
 Date: 2026-08-27
 Status: Approved for implementation planning
@@ -16,9 +15,9 @@ The pilot must prove that a combined source strategy finds useful events for Ein
 
 The pilot compares these source groups:
 
-1. Rijksoverheid and other official public sources.
+1. Rijksoverheid school holidays and OpenHolidaysAPI public holidays.
 2. Ticketmaster Discovery API.
-3. PredictHQ trial data.
+3. PredictHQ trial or paid-plan data with a 12-month visibility window.
 4. Claude Web Search and Web Fetch for gaps in structured feeds.
 
 The comparison records unique relevant events, duplicates, conflicts, missed known events, source failures, and review work.
@@ -139,7 +138,7 @@ The pilot uses one Next.js application on Vercel and one Supabase project for Au
 flowchart LR
     A[PredictHQ trial] --> E[Collection service]
     B[Ticketmaster] --> E
-    C[Rijksoverheid] --> E
+    C[Rijksoverheid and OpenHolidaysAPI] --> E
     D[Claude Web Search and Fetch] --> E
     E --> F[Normalize and deduplicate]
     F --> G[Evidence validation]
@@ -208,9 +207,9 @@ The minimum tables are:
 
 ### `events`
 
-- canonical title, category, venue, coordinates, start, end, and state;
+- canonical title, category, venue, coordinates, start, end, state, and certainty;
 - normalized identity used for cross-source duplicate matching;
-- provider rank, attendance, or venue-capacity values when available.
+- no source-owned metric without a matching evidence record.
 
 ### `event_sources`
 
@@ -218,7 +217,8 @@ The minimum tables are:
 - provider and provider event ID;
 - source URL;
 - extracted title, date, location, and evidence text;
-- source check time and source state.
+- source check time, source state, and certainty;
+- provider rank, attendance, or venue-capacity values when available.
 
 ### `account_events`
 
@@ -232,7 +232,7 @@ The minimum tables are:
 - hotel ID and event ID;
 - calculated distance;
 - score components and total;
-- suggested importance;
+- suggested importance and impact basis;
 - operator override and note.
 
 ### `collection_runs`
@@ -245,7 +245,7 @@ The minimum tables are:
 ## 8. Collection and Validation Flow
 
 1. Determine the distinct enabled collection areas for the run.
-2. Request events for the next 12 months from each enabled structured source.
+2. Request events for the next 12 months from each enabled structured source. PredictHQ requests confirmed and predicted events.
 3. Ask Claude to search for categories that structured feeds tend to miss, including university open days, local congresses, trade fairs, festivals, and regional events.
 4. Normalize each candidate to the shared event fields.
 5. Match provider IDs first. Then compare normalized title, date, venue, and coordinates for cross-source duplicates.
@@ -265,6 +265,8 @@ A structured-source event becomes active when it has:
 - a start date;
 - a location or regional scope;
 - no unresolved duplicate or date conflict.
+
+Confirmed and provisional certainty stay separate from account workflow state. A provisional event with usable dates and location may be active, visible, and exportable with a `Voorlopig` label. Certainty by itself does not create an exception.
 
 ### 8.2 Claude validation gate
 
@@ -298,6 +300,8 @@ Use the first available input in this order:
 2. Published attendance.
 3. Known venue capacity.
 4. A conservative default of 20 when no size measure exists.
+
+Store the selected basis as `local_rank`, `attendance`, `venue_capacity`, `holiday_rule`, or `default`. Source-owned metrics retain their provider provenance so removing a provider permits score recalculation from remaining evidence.
 
 Attendance and capacity map to points as follows:
 
@@ -362,6 +366,7 @@ The app groups selected hotels by event and final Importance. Hotels with the sa
 - Each source records success or failure without blocking the other sources.
 - Existing active events remain visible during a source outage.
 - A failed source displays its last successful check and current error to the operator.
+- The calendar distinguishes a successful zero-result source from a failed, disabled, unlicensed, or stale source.
 - Duplicate uncertainty creates review work rather than an automatic merge.
 - Collection retries update source records through provider IDs and normalized identity keys.
 - A workbook-generation failure changes no event or score state.
@@ -401,7 +406,7 @@ The app groups selected hotels by event and final Importance. Hotels with the sa
 
 1. Create Robert's account, hotel portfolio, Eindhoven area, and Rotterdam area.
 2. Run the 12-month source comparison.
-3. Compare results against Robert's known event list.
+3. Compare results against Robert's known event list by category. Record recall, first-discovery lead time, false positives, and review work.
 4. Confirm that a verified Claude event enters the calendar.
 5. Confirm that a conflicting Claude event enters `Te beoordelen` with a reason.
 6. Confirm that one event receives different scores for hotels at different distances.
@@ -415,7 +420,8 @@ The pilot cannot open to paying subscribers until:
 
 - RevControl accepts the generated workbook;
 - account-isolation tests pass;
-- PredictHQ grants storage and customer-facing usage rights for the chosen plan;
+- PredictHQ grants written rights for storage, combination, subscriber display, XLSX export, attribution, the approved application, and termination handling for the chosen plan;
+- the PredictHQ plan or trial extension exposes the full 12-month pilot window;
 - Ticketmaster usage meets its terms and attribution requirements;
 - Robert reviews the Eindhoven and Rotterdam coverage comparison;
 - source failures and collection costs appear in run logs.
@@ -430,6 +436,8 @@ The design removes these systems from version one:
 - RevControl API access. Workbook import proves value before an integration request.
 - Subscriber event submissions. Claude and source comparisons test coverage first.
 - Hotel-client accounts. Operators manage the portfolio and send no clients into the app.
+- A venue crawler, OpenStreetMap discovery, and maintained venue registry. Add one after a measured pilot category gap justifies its operating cost.
+- A KOOP permit adapter. Run a historical Eindhoven and Rotterdam lead-time and precision check before promoting it into collection.
 
 Each deferred system has a named trigger. No speculative infrastructure enters the pilot.
 
@@ -443,6 +451,7 @@ Each deferred system has a named trigger. No speculative infrastructure enters t
 - PredictHQ terms: <https://www.predicthq.com/legal/terms>
 - Ticketmaster Discovery API: <https://developer.ticketmaster.com/products-and-docs/apis/discovery-api/v2/>
 - Rijksoverheid school-holiday open data: <https://www.rijksoverheid.nl/opendata/schoolvakanties>
+- OpenHolidaysAPI: <https://www.openholidaysapi.org/en/>
 - Anthropic Web Search: <https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool>
 - Anthropic Web Fetch: <https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-fetch-tool>
 - Vercel Cron Jobs: <https://vercel.com/docs/cron-jobs>
