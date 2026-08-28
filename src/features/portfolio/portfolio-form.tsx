@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 
+import { AddressCombobox } from "./address-combobox";
 import { saveHotel, type FormState } from "./actions";
 import type { Hotel } from "./queries";
 
@@ -26,7 +27,11 @@ function HotelEditor({ hotel }: { hotel?: Hotel }) {
       {hotel && <input name="id" type="hidden" value={hotel.id} />}
       <label>Naam<input name="name" defaultValue={hotel?.name} required /><FieldError state={state} name="name" /></label>
       <label>RevControl-code<input name="revcontrolCode" defaultValue={hotel?.revcontrol_code} required /><FieldError state={state} name="revcontrolCode" /></label>
-      <label className="wide">Volledig adres<input name="address" defaultValue={hotel?.address ?? ""} placeholder="Straat 1, 1234 AB Plaats" required /><small>Adrescontrole via PDOK/Kadaster.</small><FieldError state={state} name="address" /></label>
+      <AddressCombobox
+        defaultAddress={hotel?.address ?? ""}
+        defaultAddressId={hotel?.pdok_address_id ?? ""}
+        error={state.errors?.addressId?.[0] ?? state.errors?.address?.[0]}
+      />
       <label>Vraagstraal (km)<input name="demandRadiusKm" type="number" min="1" max="250" defaultValue={hotel?.demand_radius_km ?? 25} required /><FieldError state={state} name="demandRadiusKm" /></label>
       <label>Vakantieregio<select name="holidayRegion" defaultValue={hotel?.holiday_region ?? ""}><option value="">Geen</option><option value="north">Noord</option><option value="middle">Midden</option><option value="south">Zuid</option></select><FieldError state={state} name="holidayRegion" /></label>
       <details className="wide source-settings">

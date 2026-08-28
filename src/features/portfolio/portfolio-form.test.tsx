@@ -12,6 +12,7 @@ describe("PortfolioForm", () => {
           name: "MATCH",
           revcontrol_code: "MATCH",
           address: "Vestdijk 47, 5611CA Eindhoven",
+          pdok_address_id: "address-1",
           latitude: 51.44,
           longitude: 5.48,
           demand_radius_km: 25,

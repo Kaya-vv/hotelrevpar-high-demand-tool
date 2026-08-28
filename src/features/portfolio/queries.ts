@@ -5,6 +5,7 @@ export type Hotel = {
   name: string;
   revcontrol_code: string;
   address: string | null;
+  pdok_address_id: string | null;
   latitude: number;
   longitude: number;
   demand_radius_km: number;

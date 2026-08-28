@@ -284,6 +284,37 @@ a {
   color: #a5321b;
 }
 
+.address-combobox {
+  position: relative;
+  display: grid;
+  gap: 6px;
+}
+
+.address-suggestions {
+  position: absolute;
+  z-index: 10;
+  top: 68px;
+  right: 0;
+  left: 0;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--white);
+  box-shadow: 0 8px 24px rgb(33 48 45 / 12%);
+}
+
+.address-suggestions li {
+  padding: 9px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.address-suggestions li[aria-selected="true"] {
+  background: var(--soft);
+}
+
 .checkbox-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

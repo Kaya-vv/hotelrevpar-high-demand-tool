@@ -474,6 +474,7 @@ export type Database = {
           latitude: number
           longitude: number
           name: string
+          pdok_address_id: string | null
           revcontrol_code: string
           search_location: string
         }
@@ -488,6 +489,7 @@ export type Database = {
           latitude: number
           longitude: number
           name: string
+          pdok_address_id?: string | null
           revcontrol_code: string
           search_location?: string
         }
@@ -502,6 +504,7 @@ export type Database = {
           latitude?: number
           longitude?: number
           name?: string
+          pdok_address_id?: string | null
           revcontrol_code?: string
           search_location?: string
         }

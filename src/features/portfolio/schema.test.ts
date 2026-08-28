@@ -8,6 +8,7 @@ describe("portfolio input", () => {
         name: "MATCH",
         revcontrolCode: "MATCH",
         address: "Vestdijk 47, 5611CA Eindhoven",
+        addressId: "address-1",
         demandRadiusKm: 25,
         holidayRegion: "south",
         enabledSources: ["ticketmaster", "claude"],
@@ -29,5 +30,20 @@ describe("portfolio input", () => {
         enabledSources: [],
       }),
     ).toThrow();
+  });
+
+  it("rejects typed address text without a selected suggestion", () => {
+    const parsed = hotelInput.safeParse({
+      name: "MATCH",
+      revcontrolCode: "MATCH",
+      address: "Kleine Berg 43, 5611 JT Eindhoven",
+      addressId: "",
+      demandRadiusKm: 25,
+      holidayRegion: "south",
+      enabledSources: ["claude"],
+    });
+
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) expect(parsed.error.flatten().fieldErrors.addressId).toEqual(["Kies een adres uit de suggesties."]);
   });
 });

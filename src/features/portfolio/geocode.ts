@@ -67,9 +67,3 @@ export async function getAddressById(id: string, fetcher: typeof fetch = fetch) 
     throw new Error("Adrescontrole is niet beschikbaar. Probeer het later opnieuw.");
   }
 }
-
-export async function geocodeAddress(address: string, fetcher: typeof fetch = fetch) {
-  const [suggestion] = await searchAddresses(address, fetcher);
-  if (!suggestion) throw new Error("Adres niet gevonden. Controleer straat, huisnummer en plaats.");
-  return getAddressById(suggestion.id, fetcher);
-}

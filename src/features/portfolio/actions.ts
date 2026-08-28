@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireAccount } from "@/lib/auth/require-account";
 import { createServerClient } from "@/lib/supabase/server";
 
-import { geocodeAddress } from "./geocode";
+import { getAddressById } from "./geocode";
 import { hotelInput } from "./schema";
 
 export type FormState = {
@@ -26,9 +26,9 @@ export async function saveHotel(_state: FormState, formData: FormData): Promise<
   if (!parsed.success) return errors(parsed);
 
   const { accountId } = await requireAccount();
-  let location: Awaited<ReturnType<typeof geocodeAddress>>;
+  let location: Awaited<ReturnType<typeof getAddressById>>;
   try {
-    location = await geocodeAddress(parsed.data.address);
+    location = await getAddressById(parsed.data.addressId);
   } catch (error) {
     return {
       errors: { address: [error instanceof Error ? error.message : "Adres kon niet worden gecontroleerd."] },
@@ -43,6 +43,7 @@ export async function saveHotel(_state: FormState, formData: FormData): Promise<
     name: hotel.name,
     revcontrol_code: hotel.revcontrolCode,
     address: location.address,
+    pdok_address_id: hotel.addressId,
     latitude: location.latitude,
     longitude: location.longitude,
     search_location: location.locality,

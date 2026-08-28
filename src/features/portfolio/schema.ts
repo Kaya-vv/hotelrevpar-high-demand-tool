@@ -13,6 +13,7 @@ export const hotelInput = z.object({
   name: z.string().trim().min(1, "Vul een hotelnaam in."),
   revcontrolCode: z.string().trim().min(1, "Vul de RevControl-code in."),
   address: z.string().trim().min(5, "Vul straat, huisnummer en plaats in.").regex(/\d/, "Vul ook een huisnummer in."),
+  addressId: z.string().trim().min(1, "Kies een adres uit de suggesties."),
   demandRadiusKm: z.coerce.number().positive().max(250),
   holidayRegion: z.preprocess(
     (value) => value || null,
