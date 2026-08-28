@@ -75,7 +75,7 @@ async function requestPhase<T>(phase: "search" | "verification", request: () => 
 }
 
 export async function collectClaude(
-  input: CollectionWindow & { location: string; model?: string; client?: Anthropic },
+  input: CollectionWindow & { location: string; radiusKm: number; model?: string; client?: Anthropic },
 ): Promise<SourceResult> {
   const model = input.model ?? process.env.ANTHROPIC_MODEL;
   if (!model) throw new Error("ANTHROPIC_MODEL is required for the Claude source.");
@@ -93,7 +93,7 @@ export async function collectClaude(
     }],
     messages: [{
       role: "user",
-      content: `Vind geplande evenementen in of rond ${input.location} tussen ${input.start} en ${input.end} die hotelvraag kunnen verhogen. Geef voorrang aan organisatoren, locaties, clubs, universiteiten en gemeenten.`,
+      content: `Vind geplande evenementen binnen ${input.radiusKm} km van ${input.location} tussen ${input.start} en ${input.end} die hotelvraag kunnen verhogen. Geef voorrang aan organisatoren, locaties, clubs, universiteiten en gemeenten. Sla feestdagen en schoolvakanties over; die komen uit officiële bronnen.`,
     }],
   }, searchRequestOptions));
   const urls = sourceUrls(search).slice(0, 8);

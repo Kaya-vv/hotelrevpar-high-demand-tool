@@ -1,4 +1,5 @@
 import type { EventCandidate, SourceName } from "@/features/events/types";
+import { distanceKm } from "@/features/events/distance";
 
 import { collectClaude } from "./sources/claude";
 import { collectOpenHolidays } from "./sources/openholidays";
@@ -69,6 +70,9 @@ function defaultCollectors(): Partial<Record<SourceName, Collector>> {
       collectTicketmaster({
         ...context.window,
         city: context.area.searchLocation,
+        latitude: context.area.latitude,
+        longitude: context.area.longitude,
+        radiusKm: context.area.radiusKm,
         apiKey: configured(process.env.TICKETMASTER_API_KEY, "Ticketmaster"),
       }),
     predicthq: (context) =>
@@ -81,9 +85,16 @@ function defaultCollectors(): Partial<Record<SourceName, Collector>> {
       }),
     claude: (context) => {
       configured(process.env.ANTHROPIC_API_KEY, "Anthropic");
-      return collectClaude({ ...context.window, location: context.area.searchLocation });
+      return collectClaude({ ...context.window, location: context.area.searchLocation, radiusKm: context.area.radiusKm });
     },
   };
+}
+
+function relevantToHotel(candidate: EventCandidate, hotel: HotelContext) {
+  if (candidate.category === "school_holiday") return candidate.regionScope === hotel.holidayRegion;
+  if (candidate.category === "public_holiday") return true;
+  if (candidate.latitude === null || candidate.longitude === null) return false;
+  return distanceKm(hotel.latitude, hotel.longitude, candidate.latitude, candidate.longitude) <= hotel.demandRadiusKm;
 }
 
 function errorState(reason: unknown) {
@@ -130,7 +141,8 @@ export async function runCollection(
         continue;
       }
 
-      const unique = new Map(result.value.candidates.map((event) => [`${event.provider}:${event.providerEventId}`, event]));
+      const relevant = result.value.candidates.filter((event) => context.hotels.some((hotel) => relevantToHotel(event, hotel)));
+      const unique = new Map(relevant.map((event) => [`${event.provider}:${event.providerEventId}`, event]));
       let reviewCount = 0;
       let duplicateCount = result.value.candidates.length - unique.size;
       for (const event of unique.values()) {

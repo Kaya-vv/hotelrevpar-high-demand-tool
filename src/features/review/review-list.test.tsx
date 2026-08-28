@@ -27,4 +27,24 @@ describe("ReviewList", () => {
     expect(screen.getByRole("button", { name: "Uitsluiten" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Samenvoegen" })).toBeInTheDocument();
   });
+
+  it("explains missing evidence in terms a manager can act on", () => {
+    const action = vi.fn();
+    render(
+      <ReviewList
+        events={[{
+          id: "event-2",
+          title: "Unconfirmed event",
+          venue: null,
+          startAt: "2027-10-16T10:00:00Z",
+          endAt: "2027-10-16T22:00:00Z",
+          reviewReason: "missing_primary_evidence",
+          sources: [],
+        }]}
+        actions={{ accept: action, edit: action, exclude: action, merge: action }}
+      />,
+    );
+
+    expect(screen.getByText("Organisator, datum of locatie kon niet worden bevestigd")).toBeInTheDocument();
+  });
 });

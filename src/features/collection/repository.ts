@@ -41,13 +41,13 @@ export function createCollectionRepository(): CollectionRepository {
     },
 
     async loadContext(accountId, areaId) {
-      const [areaResult, hotelsResult] = await Promise.all([
-        supabase.from("collection_areas").select("*").eq("id", areaId).eq("account_id", accountId).single(),
-        supabase.from("hotels").select("*").eq("account_id", accountId),
-      ]);
+      const areaResult = await supabase.from("collection_areas").select("*").eq("id", areaId).eq("account_id", accountId).single();
       if (areaResult.error) throw areaResult.error;
-      if (hotelsResult.error) throw hotelsResult.error;
       const area = areaResult.data;
+      if (!area.hotel_id) throw new Error("Verzamelgebied is niet aan een hotel gekoppeld.");
+      const hotelResult = await supabase.from("hotels").select("*").eq("id", area.hotel_id).eq("account_id", accountId).single();
+      if (hotelResult.error) throw hotelResult.error;
+      const hotel = hotelResult.data;
       return {
         area: {
           id: area.id,
@@ -59,13 +59,13 @@ export function createCollectionRepository(): CollectionRepository {
           radiusKm: area.radius_km,
           enabledSources: area.enabled_sources,
         },
-        hotels: hotelsResult.data.map((hotel) => ({
+        hotels: [{
           id: hotel.id,
           latitude: hotel.latitude,
           longitude: hotel.longitude,
           demandRadiusKm: hotel.demand_radius_km,
           holidayRegion: hotel.holiday_region,
-        })),
+        }],
         window: window(),
       } as CollectionContext;
     },

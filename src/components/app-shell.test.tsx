@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { AppShell } from "./app-shell";
 
 describe("AppShell", () => {
-  it("renders the approved Dutch navigation and refresh action", () => {
+  it("renders the approved Dutch navigation without an account-wide refresh action", () => {
     render(
       <AppShell accountName="Robert">
         <p>Inhoud</p>
@@ -12,7 +12,7 @@ describe("AppShell", () => {
 
     expect(screen.getByRole("navigation")).toHaveTextContent("Vraagkalender");
     expect(screen.getByRole("navigation")).toHaveTextContent("Te beoordelen");
-    expect(screen.getByRole("button", { name: "Nu verversen" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Nu verversen" })).not.toBeInTheDocument();
     expect(screen.getByText("Robert")).toBeVisible();
   });
 

@@ -1,10 +1,9 @@
 import type { ReactNode } from "react";
 
 import { AppShell } from "@/components/app-shell";
-import { refreshAllAreas } from "@/features/collection/actions";
 import { requireAccount } from "@/lib/auth/require-account";
 
 export default async function ProtectedLayout({ children }: { children: ReactNode }) {
   const account = await requireAccount();
-  return <AppShell accountName={account.accountName} refreshAction={refreshAllAreas} isPlatformAdmin={account.role === "platform_admin"}>{children}</AppShell>;
+  return <AppShell accountName={account.accountName} isPlatformAdmin={account.role === "platform_admin"}>{children}</AppShell>;
 }

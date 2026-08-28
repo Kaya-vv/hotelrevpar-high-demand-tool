@@ -2,8 +2,6 @@ import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { RefreshButton } from "./refresh-button";
-
 const links: Array<[string, string]> = [
   ["/calendar", "Vraagkalender"],
   ["/review", "Te beoordelen"],
@@ -15,11 +13,10 @@ const links: Array<[string, string]> = [
 type AppShellProps = {
   accountName: string;
   children: ReactNode;
-  refreshAction?: () => void | Promise<void>;
   isPlatformAdmin?: boolean;
 };
 
-export function AppShell({ accountName, children, refreshAction, isPlatformAdmin = false }: AppShellProps) {
+export function AppShell({ accountName, children, isPlatformAdmin = false }: AppShellProps) {
   const navigation = isPlatformAdmin
     ? [...links, ["/admin/accounts", "Abonnees"] as [string, string], ["/admin/source-health", "Bronstatus"] as [string, string]]
     : links;
@@ -44,9 +41,6 @@ export function AppShell({ accountName, children, refreshAction, isPlatformAdmin
             <span className="eyebrow">Actief account</span>
             <strong>{accountName}</strong>
           </div>
-          <form action={refreshAction}>
-            <RefreshButton />
-          </form>
         </header>
         <div className="workspace-content">{children}</div>
       </main>

@@ -31,7 +31,7 @@ export default async function SourceHealthPage() {
   await requirePlatformAdmin();
   const runs = await getSourceHealthRuns();
   return (
-    <main className="plain-page">
+    <main className="admin-page">
       <header className="page-title"><span className="eyebrow">Platformbeheer</span><h1>Bronstatus</h1><p>De laatste 100 verzamelruns met aantallen, fouten en API-verbruik.</p></header>
       <SourceHealthTable runs={runs} />
     </main>

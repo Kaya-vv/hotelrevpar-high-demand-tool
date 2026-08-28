@@ -240,6 +240,28 @@ a {
   margin-bottom: 24px;
 }
 
+.page-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.refresh-hotel {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+}
+
+.refresh-hotel .notice {
+  max-width: 420px;
+}
+
+.admin-page {
+  display: grid;
+  gap: 24px;
+}
+
 .page-title p {
   max-width: 720px;
   margin-bottom: 0;
@@ -378,6 +400,18 @@ a {
   font-size: 0.82rem;
 }
 
+.hotel-filter {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.hotel-filter label {
+  display: grid;
+  gap: 5px;
+}
+
 .calendar-layout {
   display: grid;
   grid-template-columns: minmax(520px, 1.35fr) minmax(360px, 0.65fr);
@@ -457,8 +491,7 @@ a {
 
 .event-card > header,
 .review-card > header,
-.hotel-scores section > div:first-child,
-.source-health li {
+.hotel-scores section > div:first-child {
   display: flex;
   justify-content: space-between;
   gap: 12px;
@@ -549,27 +582,6 @@ a {
   display: block;
   margin-top: 4px;
   color: var(--muted);
-}
-
-.source-health ul {
-  margin: 12px 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.source-health li {
-  padding: 5px 0;
-}
-
-.source-failed,
-.source-unlicensed,
-.source-stale {
-  color: #a5321b;
-}
-
-.source-success,
-.source-zero {
-  color: #155f44;
 }
 
 .empty-state {
@@ -692,6 +704,16 @@ td {
   .calendar-layout,
   .filter-bar {
     grid-template-columns: 1fr;
+  }
+
+  .page-title-row,
+  .hotel-filter {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .refresh-hotel {
+    justify-items: stretch;
   }
 
   .wide {

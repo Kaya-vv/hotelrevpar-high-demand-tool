@@ -32,9 +32,14 @@ describe("source adapters", () => {
   it("maps Ticketmaster status and stops at the last page", async () => {
     const secondPage = { _embedded: { events: [] }, page: { number: 1, totalPages: 2, totalElements: 2 } };
     const fetcher = vi.fn().mockResolvedValueOnce(jsonResponse(ticketmasterFixture)).mockResolvedValueOnce(jsonResponse(secondPage));
-    const result = await collectTicketmaster({ ...window, city: "Eindhoven", apiKey: "test", fetcher });
+    const result = await collectTicketmaster({ ...window, city: "Eindhoven", latitude: 51.44, longitude: 5.48, radiusKm: 25, apiKey: "test", fetcher });
     expect(result.requests).toBe(2);
     expect(result.candidates.map((event) => event.sourceState)).toEqual(["active", "cancelled"]);
+    const url = new URL(String(fetcher.mock.calls[0][0]));
+    expect(url.searchParams.get("latlong")).toBe("51.44,5.48");
+    expect(url.searchParams.get("radius")).toBe("25");
+    expect(url.searchParams.get("unit")).toBe("km");
+    expect(url.searchParams.has("city")).toBe(false);
   });
 
   it("keeps PredictHQ predicted events provisional", async () => {
@@ -86,7 +91,7 @@ describe("source adapters", () => {
       });
 
     const client = { messages: { create } } as unknown as Anthropic;
-    const result = await collectClaude({ ...window, location: "Eindhoven", model: "claude-test", client });
+    const result = await collectClaude({ ...window, location: "Eindhoven", radiusKm: 25, model: "claude-test", client });
     const searchRequest = create.mock.calls[0][0];
     const firstVerificationRequest = create.mock.calls[1][0];
     const secondVerificationRequest = create.mock.calls[2][0];
@@ -95,6 +100,8 @@ describe("source adapters", () => {
       max_uses: 2,
       response_inclusion: "full",
     });
+    expect(searchRequest.messages[0].content).toContain("25 km");
+    expect(searchRequest.messages[0].content).toContain("feestdagen en schoolvakanties");
     expect(create.mock.calls[0][1]).toEqual({ timeout: 120_000, maxRetries: 0 });
     expect(create.mock.calls[1][1]).toEqual({ timeout: 180_000, maxRetries: 0 });
     expect(create.mock.calls[2][1]).toEqual({ timeout: 180_000, maxRetries: 0 });
@@ -118,7 +125,7 @@ describe("source adapters", () => {
     const create = vi.fn().mockRejectedValue(new APIConnectionTimeoutError());
     const client = { messages: { create } } as unknown as Anthropic;
 
-    await expect(collectClaude({ ...window, location: "Eindhoven", model: "claude-test", client }))
+    await expect(collectClaude({ ...window, location: "Eindhoven", radiusKm: 25, model: "claude-test", client }))
       .rejects.toThrow("Claude search timed out.");
   });
 
@@ -132,7 +139,7 @@ describe("source adapters", () => {
       .mockRejectedValueOnce(new APIConnectionTimeoutError());
     const client = { messages: { create } } as unknown as Anthropic;
 
-    await expect(collectClaude({ ...window, location: "Eindhoven", model: "claude-test", client }))
+    await expect(collectClaude({ ...window, location: "Eindhoven", radiusKm: 25, model: "claude-test", client }))
       .rejects.toThrow("Claude verification timed out.");
   });
 
@@ -150,7 +157,7 @@ describe("source adapters", () => {
       });
     const client = { messages: { create } } as unknown as Anthropic;
 
-    await expect(collectClaude({ ...window, location: "Eindhoven", model: "claude-test", client }))
+    await expect(collectClaude({ ...window, location: "Eindhoven", radiusKm: 25, model: "claude-test", client }))
       .rejects.toThrow("Claude verification reached its token limit.");
   });
 });

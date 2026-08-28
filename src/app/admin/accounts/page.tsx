@@ -12,7 +12,7 @@ export default async function AccountsPage() {
   if (error) throw error;
 
   return (
-    <main className="plain-page">
+    <main className="admin-page">
       <header className="page-title">
         <span className="eyebrow">Platformbeheer</span>
         <h1>Abonnees</h1>

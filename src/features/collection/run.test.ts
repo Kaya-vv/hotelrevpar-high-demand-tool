@@ -31,7 +31,7 @@ function repository(overrides: Partial<CollectionRepository> = {}): CollectionRe
     startRun: vi.fn().mockResolvedValue("run-1"),
     loadContext: vi.fn().mockResolvedValue({
       area: { id: "area-1", accountId: "account-1", name: "MATCH", searchLocation: "Eindhoven", latitude: 51.44, longitude: 5.48, radiusKm: 30, enabledSources: ["ticketmaster", "claude"] },
-      hotels: [],
+      hotels: [{ id: "hotel-1", latitude: 51.44, longitude: 5.48, demandRadiusKm: 25, holidayRegion: "south" }],
     }),
     persistCandidate: vi.fn().mockResolvedValue({ state: "active", duplicate: false }),
     finishRun: vi.fn().mockResolvedValue(undefined),
@@ -69,7 +69,7 @@ describe("runCollection", () => {
     const repo = repository({
       loadContext: vi.fn().mockResolvedValue({
         area: { id: "area-1", accountId: "account-1", name: "MATCH", searchLocation: "Eindhoven", latitude: 51.44, longitude: 5.48, radiusKm: 30, enabledSources: ["ticketmaster"] },
-        hotels: [],
+        hotels: [{ id: "hotel-1", latitude: 51.44, longitude: 5.48, demandRadiusKm: 25, holidayRegion: "south" }],
       }),
     });
     await runCollection(
@@ -78,6 +78,46 @@ describe("runCollection", () => {
     );
     expect(repo.persistCandidate).toHaveBeenCalledTimes(1);
     expect(repo.persistCandidate).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ title: "Updated title" }));
+  });
+
+  it("keeps only the hotel's school-holiday region and events inside its radius", async () => {
+    const matchingHoliday = {
+      ...candidate,
+      providerEventId: "holiday-south",
+      category: "school_holiday",
+      latitude: null,
+      longitude: null,
+      regionScope: "south",
+    };
+    const repo = repository({
+      loadContext: vi.fn().mockResolvedValue({
+        area: { id: "area-1", accountId: "account-1", name: "MATCH", searchLocation: "Eindhoven", latitude: 51.44, longitude: 5.48, radiusKm: 25, enabledSources: ["ticketmaster"] },
+        hotels: [{ id: "hotel-1", latitude: 51.44, longitude: 5.48, demandRadiusKm: 25, holidayRegion: "south" }],
+      }),
+    });
+
+    await runCollection(
+      { accountId: "account-1", areaId: "area-1", trigger: "manual" },
+      {
+        repository: repo,
+        collectors: {
+          ticketmaster: vi.fn().mockResolvedValue({
+            source: "ticketmaster",
+            candidates: [
+              matchingHoliday,
+              { ...matchingHoliday, providerEventId: "holiday-north", regionScope: "north" },
+              { ...candidate, providerEventId: "unknown-distance", latitude: null, longitude: null },
+              { ...candidate, providerEventId: "far-away", latitude: 52.1, longitude: 5.48 },
+            ],
+            requests: 1,
+            usage: {},
+          }),
+        },
+      },
+    );
+
+    expect(repo.persistCandidate).toHaveBeenCalledTimes(1);
+    expect(repo.persistCandidate).toHaveBeenCalledWith(expect.anything(), matchingHoliday);
   });
 
   it("reviews a changed date without changing the canonical event", () => {

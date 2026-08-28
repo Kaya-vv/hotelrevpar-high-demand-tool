@@ -53,7 +53,7 @@ describe("event domain", () => {
       { start: "2027-01-01", end: "2027-12-31" },
       null,
     );
-    expect(result).toMatchObject({ state: "needs_review", reason: "missing_primary_evidence" });
+    expect(result).toMatchObject({ state: "excluded", reason: "missing_primary_evidence" });
   });
 
   it("keeps a complete predicted structured event active", () => {

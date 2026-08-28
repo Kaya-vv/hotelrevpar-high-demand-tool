@@ -11,7 +11,7 @@ export function validateCandidate(candidate: EventCandidate, window: Window, con
     certainty,
   });
 
-  if (!candidate.sourceUrl) return result("needs_review", "missing_source");
+  if (!candidate.sourceUrl) return result("excluded", "missing_source");
   if (
     !candidate.providerEventId ||
     !candidate.title ||
@@ -20,7 +20,7 @@ export function validateCandidate(candidate: EventCandidate, window: Window, con
     !candidate.endAt ||
     (!candidate.venue && !candidate.regionScope && (candidate.latitude === null || candidate.longitude === null))
   ) {
-    return result("needs_review", "missing_fields");
+    return result("excluded", "missing_fields");
   }
   if (candidate.sourceState === "cancelled") return result("needs_review", "cancelled");
   if (candidate.sourceState === "postponed") return result("needs_review", "postponed");
@@ -29,7 +29,7 @@ export function validateCandidate(candidate: EventCandidate, window: Window, con
   }
   if (conflict) return result("needs_review", conflict);
   if (candidate.provider === "claude" && !candidate.primarySourceConfirmed) {
-    return result("needs_review", "missing_primary_evidence");
+    return result("excluded", "missing_primary_evidence");
   }
   return result("active", null);
 }

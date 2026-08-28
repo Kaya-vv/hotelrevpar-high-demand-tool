@@ -40,17 +40,17 @@ describe("CalendarView", () => {
     expect(screen.getByText(/60 impact.*12 afstand.*6 verblijf/i)).toBeInTheDocument();
   });
 
-  it("explains that an active collection refreshes itself", () => {
+  it("shows a hotel-friendly update status and refreshes an active collection", () => {
     vi.useFakeTimers();
     render(
       <CalendarView
         month="2027-10"
         events={events}
-        latestRun={{ startedAt: "2027-10-01T10:00:00Z", finishedAt: null, sources: {} }}
+        latestRun={{ startedAt: "2027-10-01T10:00:00Z", finishedAt: null }}
       />,
     );
 
-    expect(screen.getByText(/deze pagina vernieuwt vanzelf/i)).toBeInTheDocument();
+    expect(screen.getByText(/gegevens worden bijgewerkt/i)).toBeInTheDocument();
     act(() => vi.advanceTimersByTime(3_000));
     expect(refresh).toHaveBeenCalledOnce();
   });

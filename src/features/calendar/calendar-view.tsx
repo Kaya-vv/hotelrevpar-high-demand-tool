@@ -37,7 +37,7 @@ export type CalendarEvent = {
 export type LatestRun = {
   startedAt: string;
   finishedAt: string | null;
-  sources: Record<string, { state?: string; error?: string }>;
+  hadErrors?: boolean;
 };
 
 function calendarDays(month: string) {
@@ -95,13 +95,13 @@ export function CalendarView({
       <aside className="event-list">
         {latestRun && (
           <div className="source-health">
-            <strong>Laatste verzameling</strong>
+            <strong>{latestRun.finishedAt ? "Laatst bijgewerkt" : "Gegevens worden bijgewerkt"}</strong>
             <span>
               {latestRun.finishedAt
                 ? new Date(latestRun.finishedAt).toLocaleString("nl-NL")
-                : `Bezig sinds ${new Date(latestRun.startedAt).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}. Deze pagina vernieuwt vanzelf.`}
+                : `Gestart om ${new Date(latestRun.startedAt).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}. De kalender vernieuwt vanzelf.`}
             </span>
-            <ul>{Object.entries(latestRun.sources).map(([source, result]) => <li key={source}><span>{source}</span><span className={`source-${result.state ?? "unknown"}`}>{result.state ?? "onbekend"}</span></li>)}</ul>
+            {latestRun.hadErrors && <small>Een bron kon tijdens deze update niet worden bereikt.</small>}
           </div>
         )}
         {events.length === 0 && <p className="empty-state">Geen gebeurtenissen voor deze filters.</p>}

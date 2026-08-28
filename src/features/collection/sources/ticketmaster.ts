@@ -39,7 +39,7 @@ function state(code: string) {
 }
 
 export async function collectTicketmaster(
-  input: CollectionWindow & { city: string; apiKey: string; fetcher?: Fetcher },
+  input: CollectionWindow & { city: string; latitude: number; longitude: number; radiusKm: number; apiKey: string; fetcher?: Fetcher },
 ): Promise<SourceResult> {
   const candidates: SourceResult["candidates"] = [];
   let requests = 0;
@@ -48,7 +48,9 @@ export async function collectTicketmaster(
     const url = new URL("https://app.ticketmaster.com/discovery/v2/events.json");
     url.search = new URLSearchParams({
       apikey: input.apiKey,
-      city: input.city,
+      latlong: `${input.latitude},${input.longitude}`,
+      radius: String(input.radiusKm),
+      unit: "km",
       countryCode: "NL",
       startDateTime: `${input.start}T00:00:00Z`,
       endDateTime: `${input.end}T23:59:59Z`,

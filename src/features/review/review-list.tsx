@@ -14,15 +14,15 @@ type Action = (formData: FormData) => void | Promise<void>;
 export type ReviewActions = { accept: Action; edit: Action; exclude: Action; merge: Action };
 
 const reasons: Record<string, string> = {
-  missing_source: "Bron ontbreekt",
-  missing_fields: "Gegevens ontbreken",
+  missing_source: "Controleerbare eventpagina ontbreekt",
+  missing_fields: "Titel, datum of locatie ontbreekt",
   duplicate_uncertain: "Mogelijk duplicaat",
   date_conflict: "Datumconflict",
   changed_date: "Datum gewijzigd",
   changed_venue: "Locatie gewijzigd",
   cancelled: "Geannuleerd",
   postponed: "Uitgesteld",
-  missing_primary_evidence: "Primaire bron niet bevestigd",
+  missing_primary_evidence: "Organisator, datum of locatie kon niet worden bevestigd",
 };
 
 export function ReviewList({ events, actions }: { events: ReviewEvent[]; actions: ReviewActions }) {
