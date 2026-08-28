@@ -99,7 +99,13 @@ function relevantToHotel(candidate: EventCandidate, hotel: HotelContext) {
 
 function errorState(reason: unknown) {
   if (reason instanceof SourceUnavailableError) return { state: reason.state, error: reason.message };
-  return { state: "failed", error: reason instanceof Error ? reason.message : String(reason) };
+  return { state: "failed", error: errorMessage(reason) };
+}
+
+function errorMessage(reason: unknown) {
+  if (reason instanceof Error) return reason.message;
+  if (reason && typeof reason === "object" && "message" in reason && typeof reason.message === "string") return reason.message;
+  return String(reason);
 }
 
 export async function runCollection(
@@ -144,7 +150,7 @@ export async function runCollection(
       const relevant = result.value.candidates.filter((event) => context.hotels.some((hotel) => relevantToHotel(event, hotel)));
       const unique = new Map(relevant.map((event) => [`${event.provider}:${event.providerEventId}`, event]));
       let reviewCount = 0;
-      let duplicateCount = result.value.candidates.length - unique.size;
+      let duplicateCount = relevant.length - unique.size;
       for (const event of unique.values()) {
         const persisted = await repository.persistCandidate(context, event);
         if (persisted.state === "needs_review") reviewCount += 1;
@@ -172,7 +178,7 @@ export async function runCollection(
       runId,
       sourceResults,
       usage,
-      fatalError instanceof Error ? fatalError.message : fatalError ? String(fatalError) : undefined,
+      fatalError ? errorMessage(fatalError) : undefined,
     );
   }
 

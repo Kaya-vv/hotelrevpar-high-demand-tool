@@ -47,14 +47,14 @@ export async function getSourceHealthRuns(): Promise<SourceHealthRun[]> {
   const [runsResult, accountsResult, areasResult] = await Promise.all([
     admin.from("collection_runs").select("*").order("started_at", { ascending: false }).limit(100),
     admin.from("accounts").select("id, name"),
-    admin.from("collection_areas").select("id, name"),
+    admin.from("collection_areas").select("id, name, enabled_sources"),
   ]);
   if (runsResult.error) throw runsResult.error;
   if (accountsResult.error) throw accountsResult.error;
   if (areasResult.error) throw areasResult.error;
 
   const accounts = new Map(accountsResult.data.map((account) => [account.id, account.name]));
-  const areas = new Map(areasResult.data.map((area) => [area.id, area.name]));
+  const areas = new Map(areasResult.data.map((area) => [area.id, area]));
   const lastSuccess = new Map<string, string>();
   runsResult.data.forEach((run) => {
     sourceEntries(run.source_results).forEach(([name, source]) => {
@@ -65,27 +65,35 @@ export async function getSourceHealthRuns(): Promise<SourceHealthRun[]> {
     });
   });
 
-  return runsResult.data.map((run) => ({
-    id: run.id,
-    accountName: accounts.get(run.account_id) ?? "Onbekend account",
-    areaName: areas.get(run.collection_area_id) ?? "Onbekende regio",
-    startedAt: run.started_at,
-    finishedAt: run.finished_at,
-    errorSummary: run.error_summary,
-    sources: sourceEntries(run.source_results).map(([name, source]) => ({
-      name,
-      state: source.state ?? "unknown",
-      lastSuccess: lastSuccess.get(`${run.account_id}:${run.collection_area_id}:${name}`) ?? null,
-      currentError: source.error ?? null,
-      found: source.found ?? source.candidates ?? 0,
-      unique: source.unique ?? source.candidates ?? 0,
-      duplicates: source.duplicates ?? 0,
-      reviews: source.reviews ?? 0,
-      requests: source.requests ?? 0,
-      inputTokens: source.usage?.inputTokens ?? 0,
-      outputTokens: source.usage?.outputTokens ?? 0,
-      webSearchRequests: source.usage?.webSearchRequests ?? 0,
-    })),
-  }));
+  return runsResult.data.map((run) => {
+    const area = areas.get(run.collection_area_id);
+    const storedSources = new Map(sourceEntries(run.source_results));
+    const sourceNames = area?.enabled_sources ?? [...storedSources.keys()];
+    return {
+      id: run.id,
+      accountName: accounts.get(run.account_id) ?? "Onbekend account",
+      areaName: area?.name ?? "Onbekende regio",
+      startedAt: run.started_at,
+      finishedAt: run.finished_at,
+      errorSummary: run.error_summary === "[object Object]" ? "Run afgebroken door een technische fout" : run.error_summary,
+      sources: sourceNames.map((name) => {
+        const source = storedSources.get(name);
+        return {
+          name,
+          state: source?.state ?? "not_run",
+          lastSuccess: lastSuccess.get(`${run.account_id}:${run.collection_area_id}:${name}`) ?? null,
+          currentError: source?.error ?? (run.finished_at ? "Run stopte voordat deze bron verwerkt kon worden." : null),
+          found: source?.found ?? source?.candidates ?? 0,
+          unique: source?.unique ?? source?.candidates ?? 0,
+          duplicates: source?.duplicates ?? 0,
+          reviews: source?.reviews ?? 0,
+          requests: source?.requests ?? 0,
+          inputTokens: source?.usage?.inputTokens ?? 0,
+          outputTokens: source?.usage?.outputTokens ?? 0,
+          webSearchRequests: source?.usage?.webSearchRequests ?? 0,
+        };
+      }),
+    };
+  });
 }
 

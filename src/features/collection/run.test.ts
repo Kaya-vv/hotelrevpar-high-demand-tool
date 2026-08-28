@@ -128,4 +128,25 @@ describe("runCollection", () => {
       ),
     ).toEqual({ conflict: "changed_date", preserveCanonical: true });
   });
+
+  it("does not review the same instant written with a different timezone offset", () => {
+    expect(
+      sourceChange(
+        { extractedStartAt: "2027-10-10T08:00:00+00:00", extractedLocation: candidate.venue },
+        { ...candidate, startAt: "2027-10-10T10:00:00+02:00" },
+      ),
+    ).toEqual({ conflict: null, preserveCanonical: false });
+  });
+
+  it("stores a useful message when persistence rejects with a database error object", async () => {
+    const databaseError = { message: "URI too long" };
+    const repo = repository({ persistCandidate: vi.fn().mockRejectedValue(databaseError) });
+
+    await expect(runCollection(
+      { accountId: "account-1", areaId: "area-1", trigger: "manual" },
+      { repository: repo, collectors: { ticketmaster: vi.fn().mockResolvedValue({ source: "ticketmaster", candidates: [candidate], requests: 1, usage: {} }) } },
+    )).rejects.toBe(databaseError);
+
+    expect(repo.finishRun).toHaveBeenCalledWith("run-1", {}, {}, "URI too long");
+  });
 });

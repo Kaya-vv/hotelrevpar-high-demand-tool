@@ -209,27 +209,17 @@ export function createCollectionRepository(): CollectionRepository {
       for (const hotel of context.hotels) {
         const { data: storedScores, error: scoreReadError } = await supabase
           .from("hotel_event_scores")
-          .select("event_id, impact_points, distance_points, stay_pressure_points")
+          .select("impact_points, distance_points, stay_pressure_points, events!inner(start_at, end_at)")
           .eq("hotel_id", hotel.id)
-          .neq("event_id", eventId);
+          .neq("event_id", eventId)
+          .lte("events.start_at", candidate.endAt)
+          .gte("events.end_at", candidate.startAt);
         if (scoreReadError) throw scoreReadError;
-        const eventIds = storedScores.map((score) => score.event_id);
-        const eventResult = eventIds.length
-          ? await supabase.from("events").select("id, start_at, end_at").in("id", eventIds)
-          : { data: [], error: null };
-        if (eventResult.error) throw eventResult.error;
-        const eventDates = new Map(eventResult.data.map((event) => [event.id, event]));
-        const overlaps = storedScores.flatMap((score) => {
-          const event = eventDates.get(score.event_id);
-          return event
-            ? [{
-                startAt: event.start_at,
-                endAt: event.end_at,
-                preOverlapTotal:
-                  score.impact_points + score.distance_points + Math.min(10, score.stay_pressure_points),
-              }]
-            : [];
-        });
+        const overlaps = storedScores.map((score) => ({
+          startAt: score.events.start_at,
+          endAt: score.events.end_at,
+          preOverlapTotal: score.impact_points + score.distance_points + Math.min(10, score.stay_pressure_points),
+        }));
         const score = scoreHotelEvent({ candidate, hotel, overlaps });
         const { error: scoreError } = await supabase.from("hotel_event_scores").upsert({
           hotel_id: hotel.id,
