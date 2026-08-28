@@ -24,11 +24,7 @@ export function AddressCombobox({
 
   useEffect(() => {
     const query = value.trim();
-    if (selectedId || query.length < 3) {
-      setSuggestions([]);
-      setStatus("idle");
-      return;
-    }
+    if (selectedId || query.length < 3) return;
 
     const controller = new AbortController();
     const timer = window.setTimeout(async () => {
@@ -95,6 +91,9 @@ export function AddressCombobox({
         onChange={(event) => {
           setValue(event.target.value);
           setSelectedId("");
+          setSuggestions([]);
+          setActiveIndex(-1);
+          setStatus("idle");
         }}
         onKeyDown={onKeyDown}
       />
