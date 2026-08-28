@@ -79,23 +79,38 @@ describe("source adapters", () => {
           }] }),
         }],
         usage: { input_tokens: 200, output_tokens: 80, server_tool_use: { web_fetch_requests: 1 } },
+      })
+      .mockResolvedValueOnce({
+        content: [{ type: "text", text: JSON.stringify({ events: [] }) }],
+        usage: { input_tokens: 150, output_tokens: 20, server_tool_use: { web_fetch_requests: 1 } },
       });
 
     const client = { messages: { create } } as unknown as Anthropic;
     const result = await collectClaude({ ...window, location: "Eindhoven", model: "claude-test", client });
     const searchRequest = create.mock.calls[0][0];
-    const verificationRequest = create.mock.calls[1][0];
+    const firstVerificationRequest = create.mock.calls[1][0];
+    const secondVerificationRequest = create.mock.calls[2][0];
     expect(searchRequest.tools[0]).toMatchObject({
       allowed_callers: ["direct"],
       max_uses: 2,
       response_inclusion: "full",
     });
     expect(create.mock.calls[0][1]).toEqual({ timeout: 120_000, maxRetries: 0 });
-    expect(create.mock.calls[1][1]).toEqual({ timeout: 120_000, maxRetries: 0 });
-    expect(verificationRequest.tools[0]).toMatchObject({ max_uses: 8 });
-    expect(verificationRequest.messages[0].content).toContain(urls[7]);
-    expect(verificationRequest.messages[0].content).not.toContain(urls[8]);
-    expect(result.requests).toBe(2);
+    expect(create.mock.calls[1][1]).toEqual({ timeout: 180_000, maxRetries: 0 });
+    expect(create.mock.calls[2][1]).toEqual({ timeout: 180_000, maxRetries: 0 });
+    expect(firstVerificationRequest.max_tokens).toBe(8_000);
+    expect(firstVerificationRequest.tools[0]).toEqual({
+      type: "web_fetch_20250910",
+      name: "web_fetch",
+      max_uses: 4,
+      max_content_tokens: 5_000,
+      citations: { enabled: false },
+    });
+    expect(firstVerificationRequest.messages[0].content).toContain(urls[3]);
+    expect(firstVerificationRequest.messages[0].content).not.toContain(urls[4]);
+    expect(secondVerificationRequest.messages[0].content).toContain(urls[7]);
+    expect(secondVerificationRequest.messages[0].content).not.toContain(urls[8]);
+    expect(result.requests).toBe(3);
     expect(result.candidates[0]).toMatchObject({ sourceUrl: "https://venue.nl/event", primarySourceConfirmed: true });
   });
 
@@ -119,5 +134,23 @@ describe("source adapters", () => {
 
     await expect(collectClaude({ ...window, location: "Eindhoven", model: "claude-test", client }))
       .rejects.toThrow("Claude verification timed out.");
+  });
+
+  it("identifies a Claude verification token limit", async () => {
+    const create = vi
+      .fn()
+      .mockResolvedValueOnce({
+        content: [{ type: "web_search_tool_result", content: [{ type: "web_search_result", url: "https://venue.nl/event" }] }],
+        usage: { input_tokens: 100, output_tokens: 20, server_tool_use: { web_search_requests: 1 } },
+      })
+      .mockResolvedValueOnce({
+        stop_reason: "max_tokens",
+        content: [{ type: "thinking", thinking: "" }],
+        usage: { input_tokens: 1000, output_tokens: 12_000, server_tool_use: { web_fetch_requests: 1 } },
+      });
+    const client = { messages: { create } } as unknown as Anthropic;
+
+    await expect(collectClaude({ ...window, location: "Eindhoven", model: "claude-test", client }))
+      .rejects.toThrow("Claude verification reached its token limit.");
   });
 });

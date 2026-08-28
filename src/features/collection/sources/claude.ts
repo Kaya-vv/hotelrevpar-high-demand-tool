@@ -4,7 +4,8 @@ import { z } from "zod";
 import type { CollectionWindow, SourceResult } from "../types";
 
 const ownerTypes = ["organizer", "venue", "club", "university", "municipality", "event_owner"] as const;
-const requestOptions = { timeout: 120_000, maxRetries: 0 } as const;
+const searchRequestOptions = { timeout: 120_000, maxRetries: 0 } as const;
+const verificationRequestOptions = { timeout: 180_000, maxRetries: 0 } as const;
 const outputSchema = z.object({
   events: z.array(
     z.object({
@@ -94,7 +95,7 @@ export async function collectClaude(
       role: "user",
       content: `Vind geplande evenementen in of rond ${input.location} tussen ${input.start} en ${input.end} die hotelvraag kunnen verhogen. Geef voorrang aan organisatoren, locaties, clubs, universiteiten en gemeenten.`,
     }],
-  }, requestOptions));
+  }, searchRequestOptions));
   const urls = sourceUrls(search).slice(0, 8);
   if (!urls.length) {
     return {
@@ -105,26 +106,32 @@ export async function collectClaude(
     };
   }
 
-  const verified = await requestPhase("verification", () => client.messages.create({
+  const batches = [urls.slice(0, 4), urls.slice(4)].filter((batch) => batch.length);
+  const verified = await Promise.all(batches.map((batch) => requestPhase("verification", () => client.messages.create({
     model,
-    max_tokens: 2400,
+    max_tokens: 8_000,
     tools: [{
-      type: "web_fetch_20260318",
+      type: "web_fetch_20250910",
       name: "web_fetch",
-      max_uses: urls.length,
-      max_content_tokens: 12_000,
+      max_uses: batch.length,
+      max_content_tokens: 5_000,
       citations: { enabled: false },
     }],
     output_config: { format: { type: "json_schema", schema: outputJsonSchema } },
     messages: [{
       role: "user",
-      content: `Open deze pagina's en controleer per evenement titel, datum en locatie. Neem alleen evenementen in het venster op. Pagina's:\n${urls.join("\n")}`,
+      content: `Open deze pagina's en controleer per evenement titel, datum en locatie. Neem alleen evenementen in het venster op. Pagina's:\n${batch.join("\n")}`,
     }],
-  }, requestOptions));
-  const text = verified.content.find((block) => block.type === "text")?.text;
-  if (!text) throw new Error("Claude verification returned no structured output.");
-  const parsed = outputSchema.parse(JSON.parse(text));
-  const candidates = parsed.events.map((event) => ({
+  }, verificationRequestOptions))));
+  const events = verified.flatMap((message) => {
+    if (message.stop_reason === "max_tokens") {
+      throw new Error("Claude verification reached its token limit.");
+    }
+    const text = message.content.find((block) => block.type === "text")?.text;
+    if (!text) throw new Error("Claude verification returned no structured output.");
+    return outputSchema.parse(JSON.parse(text)).events;
+  });
+  const candidates = events.map((event) => ({
     provider: "claude" as const,
     providerEventId: event.sourceUrl,
     sourceUrl: event.sourceUrl,
@@ -152,10 +159,10 @@ export async function collectClaude(
   return {
     source: "claude",
     candidates,
-    requests: 2,
+    requests: 1 + verified.length,
     usage: {
-      inputTokens: search.usage.input_tokens + verified.usage.input_tokens,
-      outputTokens: search.usage.output_tokens + verified.usage.output_tokens,
+      inputTokens: search.usage.input_tokens + verified.reduce((total, message) => total + message.usage.input_tokens, 0),
+      outputTokens: search.usage.output_tokens + verified.reduce((total, message) => total + message.usage.output_tokens, 0),
       webSearchRequests: search.usage.server_tool_use?.web_search_requests ?? 0,
     },
   };
