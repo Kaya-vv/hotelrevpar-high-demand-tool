@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { CollectionWindow, SourceResult } from "../types";
 
 const ownerTypes = ["organizer", "venue", "club", "university", "municipality", "event_owner"] as const;
+const requestOptions = { timeout: 60_000, maxRetries: 0 } as const;
 const outputSchema = z.object({
   events: z.array(
     z.object({
@@ -75,16 +76,17 @@ export async function collectClaude(
     tools: [{
       type: "web_search_20260318",
       name: "web_search",
-      max_uses: 4,
-      response_inclusion: "excluded",
+      allowed_callers: ["direct"],
+      max_uses: 2,
+      response_inclusion: "full",
       user_location: { type: "approximate", country: "NL", city: input.location, timezone: "Europe/Amsterdam" },
     }],
     messages: [{
       role: "user",
       content: `Vind geplande evenementen in of rond ${input.location} tussen ${input.start} en ${input.end} die hotelvraag kunnen verhogen. Geef voorrang aan organisatoren, locaties, clubs, universiteiten en gemeenten.`,
     }],
-  });
-  const urls = sourceUrls(search);
+  }, requestOptions);
+  const urls = sourceUrls(search).slice(0, 8);
   if (!urls.length) {
     return {
       source: "claude",
@@ -109,7 +111,7 @@ export async function collectClaude(
       role: "user",
       content: `Open deze pagina's en controleer per evenement titel, datum en locatie. Neem alleen evenementen in het venster op. Pagina's:\n${urls.join("\n")}`,
     }],
-  });
+  }, requestOptions);
   const text = verified.content.find((block) => block.type === "text")?.text;
   if (!text) throw new Error("Claude verification returned no structured output.");
   const parsed = outputSchema.parse(JSON.parse(text));

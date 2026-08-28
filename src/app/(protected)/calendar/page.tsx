@@ -24,7 +24,6 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   const filters: CalendarFilters = {
     month,
     hotel: value(params, "hotel"),
-    area: value(params, "area"),
     category: value(params, "category"),
     maxDistance: parsedDistance !== undefined && Number.isFinite(parsedDistance) && parsedDistance >= 0 ? parsedDistance : undefined,
     importance: ["Low", "Medium", "High"].includes(rawImportance ?? "") ? rawImportance as CalendarFilters["importance"] : undefined,
@@ -37,7 +36,6 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
       <form className="filter-bar">
         <label>Maand<input name="month" type="month" defaultValue={month} /></label>
         <label>Hotel<select name="hotel" defaultValue={filters.hotel ?? ""}><option value="">Alle hotels</option>{data.hotels.map((hotel) => <option key={hotel.id} value={hotel.id}>{hotel.name}</option>)}</select></label>
-        <label>Regio<select name="area" defaultValue={filters.area ?? ""}><option value="">Alle regio&apos;s</option>{data.areas.map((area) => <option key={area.id} value={area.id}>{area.name}</option>)}</select></label>
         <label>Categorie<select name="category" defaultValue={filters.category ?? ""}><option value="">Alle categorieën</option>{data.categories.map((category) => <option key={category}>{category}</option>)}</select></label>
         <label>Max. afstand<input name="maxDistance" type="number" min="0" step="1" defaultValue={filters.maxDistance} /></label>
         <label>Importance<select name="importance" defaultValue={filters.importance ?? ""}><option value="">Alle scores</option><option>Low</option><option>Medium</option><option>High</option></select></label>

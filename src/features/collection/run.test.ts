@@ -30,7 +30,7 @@ function repository(overrides: Partial<CollectionRepository> = {}): CollectionRe
   return {
     startRun: vi.fn().mockResolvedValue("run-1"),
     loadContext: vi.fn().mockResolvedValue({
-      area: { id: "area-1", accountId: "account-1", name: "Eindhoven", latitude: 51.44, longitude: 5.48, radiusKm: 30, enabledSources: ["ticketmaster", "claude"] },
+      area: { id: "area-1", accountId: "account-1", name: "MATCH", searchLocation: "Eindhoven", latitude: 51.44, longitude: 5.48, radiusKm: 30, enabledSources: ["ticketmaster", "claude"] },
       hotels: [],
     }),
     persistCandidate: vi.fn().mockResolvedValue({ state: "active", duplicate: false }),
@@ -68,7 +68,7 @@ describe("runCollection", () => {
   it("persists a repeated provider ID once per run", async () => {
     const repo = repository({
       loadContext: vi.fn().mockResolvedValue({
-        area: { id: "area-1", accountId: "account-1", name: "Eindhoven", latitude: 51.44, longitude: 5.48, radiusKm: 30, enabledSources: ["ticketmaster"] },
+        area: { id: "area-1", accountId: "account-1", name: "MATCH", searchLocation: "Eindhoven", latitude: 51.44, longitude: 5.48, radiusKm: 30, enabledSources: ["ticketmaster"] },
         hotels: [],
       }),
     });

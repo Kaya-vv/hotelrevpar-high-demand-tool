@@ -36,6 +36,7 @@ export async function GET(request: Request) {
         .from("collection_areas")
         .select("id, account_id")
         .in("account_id", accountIds)
+        .not("hotel_id", "is", null)
         .order("name");
       if (areaError) throw areaError;
       return areas.map((area) => ({ id: area.id, accountId: area.account_id }));

@@ -2,10 +2,12 @@ import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { RefreshButton } from "./refresh-button";
+
 const links: Array<[string, string]> = [
   ["/calendar", "Vraagkalender"],
   ["/review", "Te beoordelen"],
-  ["/portfolio", "Hotels & regio's"],
+  ["/portfolio", "Hotels"],
   ["/export", "Exporteren"],
   ["/account", "Account"],
 ];
@@ -43,9 +45,7 @@ export function AppShell({ accountName, children, refreshAction, isPlatformAdmin
             <strong>{accountName}</strong>
           </div>
           <form action={refreshAction}>
-            <button className="primary" type="submit">
-              Nu verversen
-            </button>
+            <RefreshButton />
           </form>
         </header>
         <div className="workspace-content">{children}</div>

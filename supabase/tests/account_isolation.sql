@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(6);
+select plan(8);
 
 insert into auth.users (
   instance_id,
@@ -77,6 +77,20 @@ values (
   51.44,
   5.48,
   25
+);
+
+select is(
+  (select count(*) from collection_areas where name = 'Hotel A' and hotel_id is not null),
+  1::bigint,
+  'hotel write creates its internal collection area'
+);
+
+update hotels set demand_radius_km = 35 where name = 'Hotel A';
+
+select is(
+  (select count(*) from collection_areas where name = 'Hotel A' and radius_km = 35),
+  1::bigint,
+  'hotel update synchronizes its internal collection area'
 );
 
 set local role authenticated;

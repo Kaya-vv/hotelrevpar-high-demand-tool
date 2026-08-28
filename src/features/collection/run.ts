@@ -11,6 +11,7 @@ export type CollectionAreaContext = {
   id: string;
   accountId: string;
   name: string;
+  searchLocation: string;
   latitude: number;
   longitude: number;
   radiusKm: number;
@@ -67,7 +68,7 @@ function defaultCollectors(): Partial<Record<SourceName, Collector>> {
     ticketmaster: (context) =>
       collectTicketmaster({
         ...context.window,
-        city: context.area.name,
+        city: context.area.searchLocation,
         apiKey: configured(process.env.TICKETMASTER_API_KEY, "Ticketmaster"),
       }),
     predicthq: (context) =>
@@ -80,7 +81,7 @@ function defaultCollectors(): Partial<Record<SourceName, Collector>> {
       }),
     claude: (context) => {
       configured(process.env.ANTHROPIC_API_KEY, "Anthropic");
-      return collectClaude({ ...context.window, location: context.area.name });
+      return collectClaude({ ...context.window, location: context.area.searchLocation });
     },
   };
 }

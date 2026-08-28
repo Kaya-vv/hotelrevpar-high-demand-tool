@@ -13,6 +13,7 @@ export async function refreshAllAreas() {
     .from("collection_areas")
     .select("id")
     .eq("account_id", accountId)
+    .not("hotel_id", "is", null)
     .order("name");
   if (error) throw error;
   for (const area of areas) await runCollection({ accountId, areaId: area.id, trigger: "manual" });

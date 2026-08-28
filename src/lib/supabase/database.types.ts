@@ -189,31 +189,37 @@ export type Database = {
           account_id: string
           created_at: string
           enabled_sources: string[]
+          hotel_id: string | null
           id: string
           latitude: number
           longitude: number
           name: string
           radius_km: number
+          search_location: string
         }
         Insert: {
           account_id: string
           created_at?: string
           enabled_sources?: string[]
+          hotel_id?: string | null
           id?: string
           latitude: number
           longitude: number
           name: string
           radius_km: number
+          search_location?: string
         }
         Update: {
           account_id?: string
           created_at?: string
           enabled_sources?: string[]
+          hotel_id?: string | null
           id?: string
           latitude?: number
           longitude?: number
           name?: string
           radius_km?: number
+          search_location?: string
         }
         Relationships: [
           {
@@ -221,6 +227,13 @@ export type Database = {
             columns: ["account_id"]
             isOneToOne: false
             referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "collection_areas_hotel_id_fkey"
+            columns: ["hotel_id"]
+            isOneToOne: false
+            referencedRelation: "hotels"
             referencedColumns: ["id"]
           },
         ]
@@ -455,36 +468,42 @@ export type Database = {
           address: string | null
           created_at: string
           demand_radius_km: number
+          enabled_sources: string[]
           holiday_region: string | null
           id: string
           latitude: number
           longitude: number
           name: string
           revcontrol_code: string
+          search_location: string
         }
         Insert: {
           account_id: string
           address?: string | null
           created_at?: string
           demand_radius_km: number
+          enabled_sources?: string[]
           holiday_region?: string | null
           id?: string
           latitude: number
           longitude: number
           name: string
           revcontrol_code: string
+          search_location?: string
         }
         Update: {
           account_id?: string
           address?: string | null
           created_at?: string
           demand_radius_km?: number
+          enabled_sources?: string[]
           holiday_region?: string | null
           id?: string
           latitude?: number
           longitude?: number
           name?: string
           revcontrol_code?: string
+          search_location?: string
         }
         Relationships: [
           {

@@ -1,7 +1,10 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { act, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CalendarView, type CalendarEvent } from "./calendar-view";
+
+const { refresh } = vi.hoisted(() => ({ refresh: vi.fn() }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
 
 const events: CalendarEvent[] = [
   {
@@ -21,6 +24,11 @@ const events: CalendarEvent[] = [
 ];
 
 describe("CalendarView", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    refresh.mockClear();
+  });
+
   it("renders the month, provisional evidence, and separate hotel scores", () => {
     render(<CalendarView month="2027-10" events={events} />);
     expect(screen.getAllByText("Dutch Design Week").length).toBeGreaterThan(1);
@@ -30,6 +38,21 @@ describe("CalendarView", () => {
     expect(screen.getAllByText(/attendance/).length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: /predicthq/i })).toHaveAttribute("href", "https://example.com/ddw");
     expect(screen.getByText(/60 impact.*12 afstand.*6 verblijf/i)).toBeInTheDocument();
+  });
+
+  it("explains that an active collection refreshes itself", () => {
+    vi.useFakeTimers();
+    render(
+      <CalendarView
+        month="2027-10"
+        events={events}
+        latestRun={{ startedAt: "2027-10-01T10:00:00Z", finishedAt: null, sources: {} }}
+      />,
+    );
+
+    expect(screen.getByText(/deze pagina vernieuwt vanzelf/i)).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(3_000));
+    expect(refresh).toHaveBeenCalledOnce();
   });
 });
 

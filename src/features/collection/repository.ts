@@ -53,6 +53,7 @@ export function createCollectionRepository(): CollectionRepository {
           id: area.id,
           accountId: area.account_id,
           name: area.name,
+          searchLocation: area.search_location,
           latitude: area.latitude,
           longitude: area.longitude,
           radiusKm: area.radius_km,

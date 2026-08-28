@@ -10,8 +10,8 @@ export default async function PortfolioPage() {
     <div>
       <header className="page-title">
         <span className="eyebrow">Instellingen</span>
-        <h1>Hotels en regio&apos;s</h1>
-        <p>Gebeurtenissen worden per hotel binnen de ingestelde vraagstraal beoordeeld.</p>
+        <h1>Hotels</h1>
+        <p>Vul het hoteladres in. De app bepaalt de locatie en verzamelt gebeurtenissen binnen de ingestelde vraagstraal.</p>
       </header>
       <PortfolioForm {...portfolio} />
     </div>

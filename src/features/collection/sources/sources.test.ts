@@ -51,10 +51,11 @@ describe("source adapters", () => {
   });
 
   it("verifies Claude discoveries against fetched owner pages", async () => {
+    const urls = Array.from({ length: 9 }, (_, index) => `https://venue.nl/event-${index + 1}`);
     const create = vi
       .fn()
       .mockResolvedValueOnce({
-        content: [{ type: "web_search_tool_result", content: [{ type: "web_search_result", url: "https://venue.nl/event" }] }],
+        content: [{ type: "web_search_tool_result", content: urls.map((url) => ({ type: "web_search_result", url })) }],
         usage: { input_tokens: 100, output_tokens: 20, server_tool_use: { web_search_requests: 1 } },
       })
       .mockResolvedValueOnce({
@@ -82,6 +83,18 @@ describe("source adapters", () => {
 
     const client = { messages: { create } } as unknown as Anthropic;
     const result = await collectClaude({ ...window, location: "Eindhoven", model: "claude-test", client });
+    const searchRequest = create.mock.calls[0][0];
+    const verificationRequest = create.mock.calls[1][0];
+    expect(searchRequest.tools[0]).toMatchObject({
+      allowed_callers: ["direct"],
+      max_uses: 2,
+      response_inclusion: "full",
+    });
+    expect(create.mock.calls[0][1]).toEqual({ timeout: 60_000, maxRetries: 0 });
+    expect(create.mock.calls[1][1]).toEqual({ timeout: 60_000, maxRetries: 0 });
+    expect(verificationRequest.tools[0]).toMatchObject({ max_uses: 8 });
+    expect(verificationRequest.messages[0].content).toContain(urls[7]);
+    expect(verificationRequest.messages[0].content).not.toContain(urls[8]);
     expect(result.requests).toBe(2);
     expect(result.candidates[0]).toMatchObject({ sourceUrl: "https://venue.nl/event", primarySourceConfirmed: true });
   });

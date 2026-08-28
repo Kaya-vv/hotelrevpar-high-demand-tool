@@ -1,3 +1,8 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
+
 export type CalendarSource = {
   provider: string;
   url: string;
@@ -30,6 +35,7 @@ export type CalendarEvent = {
 };
 
 export type LatestRun = {
+  startedAt: string;
   finishedAt: string | null;
   sources: Record<string, { state?: string; error?: string }>;
 };
@@ -60,6 +66,14 @@ export function CalendarView({
   latestRun?: LatestRun | null;
   overrideImportanceAction?: (formData: FormData) => void | Promise<void>;
 }) {
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!latestRun || latestRun.finishedAt) return;
+    const timer = window.setInterval(() => router.refresh(), 3_000);
+    return () => window.clearInterval(timer);
+  }, [latestRun, router]);
+
   return (
     <div className="calendar-layout">
       <section className="month-panel" aria-label={`Maand ${month}`}>
@@ -82,7 +96,11 @@ export function CalendarView({
         {latestRun && (
           <div className="source-health">
             <strong>Laatste verzameling</strong>
-            <span>{latestRun.finishedAt ? new Date(latestRun.finishedAt).toLocaleString("nl-NL") : "Bezig"}</span>
+            <span>
+              {latestRun.finishedAt
+                ? new Date(latestRun.finishedAt).toLocaleString("nl-NL")
+                : `Bezig sinds ${new Date(latestRun.startedAt).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}. Deze pagina vernieuwt vanzelf.`}
+            </span>
             <ul>{Object.entries(latestRun.sources).map(([source, result]) => <li key={source}><span>{source}</span><span className={`source-${result.state ?? "unknown"}`}>{result.state ?? "onbekend"}</span></li>)}</ul>
           </div>
         )}

@@ -6,7 +6,6 @@ import type { ReviewEvent } from "@/features/review/review-list";
 export type CalendarFilters = {
   month: string;
   hotel?: string;
-  area?: string;
   category?: string;
   maxDistance?: number;
   importance?: "Low" | "Medium" | "High";
@@ -40,32 +39,19 @@ async function loadAccountEvents(accountId: string, state: "active" | "needs_rev
 
 export async function getCalendarData(accountId: string, filters: CalendarFilters) {
   const supabase = await createServerClient();
-  const [{ decisions, events, sources }, hotelsResult, areasResult, runResult] = await Promise.all([
+  const [{ decisions, events, sources }, hotelsResult, runResult] = await Promise.all([
     loadAccountEvents(accountId, "active"),
     supabase.from("hotels").select("id, name").eq("account_id", accountId).order("name"),
-    supabase.from("collection_areas").select("id, name").eq("account_id", accountId).order("name"),
     supabase
       .from("collection_runs")
-      .select("finished_at, source_results")
+      .select("started_at, finished_at, source_results")
       .eq("account_id", accountId)
       .order("started_at", { ascending: false })
       .limit(1)
       .maybeSingle(),
   ]);
   if (hotelsResult.error) throw hotelsResult.error;
-  if (areasResult.error) throw areasResult.error;
   if (runResult.error) throw runResult.error;
-
-  let allowedAreaEvents: Set<string> | null = null;
-  if (filters.area) {
-    const { data, error } = await supabase
-      .from("account_event_areas")
-      .select("event_id")
-      .eq("account_id", accountId)
-      .eq("collection_area_id", filters.area);
-    if (error) throw error;
-    allowedAreaEvents = new Set(data.map((row) => row.event_id));
-  }
 
   const eventIds = events.map((event) => event.id);
   const hotelIds = hotelsResult.data.map((hotel) => hotel.id);
@@ -79,7 +65,6 @@ export async function getCalendarData(accountId: string, filters: CalendarFilter
   const bounds = monthBounds(filters.month);
   const mapped: CalendarEvent[] = events
     .filter((event) => event.start_at.slice(0, 10) <= bounds.end && event.end_at.slice(0, 10) >= bounds.start)
-    .filter((event) => !allowedAreaEvents || allowedAreaEvents.has(event.id))
     .map((event) => {
       const decision = decisionsByEvent.get(event.id);
       const hotelScores = scores
@@ -124,6 +109,7 @@ export async function getCalendarData(accountId: string, filters: CalendarFilter
     const stale = !finishedAt || Date.now() - new Date(finishedAt).getTime() > 8 * 24 * 60 * 60 * 1000;
     const runSources = (runResult.data.source_results ?? {}) as LatestRun["sources"];
     latestRun = {
+      startedAt: runResult.data.started_at,
       finishedAt,
       sources: stale
         ? Object.fromEntries(Object.entries(runSources).map(([source, result]) => [source, { ...result, state: "stale" }]))
@@ -134,7 +120,6 @@ export async function getCalendarData(accountId: string, filters: CalendarFilter
     events: mapped,
     latestRun,
     hotels: hotelsResult.data,
-    areas: areasResult.data,
     categories: [...new Set(events.map((event) => event.category))].sort(),
   };
 }

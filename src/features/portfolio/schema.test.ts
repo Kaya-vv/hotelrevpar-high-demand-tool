@@ -1,29 +1,31 @@
 import { describe, expect, it } from "vitest";
 
-import { collectionAreaInput, hotelInput } from "./schema";
+import { hotelInput } from "./schema";
 
 describe("portfolio input", () => {
-  it("accepts an adjustable hotel radius and holiday region", () => {
-    expect(
+  it("accepts an address, adjustable radius, holiday region, and sources without coordinates", () => {
+    const parsed = hotelInput.parse({
+        name: "MATCH",
+        revcontrolCode: "MATCH",
+        address: "Vestdijk 47, 5611CA Eindhoven",
+        demandRadiusKm: 25,
+        holidayRegion: "south",
+        enabledSources: ["ticketmaster", "claude"],
+      });
+
+    expect(parsed).toMatchObject({ demandRadiusKm: 25, enabledSources: ["ticketmaster", "claude"] });
+    expect(parsed).not.toHaveProperty("latitude");
+    expect(parsed).not.toHaveProperty("longitude");
+  });
+
+  it("rejects a hotel without a full address or source", () => {
+    expect(() =>
       hotelInput.parse({
         name: "MATCH",
         revcontrolCode: "MATCH",
-        address: "Eindhoven",
-        latitude: 51.44,
-        longitude: 5.48,
+        address: "",
         demandRadiusKm: 25,
         holidayRegion: "south",
-      }).demandRadiusKm,
-    ).toBe(25);
-  });
-
-  it("rejects an area without a source", () => {
-    expect(() =>
-      collectionAreaInput.parse({
-        name: "Eindhoven",
-        latitude: 51.44,
-        longitude: 5.48,
-        radiusKm: 30,
         enabledSources: [],
       }),
     ).toThrow();

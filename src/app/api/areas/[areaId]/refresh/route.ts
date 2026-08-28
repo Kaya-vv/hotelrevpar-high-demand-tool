@@ -12,6 +12,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ ar
     .select("id")
     .eq("id", areaId)
     .eq("account_id", accountId)
+    .not("hotel_id", "is", null)
     .maybeSingle();
   if (error) throw error;
   if (!area) return Response.json({ error: "Regio niet gevonden." }, { status: 404 });
