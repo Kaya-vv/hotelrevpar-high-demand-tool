@@ -1,7 +1,10 @@
 import { z } from "zod";
 
 const searchResult = z.object({
-  features: z.array(z.object({ id: z.string().min(1) })),
+  features: z.array(z.object({
+    id: z.string().min(1),
+    properties: z.object({ display_name: z.string().min(1) }),
+  })),
 });
 
 const addressResult = z.object({
@@ -19,25 +22,37 @@ const addressResult = z.object({
   }),
 });
 
-async function json(response: Response) {
+async function json(response: Response, notFoundMessage?: string) {
+  if (response.status === 404 && notFoundMessage) throw new Error(notFoundMessage);
   if (!response.ok) throw new Error("Adrescontrole is niet beschikbaar. Probeer het later opnieuw.");
   return response.json();
 }
 
-export async function geocodeAddress(address: string, fetcher: typeof fetch = fetch) {
+export async function searchAddresses(query: string, fetcher: typeof fetch = fetch) {
+  if (query.trim().length < 3) return [];
+
   try {
     const searchUrl = new URL("https://api.pdok.nl/kadaster/location-api/v1/search");
-    searchUrl.searchParams.set("q", address);
+    searchUrl.searchParams.set("q", query.trim());
     searchUrl.searchParams.set("adres[version]", "1");
-    searchUrl.searchParams.set("limit", "1");
+    searchUrl.searchParams.set("limit", "5");
     searchUrl.searchParams.set("f", "json");
 
     const search = searchResult.parse(await json(await fetcher(searchUrl, { signal: AbortSignal.timeout(10_000) })));
-    const id = search.features[0]?.id;
-    if (!id) throw new Error("Adres niet gevonden. Controleer straat, huisnummer en plaats.");
+    return search.features.map(({ id, properties }) => ({ id, label: properties.display_name }));
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("Adres")) throw error;
+    throw new Error("Adrescontrole is niet beschikbaar. Probeer het later opnieuw.");
+  }
+}
 
+export async function getAddressById(id: string, fetcher: typeof fetch = fetch) {
+  try {
     const itemUrl = `https://api.pdok.nl/kadaster/bag/ogc/v2/collections/adres/items/${encodeURIComponent(id)}?f=json`;
-    const item = addressResult.parse(await json(await fetcher(itemUrl, { signal: AbortSignal.timeout(10_000) })));
+    const item = addressResult.parse(await json(
+      await fetcher(itemUrl, { signal: AbortSignal.timeout(10_000) }),
+      "Adres niet gevonden. Kies het adres opnieuw.",
+    ));
     const { properties, geometry } = item;
     const suffix = `${properties.huisletter ?? ""}${properties.toevoeging ? `-${properties.toevoeging}` : ""}`;
 
@@ -51,4 +66,10 @@ export async function geocodeAddress(address: string, fetcher: typeof fetch = fe
     if (error instanceof Error && error.message.startsWith("Adres")) throw error;
     throw new Error("Adrescontrole is niet beschikbaar. Probeer het later opnieuw.");
   }
+}
+
+export async function geocodeAddress(address: string, fetcher: typeof fetch = fetch) {
+  const [suggestion] = await searchAddresses(address, fetcher);
+  if (!suggestion) throw new Error("Adres niet gevonden. Controleer straat, huisnummer en plaats.");
+  return getAddressById(suggestion.id, fetcher);
 }
