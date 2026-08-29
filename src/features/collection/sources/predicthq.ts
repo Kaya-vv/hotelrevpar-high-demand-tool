@@ -14,10 +14,18 @@ const responseSchema = z.object({
       end: z.string().nullable().optional(),
       predicted_end: z.string().nullable().optional(),
       state: z.enum(["active", "predicted", "deleted"]),
-      local_rank: z.number().nullable(),
-      phq_attendance: z.number().nullable(),
+      deleted_reason: z.string().nullable().optional(),
+      cancelled: z.string().nullable().optional(),
+      postponed: z.string().nullable().optional(),
+      duplicate_of_id: z.string().nullable().optional(),
+      local_rank: z.number().nullable().optional(),
+      phq_attendance: z.number().nullable().optional(),
       location: z.tuple([z.number(), z.number()]),
-    }),
+      entities: z
+        .array(z.object({ name: z.string(), type: z.string() }))
+        .nullable()
+        .optional(),
+    })
   ),
 });
 
@@ -28,7 +36,7 @@ export async function collectPredictHq(
     radiusKm: number;
     accessToken: string;
     fetcher?: Fetcher;
-  },
+  }
 ): Promise<SourceResult> {
   const candidates: SourceResult["candidates"] = [];
   let requests = 0;
@@ -42,34 +50,58 @@ export async function collectPredictHq(
         "start.gte": input.start,
         "start.lte": input.end,
         state: "active,predicted,deleted",
-        category: "concerts,conferences,expos,festivals,performing-arts,sports,community",
+        category:
+          "concerts,conferences,expos,festivals,performing-arts,sports,community",
         limit: "500",
       }).toString();
     }
-    const response: z.infer<typeof responseSchema> = await fetchJson(url, responseSchema, input.fetcher, {
-      headers: { Authorization: `Bearer ${input.accessToken}`, Accept: "application/json" },
-    });
+    const response: z.infer<typeof responseSchema> = await fetchJson(
+      url,
+      responseSchema,
+      input.fetcher,
+      {
+        headers: {
+          Authorization: `Bearer ${input.accessToken}`,
+          Accept: "application/json",
+        },
+      }
+    );
     requests += 1;
     response.results.forEach((event) => {
+      const sourceState =
+        event.cancelled || event.deleted_reason === "cancelled"
+          ? "cancelled"
+          : event.postponed || event.deleted_reason === "postponed"
+          ? "postponed"
+          : event.state === "deleted"
+          ? "removed"
+          : event.state;
       candidates.push({
         provider: "predicthq",
         providerEventId: event.id,
         sourceUrl: `https://api.predicthq.com/v1/events/${event.id}/`,
+        publicSourceUrl: null,
         title: event.title,
         category: event.category,
-        venue: null,
+        venue:
+          event.entities?.find((entity) => entity.type === "venue")?.name ??
+          null,
         latitude: event.location[1],
         longitude: event.location[0],
         regionScope: null,
         startAt: event.start,
         endAt: event.end ?? event.predicted_end ?? event.start,
-        sourceState: event.state === "deleted" ? "cancelled" : event.state,
+        sourceState,
+        providerDuplicateOfId: event.duplicate_of_id ?? null,
+        providerDeletedReason: event.deleted_reason ?? null,
+        providerCancelledAt: event.cancelled ?? null,
+        providerPostponedAt: event.postponed ?? null,
         certainty: event.state === "predicted" ? "provisional" : "confirmed",
-        localRank: event.local_rank,
-        attendance: event.phq_attendance,
+        localRank: event.local_rank ?? null,
+        attendance: event.phq_attendance ?? null,
         venueCapacity: null,
         evidenceText: null,
-        primarySourceConfirmed: true,
+        primarySourceConfirmed: false,
       });
     });
     next = response.next;

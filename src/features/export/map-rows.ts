@@ -12,7 +12,8 @@ export function mapRevControlRows(events: ExportEvent[], selectedHotelIds: strin
       const groups = new Map<RevControlRow["importance"], string[]>();
       event.hotels.forEach((hotel) => {
         if (!selected.has(hotel.id)) return;
-        groups.set(hotel.importance, [...(groups.get(hotel.importance) ?? []), hotel.code]);
+        const importance = hotel.importance === "Peak" ? "High" : hotel.importance;
+        groups.set(importance, [...(groups.get(importance) ?? []), hotel.code]);
       });
       return [...groups].map(([importance, hotels]) => ({
         show: "Yes" as const,

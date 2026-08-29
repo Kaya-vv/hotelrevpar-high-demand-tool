@@ -1,5 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 
+import { currentSourceError } from "./source-health-state";
+
 export type SourceHealth = {
   name: string;
   state: string;
@@ -13,6 +15,8 @@ export type SourceHealth = {
   inputTokens: number;
   outputTokens: number;
   webSearchRequests: number;
+  webFetchRequests: number;
+  usageCalls: number;
 };
 
 export type SourceHealthRun = {
@@ -53,6 +57,23 @@ export async function getSourceHealthRuns(): Promise<SourceHealthRun[]> {
   if (accountsResult.error) throw accountsResult.error;
   if (areasResult.error) throw areasResult.error;
 
+  const runIds = runsResult.data.map((run) => run.id);
+  const usageResult = runIds.length
+    ? await admin.from("collection_usage_events").select("collection_run_id, source, input_tokens, output_tokens, web_search_requests, web_fetch_requests").in("collection_run_id", runIds)
+    : { data: [], error: null };
+  if (usageResult.error) throw usageResult.error;
+  const usageByRunSource = new Map<string, { calls: number; inputTokens: number; outputTokens: number; webSearchRequests: number; webFetchRequests: number }>();
+  usageResult.data.forEach((item) => {
+    const key = `${item.collection_run_id}:${item.source}`;
+    const aggregate = usageByRunSource.get(key) ?? { calls: 0, inputTokens: 0, outputTokens: 0, webSearchRequests: 0, webFetchRequests: 0 };
+    aggregate.calls += 1;
+    aggregate.inputTokens += item.input_tokens;
+    aggregate.outputTokens += item.output_tokens;
+    aggregate.webSearchRequests += item.web_search_requests;
+    aggregate.webFetchRequests += item.web_fetch_requests;
+    usageByRunSource.set(key, aggregate);
+  });
+
   const accounts = new Map(accountsResult.data.map((account) => [account.id, account.name]));
   const areas = new Map(areasResult.data.map((area) => [area.id, area]));
   const lastSuccess = new Map<string, string>();
@@ -78,19 +99,22 @@ export async function getSourceHealthRuns(): Promise<SourceHealthRun[]> {
       errorSummary: run.error_summary === "[object Object]" ? "Run afgebroken door een technische fout" : run.error_summary,
       sources: sourceNames.map((name) => {
         const source = storedSources.get(name);
+        const recordedUsage = usageByRunSource.get(`${run.id}:${name}`);
         return {
           name,
           state: source?.state ?? "not_run",
           lastSuccess: lastSuccess.get(`${run.account_id}:${run.collection_area_id}:${name}`) ?? null,
-          currentError: source?.error ?? (run.finished_at ? "Run stopte voordat deze bron verwerkt kon worden." : null),
+          currentError: currentSourceError(source, run.finished_at),
           found: source?.found ?? source?.candidates ?? 0,
           unique: source?.unique ?? source?.candidates ?? 0,
           duplicates: source?.duplicates ?? 0,
           reviews: source?.reviews ?? 0,
           requests: source?.requests ?? 0,
-          inputTokens: source?.usage?.inputTokens ?? 0,
-          outputTokens: source?.usage?.outputTokens ?? 0,
-          webSearchRequests: source?.usage?.webSearchRequests ?? 0,
+          inputTokens: recordedUsage?.inputTokens ?? source?.usage?.inputTokens ?? 0,
+          outputTokens: recordedUsage?.outputTokens ?? source?.usage?.outputTokens ?? 0,
+          webSearchRequests: recordedUsage?.webSearchRequests ?? source?.usage?.webSearchRequests ?? 0,
+          webFetchRequests: recordedUsage?.webFetchRequests ?? source?.usage?.webFetchRequests ?? 0,
+          usageCalls: recordedUsage?.calls ?? 0,
         };
       }),
     };

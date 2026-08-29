@@ -4,655 +4,912 @@ export type Json =
   | boolean
   | null
   | { [key: string]: Json | undefined }
-  | Json[]
+  | Json[];
 
 export type Database = {
   graphql_public: {
     Tables: {
-      [_ in never]: never
-    }
+      [_ in never]: never;
+    };
     Views: {
-      [_ in never]: never
-    }
+      [_ in never]: never;
+    };
     Functions: {
       graphql: {
         Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
+          extensions?: Json;
+          operationName?: string;
+          query?: string;
+          variables?: Json;
+        };
+        Returns: Json;
+      };
+    };
     Enums: {
-      [_ in never]: never
-    }
+      [_ in never]: never;
+    };
     CompositeTypes: {
-      [_ in never]: never
-    }
-  }
+      [_ in never]: never;
+    };
+  };
   public: {
     Tables: {
       account_event_areas: {
         Row: {
-          account_id: string
-          collection_area_id: string
-          created_at: string
-          event_id: string
-        }
+          account_id: string;
+          collection_area_id: string;
+          created_at: string;
+          event_id: string;
+        };
         Insert: {
-          account_id: string
-          collection_area_id: string
-          created_at?: string
-          event_id: string
-        }
+          account_id: string;
+          collection_area_id: string;
+          created_at?: string;
+          event_id: string;
+        };
         Update: {
-          account_id?: string
-          collection_area_id?: string
-          created_at?: string
-          event_id?: string
-        }
+          account_id?: string;
+          collection_area_id?: string;
+          created_at?: string;
+          event_id?: string;
+        };
         Relationships: [
           {
-            foreignKeyName: "account_event_areas_account_id_event_id_fkey"
-            columns: ["account_id", "event_id"]
-            isOneToOne: false
-            referencedRelation: "account_events"
-            referencedColumns: ["account_id", "event_id"]
+            foreignKeyName: "account_event_areas_account_id_event_id_fkey";
+            columns: ["account_id", "event_id"];
+            isOneToOne: false;
+            referencedRelation: "account_events";
+            referencedColumns: ["account_id", "event_id"];
           },
           {
-            foreignKeyName: "account_event_areas_collection_area_id_fkey"
-            columns: ["collection_area_id"]
-            isOneToOne: false
-            referencedRelation: "collection_areas"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
+            foreignKeyName: "account_event_areas_collection_area_id_fkey";
+            columns: ["collection_area_id"];
+            isOneToOne: false;
+            referencedRelation: "collection_areas";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
       account_events: {
         Row: {
-          account_id: string
-          decided_at: string | null
-          decided_by: string | null
-          event_id: string
-          merged_into_event_id: string | null
-          operator_note: string | null
-          override_end_at: string | null
-          override_start_at: string | null
-          override_title: string | null
-          override_venue: string | null
-          review_reason: string | null
-          state: Database["public"]["Enums"]["account_event_state"]
-        }
+          account_id: string;
+          automation_reason: string | null;
+          decided_at: string | null;
+          decided_by: string | null;
+          event_id: string;
+          merged_into_event_id: string | null;
+          operator_note: string | null;
+          override_end_at: string | null;
+          override_start_at: string | null;
+          override_title: string | null;
+          override_venue: string | null;
+          resolved_review_fingerprint: string | null;
+          review_fingerprint: string | null;
+          review_reason: string | null;
+          review_source_id: string | null;
+          review_target_event_id: string | null;
+          state: Database["public"]["Enums"]["account_event_state"];
+        };
         Insert: {
-          account_id: string
-          decided_at?: string | null
-          decided_by?: string | null
-          event_id: string
-          merged_into_event_id?: string | null
-          operator_note?: string | null
-          override_end_at?: string | null
-          override_start_at?: string | null
-          override_title?: string | null
-          override_venue?: string | null
-          review_reason?: string | null
-          state: Database["public"]["Enums"]["account_event_state"]
-        }
+          account_id: string;
+          automation_reason?: string | null;
+          decided_at?: string | null;
+          decided_by?: string | null;
+          event_id: string;
+          merged_into_event_id?: string | null;
+          operator_note?: string | null;
+          override_end_at?: string | null;
+          override_start_at?: string | null;
+          override_title?: string | null;
+          override_venue?: string | null;
+          resolved_review_fingerprint?: string | null;
+          review_fingerprint?: string | null;
+          review_reason?: string | null;
+          review_source_id?: string | null;
+          review_target_event_id?: string | null;
+          state: Database["public"]["Enums"]["account_event_state"];
+        };
         Update: {
-          account_id?: string
-          decided_at?: string | null
-          decided_by?: string | null
-          event_id?: string
-          merged_into_event_id?: string | null
-          operator_note?: string | null
-          override_end_at?: string | null
-          override_start_at?: string | null
-          override_title?: string | null
-          override_venue?: string | null
-          review_reason?: string | null
-          state?: Database["public"]["Enums"]["account_event_state"]
-        }
+          account_id?: string;
+          automation_reason?: string | null;
+          decided_at?: string | null;
+          decided_by?: string | null;
+          event_id?: string;
+          merged_into_event_id?: string | null;
+          operator_note?: string | null;
+          override_end_at?: string | null;
+          override_start_at?: string | null;
+          override_title?: string | null;
+          override_venue?: string | null;
+          resolved_review_fingerprint?: string | null;
+          review_fingerprint?: string | null;
+          review_reason?: string | null;
+          review_source_id?: string | null;
+          review_target_event_id?: string | null;
+          state?: Database["public"]["Enums"]["account_event_state"];
+        };
         Relationships: [
           {
-            foreignKeyName: "account_events_account_id_fkey"
-            columns: ["account_id"]
-            isOneToOne: false
-            referencedRelation: "accounts"
-            referencedColumns: ["id"]
+            foreignKeyName: "account_events_account_id_fkey";
+            columns: ["account_id"];
+            isOneToOne: false;
+            referencedRelation: "accounts";
+            referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "account_events_event_id_fkey"
-            columns: ["event_id"]
-            isOneToOne: false
-            referencedRelation: "events"
-            referencedColumns: ["id"]
+            foreignKeyName: "account_events_event_id_fkey";
+            columns: ["event_id"];
+            isOneToOne: false;
+            referencedRelation: "events";
+            referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "account_events_merged_into_event_id_fkey"
-            columns: ["merged_into_event_id"]
-            isOneToOne: false
-            referencedRelation: "events"
-            referencedColumns: ["id"]
+            foreignKeyName: "account_events_merged_into_event_id_fkey";
+            columns: ["merged_into_event_id"];
+            isOneToOne: false;
+            referencedRelation: "events";
+            referencedColumns: ["id"];
           },
-        ]
-      }
+          {
+            foreignKeyName: "account_events_review_source_id_fkey";
+            columns: ["review_source_id"];
+            isOneToOne: false;
+            referencedRelation: "event_sources";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "account_events_review_target_event_id_fkey";
+            columns: ["review_target_event_id"];
+            isOneToOne: false;
+            referencedRelation: "events";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
       account_members: {
         Row: {
-          account_id: string
-          role: Database["public"]["Enums"]["account_role"]
-          user_id: string
-        }
+          account_id: string;
+          role: Database["public"]["Enums"]["account_role"];
+          user_id: string;
+        };
         Insert: {
-          account_id: string
-          role?: Database["public"]["Enums"]["account_role"]
-          user_id: string
-        }
+          account_id: string;
+          role?: Database["public"]["Enums"]["account_role"];
+          user_id: string;
+        };
         Update: {
-          account_id?: string
-          role?: Database["public"]["Enums"]["account_role"]
-          user_id?: string
-        }
+          account_id?: string;
+          role?: Database["public"]["Enums"]["account_role"];
+          user_id?: string;
+        };
         Relationships: [
           {
-            foreignKeyName: "account_members_account_id_fkey"
-            columns: ["account_id"]
-            isOneToOne: false
-            referencedRelation: "accounts"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
+            foreignKeyName: "account_members_account_id_fkey";
+            columns: ["account_id"];
+            isOneToOne: false;
+            referencedRelation: "accounts";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
       accounts: {
         Row: {
-          active: boolean
-          created_at: string
-          id: string
-          name: string
-        }
+          active: boolean;
+          created_at: string;
+          id: string;
+          name: string;
+        };
         Insert: {
-          active?: boolean
-          created_at?: string
-          id?: string
-          name: string
-        }
+          active?: boolean;
+          created_at?: string;
+          id?: string;
+          name: string;
+        };
         Update: {
-          active?: boolean
-          created_at?: string
-          id?: string
-          name?: string
-        }
-        Relationships: []
-      }
+          active?: boolean;
+          created_at?: string;
+          id?: string;
+          name?: string;
+        };
+        Relationships: [];
+      };
       collection_areas: {
         Row: {
-          account_id: string
-          created_at: string
-          enabled_sources: string[]
-          hotel_id: string | null
-          id: string
-          latitude: number
-          longitude: number
-          name: string
-          radius_km: number
-          search_location: string
-        }
+          account_id: string;
+          created_at: string;
+          enabled_sources: string[];
+          hotel_id: string | null;
+          id: string;
+          latitude: number;
+          longitude: number;
+          name: string;
+          radius_km: number;
+          search_location: string;
+        };
         Insert: {
-          account_id: string
-          created_at?: string
-          enabled_sources?: string[]
-          hotel_id?: string | null
-          id?: string
-          latitude: number
-          longitude: number
-          name: string
-          radius_km: number
-          search_location?: string
-        }
+          account_id: string;
+          created_at?: string;
+          enabled_sources?: string[];
+          hotel_id?: string | null;
+          id?: string;
+          latitude: number;
+          longitude: number;
+          name: string;
+          radius_km: number;
+          search_location?: string;
+        };
         Update: {
-          account_id?: string
-          created_at?: string
-          enabled_sources?: string[]
-          hotel_id?: string | null
-          id?: string
-          latitude?: number
-          longitude?: number
-          name?: string
-          radius_km?: number
-          search_location?: string
-        }
+          account_id?: string;
+          created_at?: string;
+          enabled_sources?: string[];
+          hotel_id?: string | null;
+          id?: string;
+          latitude?: number;
+          longitude?: number;
+          name?: string;
+          radius_km?: number;
+          search_location?: string;
+        };
         Relationships: [
           {
-            foreignKeyName: "collection_areas_account_id_fkey"
-            columns: ["account_id"]
-            isOneToOne: false
-            referencedRelation: "accounts"
-            referencedColumns: ["id"]
+            foreignKeyName: "collection_areas_account_id_fkey";
+            columns: ["account_id"];
+            isOneToOne: false;
+            referencedRelation: "accounts";
+            referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "collection_areas_hotel_id_fkey"
-            columns: ["hotel_id"]
-            isOneToOne: false
-            referencedRelation: "hotels"
-            referencedColumns: ["id"]
+            foreignKeyName: "collection_areas_hotel_id_fkey";
+            columns: ["hotel_id"];
+            isOneToOne: false;
+            referencedRelation: "hotels";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      collection_jobs: {
+        Row: {
+          account_id: string;
+          attempts: number;
+          batch_id: string;
+          collection_area_id: string;
+          collection_run_id: string | null;
+          created_at: string;
+          created_by: string | null;
+          error_summary: string | null;
+          finished_at: string | null;
+          id: string;
+          started_at: string | null;
+          status: Database["public"]["Enums"]["collection_job_status"];
+          trigger: Database["public"]["Enums"]["run_trigger"];
+        };
+        Insert: {
+          account_id: string;
+          attempts?: number;
+          batch_id: string;
+          collection_area_id: string;
+          collection_run_id?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          error_summary?: string | null;
+          finished_at?: string | null;
+          id?: string;
+          started_at?: string | null;
+          status?: Database["public"]["Enums"]["collection_job_status"];
+          trigger: Database["public"]["Enums"]["run_trigger"];
+        };
+        Update: {
+          account_id?: string;
+          attempts?: number;
+          batch_id?: string;
+          collection_area_id?: string;
+          collection_run_id?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          error_summary?: string | null;
+          finished_at?: string | null;
+          id?: string;
+          started_at?: string | null;
+          status?: Database["public"]["Enums"]["collection_job_status"];
+          trigger?: Database["public"]["Enums"]["run_trigger"];
+        };
+        Relationships: [
+          {
+            foreignKeyName: "collection_jobs_account_id_fkey";
+            columns: ["account_id"];
+            isOneToOne: false;
+            referencedRelation: "accounts";
+            referencedColumns: ["id"];
           },
-        ]
-      }
+          {
+            foreignKeyName: "collection_jobs_collection_area_id_fkey";
+            columns: ["collection_area_id"];
+            isOneToOne: false;
+            referencedRelation: "collection_areas";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "collection_jobs_collection_run_id_fkey";
+            columns: ["collection_run_id"];
+            isOneToOne: false;
+            referencedRelation: "collection_runs";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
       collection_runs: {
         Row: {
-          account_id: string
-          collection_area_id: string
-          cost_usage: Json
-          error_summary: string | null
-          finished_at: string | null
-          id: string
-          source_results: Json
-          started_at: string
-          trigger: Database["public"]["Enums"]["run_trigger"]
-        }
+          account_id: string;
+          collection_area_id: string;
+          cost_usage: Json;
+          error_summary: string | null;
+          finished_at: string | null;
+          id: string;
+          source_results: Json;
+          started_at: string;
+          trigger: Database["public"]["Enums"]["run_trigger"];
+        };
         Insert: {
-          account_id: string
-          collection_area_id: string
-          cost_usage?: Json
-          error_summary?: string | null
-          finished_at?: string | null
-          id?: string
-          source_results?: Json
-          started_at?: string
-          trigger: Database["public"]["Enums"]["run_trigger"]
-        }
+          account_id: string;
+          collection_area_id: string;
+          cost_usage?: Json;
+          error_summary?: string | null;
+          finished_at?: string | null;
+          id?: string;
+          source_results?: Json;
+          started_at?: string;
+          trigger: Database["public"]["Enums"]["run_trigger"];
+        };
         Update: {
-          account_id?: string
-          collection_area_id?: string
-          cost_usage?: Json
-          error_summary?: string | null
-          finished_at?: string | null
-          id?: string
-          source_results?: Json
-          started_at?: string
-          trigger?: Database["public"]["Enums"]["run_trigger"]
-        }
+          account_id?: string;
+          collection_area_id?: string;
+          cost_usage?: Json;
+          error_summary?: string | null;
+          finished_at?: string | null;
+          id?: string;
+          source_results?: Json;
+          started_at?: string;
+          trigger?: Database["public"]["Enums"]["run_trigger"];
+        };
         Relationships: [
           {
-            foreignKeyName: "collection_runs_account_id_fkey"
-            columns: ["account_id"]
-            isOneToOne: false
-            referencedRelation: "accounts"
-            referencedColumns: ["id"]
+            foreignKeyName: "collection_runs_account_id_fkey";
+            columns: ["account_id"];
+            isOneToOne: false;
+            referencedRelation: "accounts";
+            referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "collection_runs_collection_area_id_fkey"
-            columns: ["collection_area_id"]
-            isOneToOne: false
-            referencedRelation: "collection_areas"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
+            foreignKeyName: "collection_runs_collection_area_id_fkey";
+            columns: ["collection_area_id"];
+            isOneToOne: false;
+            referencedRelation: "collection_areas";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      collection_usage_events: {
+        Row: {
+          collection_run_id: string;
+          created_at: string;
+          id: number;
+          input_tokens: number;
+          model: string;
+          output_tokens: number;
+          phase: string;
+          source: string;
+          web_fetch_requests: number;
+          web_search_requests: number;
+        };
+        Insert: {
+          collection_run_id: string;
+          created_at?: string;
+          id?: never;
+          input_tokens?: number;
+          model: string;
+          output_tokens?: number;
+          phase: string;
+          source: string;
+          web_fetch_requests?: number;
+          web_search_requests?: number;
+        };
+        Update: {
+          collection_run_id?: string;
+          created_at?: string;
+          id?: never;
+          input_tokens?: number;
+          model?: string;
+          output_tokens?: number;
+          phase?: string;
+          source?: string;
+          web_fetch_requests?: number;
+          web_search_requests?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "collection_usage_events_collection_run_id_fkey";
+            columns: ["collection_run_id"];
+            isOneToOne: false;
+            referencedRelation: "collection_runs";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      event_candidate_reviews: {
+        Row: {
+          checked_at: string;
+          collection_area_id: string;
+          confidence: string;
+          decision: string;
+          demand_level: string;
+          evidence_text: string;
+          fingerprint: string;
+          provider: string;
+          provider_event_id: string;
+          source_url: string | null;
+        };
+        Insert: {
+          checked_at?: string;
+          collection_area_id: string;
+          confidence: string;
+          decision: string;
+          demand_level: string;
+          evidence_text: string;
+          fingerprint: string;
+          provider: string;
+          provider_event_id: string;
+          source_url?: string | null;
+        };
+        Update: {
+          checked_at?: string;
+          collection_area_id?: string;
+          confidence?: string;
+          decision?: string;
+          demand_level?: string;
+          evidence_text?: string;
+          fingerprint?: string;
+          provider?: string;
+          provider_event_id?: string;
+          source_url?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "event_candidate_reviews_collection_area_id_fkey";
+            columns: ["collection_area_id"];
+            isOneToOne: false;
+            referencedRelation: "collection_areas";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      event_evidence_cache: {
+        Row: {
+          checked_at: string;
+          confidence: string;
+          decision: string;
+          evidence_text: string;
+          fingerprint: string;
+          provider: string;
+          provider_event_id: string;
+          source_url: string | null;
+        };
+        Insert: {
+          checked_at?: string;
+          confidence: string;
+          decision: string;
+          evidence_text: string;
+          fingerprint: string;
+          provider: string;
+          provider_event_id: string;
+          source_url?: string | null;
+        };
+        Update: {
+          checked_at?: string;
+          confidence?: string;
+          decision?: string;
+          evidence_text?: string;
+          fingerprint?: string;
+          provider?: string;
+          provider_event_id?: string;
+          source_url?: string | null;
+        };
+        Relationships: [];
+      };
       event_sources: {
         Row: {
-          attendance: number | null
-          certainty: Database["public"]["Enums"]["event_certainty"]
-          checked_at: string
-          event_id: string
-          evidence_text: string | null
-          extracted_location: string | null
-          extracted_start_at: string
-          extracted_title: string
-          id: string
-          local_rank: number | null
-          primary_source_confirmed: boolean
-          provider: string
-          provider_event_id: string
-          source_state: string
-          source_url: string
-          venue_capacity: number | null
-        }
+          ai_impact_points: number | null;
+          attendance: number | null;
+          certainty: Database["public"]["Enums"]["event_certainty"];
+          checked_at: string;
+          event_id: string;
+          evidence_text: string | null;
+          extracted_end_at: string | null;
+          extracted_location: string | null;
+          extracted_start_at: string;
+          extracted_title: string;
+          id: string;
+          local_rank: number | null;
+          primary_source_confirmed: boolean;
+          provider_cancelled_at: string | null;
+          provider_deleted_reason: string | null;
+          provider_duplicate_of_id: string | null;
+          provider_postponed_at: string | null;
+          provider: string;
+          provider_event_id: string;
+          source_state: string;
+          source_url: string;
+          public_source_url: string | null;
+          venue_capacity: number | null;
+        };
         Insert: {
-          attendance?: number | null
-          certainty?: Database["public"]["Enums"]["event_certainty"]
-          checked_at?: string
-          event_id: string
-          evidence_text?: string | null
-          extracted_location?: string | null
-          extracted_start_at: string
-          extracted_title: string
-          id?: string
-          local_rank?: number | null
-          primary_source_confirmed?: boolean
-          provider: string
-          provider_event_id: string
-          source_state: string
-          source_url: string
-          venue_capacity?: number | null
-        }
+          ai_impact_points?: number | null;
+          attendance?: number | null;
+          certainty?: Database["public"]["Enums"]["event_certainty"];
+          checked_at?: string;
+          event_id: string;
+          evidence_text?: string | null;
+          extracted_end_at?: string | null;
+          extracted_location?: string | null;
+          extracted_start_at: string;
+          extracted_title: string;
+          id?: string;
+          local_rank?: number | null;
+          primary_source_confirmed?: boolean;
+          provider_cancelled_at?: string | null;
+          provider_deleted_reason?: string | null;
+          provider_duplicate_of_id?: string | null;
+          provider_postponed_at?: string | null;
+          provider: string;
+          provider_event_id: string;
+          source_state: string;
+          source_url: string;
+          public_source_url?: string | null;
+          venue_capacity?: number | null;
+        };
         Update: {
-          attendance?: number | null
-          certainty?: Database["public"]["Enums"]["event_certainty"]
-          checked_at?: string
-          event_id?: string
-          evidence_text?: string | null
-          extracted_location?: string | null
-          extracted_start_at?: string
-          extracted_title?: string
-          id?: string
-          local_rank?: number | null
-          primary_source_confirmed?: boolean
-          provider?: string
-          provider_event_id?: string
-          source_state?: string
-          source_url?: string
-          venue_capacity?: number | null
-        }
+          ai_impact_points?: number | null;
+          attendance?: number | null;
+          certainty?: Database["public"]["Enums"]["event_certainty"];
+          checked_at?: string;
+          event_id?: string;
+          evidence_text?: string | null;
+          extracted_end_at?: string | null;
+          extracted_location?: string | null;
+          extracted_start_at?: string;
+          extracted_title?: string;
+          id?: string;
+          local_rank?: number | null;
+          primary_source_confirmed?: boolean;
+          provider_cancelled_at?: string | null;
+          provider_deleted_reason?: string | null;
+          provider_duplicate_of_id?: string | null;
+          provider_postponed_at?: string | null;
+          provider?: string;
+          provider_event_id?: string;
+          source_state?: string;
+          source_url?: string;
+          public_source_url?: string | null;
+          venue_capacity?: number | null;
+        };
         Relationships: [
           {
-            foreignKeyName: "event_sources_event_id_fkey"
-            columns: ["event_id"]
-            isOneToOne: false
-            referencedRelation: "events"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
+            foreignKeyName: "event_sources_event_id_fkey";
+            columns: ["event_id"];
+            isOneToOne: false;
+            referencedRelation: "events";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
       events: {
         Row: {
-          category: string
-          certainty: Database["public"]["Enums"]["event_certainty"]
-          created_at: string
-          end_at: string
-          id: string
-          latitude: number | null
-          longitude: number | null
-          normalized_identity: string
-          region_scope: string | null
-          source_state: string
-          start_at: string
-          title: string
-          updated_at: string
-          venue: string | null
-        }
+          category: string;
+          certainty: Database["public"]["Enums"]["event_certainty"];
+          created_at: string;
+          end_at: string;
+          id: string;
+          latitude: number | null;
+          longitude: number | null;
+          normalized_identity: string;
+          region_scope: string | null;
+          source_state: string;
+          start_at: string;
+          title: string;
+          updated_at: string;
+          venue: string | null;
+        };
         Insert: {
-          category: string
-          certainty?: Database["public"]["Enums"]["event_certainty"]
-          created_at?: string
-          end_at: string
-          id?: string
-          latitude?: number | null
-          longitude?: number | null
-          normalized_identity: string
-          region_scope?: string | null
-          source_state?: string
-          start_at: string
-          title: string
-          updated_at?: string
-          venue?: string | null
-        }
+          category: string;
+          certainty?: Database["public"]["Enums"]["event_certainty"];
+          created_at?: string;
+          end_at: string;
+          id?: string;
+          latitude?: number | null;
+          longitude?: number | null;
+          normalized_identity: string;
+          region_scope?: string | null;
+          source_state?: string;
+          start_at: string;
+          title: string;
+          updated_at?: string;
+          venue?: string | null;
+        };
         Update: {
-          category?: string
-          certainty?: Database["public"]["Enums"]["event_certainty"]
-          created_at?: string
-          end_at?: string
-          id?: string
-          latitude?: number | null
-          longitude?: number | null
-          normalized_identity?: string
-          region_scope?: string | null
-          source_state?: string
-          start_at?: string
-          title?: string
-          updated_at?: string
-          venue?: string | null
-        }
-        Relationships: []
-      }
+          category?: string;
+          certainty?: Database["public"]["Enums"]["event_certainty"];
+          created_at?: string;
+          end_at?: string;
+          id?: string;
+          latitude?: number | null;
+          longitude?: number | null;
+          normalized_identity?: string;
+          region_scope?: string | null;
+          source_state?: string;
+          start_at?: string;
+          title?: string;
+          updated_at?: string;
+          venue?: string | null;
+        };
+        Relationships: [];
+      };
       hotel_event_scores: {
         Row: {
-          distance_km: number | null
-          distance_points: number
-          event_id: string
-          hotel_id: string
-          impact_basis: string
-          impact_points: number
-          importance_override: string | null
-          override_note: string | null
-          stay_pressure_points: number
-          suggested_importance: string
-          total: number
-        }
+          distance_km: number | null;
+          distance_points: number;
+          event_id: string;
+          hotel_id: string;
+          impact_basis: string;
+          impact_points: number;
+          importance_override: string | null;
+          override_note: string | null;
+          stay_pressure_points: number;
+          suggested_importance: string;
+          total: number;
+        };
         Insert: {
-          distance_km?: number | null
-          distance_points: number
-          event_id: string
-          hotel_id: string
-          impact_basis: string
-          impact_points: number
-          importance_override?: string | null
-          override_note?: string | null
-          stay_pressure_points: number
-          suggested_importance: string
-          total: number
-        }
+          distance_km?: number | null;
+          distance_points: number;
+          event_id: string;
+          hotel_id: string;
+          impact_basis: string;
+          impact_points: number;
+          importance_override?: string | null;
+          override_note?: string | null;
+          stay_pressure_points: number;
+          suggested_importance: string;
+          total: number;
+        };
         Update: {
-          distance_km?: number | null
-          distance_points?: number
-          event_id?: string
-          hotel_id?: string
-          impact_basis?: string
-          impact_points?: number
-          importance_override?: string | null
-          override_note?: string | null
-          stay_pressure_points?: number
-          suggested_importance?: string
-          total?: number
-        }
+          distance_km?: number | null;
+          distance_points?: number;
+          event_id?: string;
+          hotel_id?: string;
+          impact_basis?: string;
+          impact_points?: number;
+          importance_override?: string | null;
+          override_note?: string | null;
+          stay_pressure_points?: number;
+          suggested_importance?: string;
+          total?: number;
+        };
         Relationships: [
           {
-            foreignKeyName: "hotel_event_scores_event_id_fkey"
-            columns: ["event_id"]
-            isOneToOne: false
-            referencedRelation: "events"
-            referencedColumns: ["id"]
+            foreignKeyName: "hotel_event_scores_event_id_fkey";
+            columns: ["event_id"];
+            isOneToOne: false;
+            referencedRelation: "events";
+            referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "hotel_event_scores_hotel_id_fkey"
-            columns: ["hotel_id"]
-            isOneToOne: false
-            referencedRelation: "hotels"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
+            foreignKeyName: "hotel_event_scores_hotel_id_fkey";
+            columns: ["hotel_id"];
+            isOneToOne: false;
+            referencedRelation: "hotels";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
       hotels: {
         Row: {
-          account_id: string
-          address: string | null
-          created_at: string
-          demand_radius_km: number
-          enabled_sources: string[]
-          holiday_region: string | null
-          id: string
-          latitude: number
-          longitude: number
-          name: string
-          pdok_address_id: string | null
-          revcontrol_code: string
-          search_location: string
-        }
+          account_id: string;
+          address: string | null;
+          created_at: string;
+          demand_radius_km: number;
+          enabled_sources: string[];
+          holiday_region: string | null;
+          id: string;
+          latitude: number;
+          longitude: number;
+          name: string;
+          pdok_address_id: string | null;
+          revcontrol_code: string;
+          search_location: string;
+        };
         Insert: {
-          account_id: string
-          address?: string | null
-          created_at?: string
-          demand_radius_km: number
-          enabled_sources?: string[]
-          holiday_region?: string | null
-          id?: string
-          latitude: number
-          longitude: number
-          name: string
-          pdok_address_id?: string | null
-          revcontrol_code: string
-          search_location?: string
-        }
+          account_id: string;
+          address?: string | null;
+          created_at?: string;
+          demand_radius_km: number;
+          enabled_sources?: string[];
+          holiday_region?: string | null;
+          id?: string;
+          latitude: number;
+          longitude: number;
+          name: string;
+          pdok_address_id?: string | null;
+          revcontrol_code: string;
+          search_location?: string;
+        };
         Update: {
-          account_id?: string
-          address?: string | null
-          created_at?: string
-          demand_radius_km?: number
-          enabled_sources?: string[]
-          holiday_region?: string | null
-          id?: string
-          latitude?: number
-          longitude?: number
-          name?: string
-          pdok_address_id?: string | null
-          revcontrol_code?: string
-          search_location?: string
-        }
+          account_id?: string;
+          address?: string | null;
+          created_at?: string;
+          demand_radius_km?: number;
+          enabled_sources?: string[];
+          holiday_region?: string | null;
+          id?: string;
+          latitude?: number;
+          longitude?: number;
+          name?: string;
+          pdok_address_id?: string | null;
+          revcontrol_code?: string;
+          search_location?: string;
+        };
         Relationships: [
           {
-            foreignKeyName: "hotels_account_id_fkey"
-            columns: ["account_id"]
-            isOneToOne: false
-            referencedRelation: "accounts"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-    }
+            foreignKeyName: "hotels_account_id_fkey";
+            columns: ["account_id"];
+            isOneToOne: false;
+            referencedRelation: "accounts";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+    };
     Views: {
-      [_ in never]: never
-    }
+      [_ in never]: never;
+    };
     Functions: {
-      is_account_member: { Args: { target: string }; Returns: boolean }
-    }
+      is_account_member: { Args: { target: string }; Returns: boolean };
+    };
     Enums: {
-      account_event_state: "active" | "needs_review" | "excluded" | "ended"
-      account_role: "operator" | "platform_admin"
-      event_certainty: "confirmed" | "provisional"
-      run_trigger: "cron" | "manual"
-    }
+      account_event_state: "active" | "needs_review" | "excluded" | "ended";
+      account_role: "operator" | "platform_admin";
+      collection_job_status:
+        | "queued"
+        | "running"
+        | "succeeded"
+        | "partial"
+        | "failed"
+        | "skipped";
+      event_certainty: "confirmed" | "provisional";
+      run_trigger: "cron" | "manual";
+    };
     CompositeTypes: {
-      [_ in never]: never
-    }
-  }
-}
+      [_ in never]: never;
+    };
+  };
+};
 
-type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">;
 
-type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+type DefaultSchema = DatabaseWithoutInternals[Extract<
+  keyof Database,
+  "public"
+>];
 
 export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+    schema: keyof DatabaseWithoutInternals;
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never = never
 > = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
+  schema: keyof DatabaseWithoutInternals;
 }
   ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
       DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
-      Row: infer R
+      Row: infer R;
     }
     ? R
     : never
   : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])
-    ? (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
-        Row: infer R
-      }
-      ? R
-      : never
+      DefaultSchema["Views"])
+  ? (DefaultSchema["Tables"] &
+      DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+      Row: infer R;
+    }
+    ? R
     : never
+  : never;
 
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+    schema: keyof DatabaseWithoutInternals;
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never = never
 > = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
+  schema: keyof DatabaseWithoutInternals;
 }
   ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
-      Insert: infer I
+      Insert: infer I;
     }
     ? I
     : never
   : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
-    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-        Insert: infer I
-      }
-      ? I
-      : never
+  ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+      Insert: infer I;
+    }
+    ? I
     : never
+  : never;
 
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+    schema: keyof DatabaseWithoutInternals;
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never = never
 > = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
+  schema: keyof DatabaseWithoutInternals;
 }
   ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
-      Update: infer U
+      Update: infer U;
     }
     ? U
     : never
   : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
-    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-        Update: infer U
-      }
-      ? U
-      : never
+  ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+      Update: infer U;
+    }
+    ? U
     : never
+  : never;
 
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
   EnumName extends DefaultSchemaEnumNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+    schema: keyof DatabaseWithoutInternals;
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never = never
 > = DefaultSchemaEnumNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
+  schema: keyof DatabaseWithoutInternals;
 }
   ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
   : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
-    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
-    : never
+  ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+  : never;
 
 export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
   CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+    schema: keyof DatabaseWithoutInternals;
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never = never
 > = PublicCompositeTypeNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
+  schema: keyof DatabaseWithoutInternals;
 }
   ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
   : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
-    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
-    : never
+  ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+  : never;
 
 export const Constants = {
   graphql_public: {
@@ -662,9 +919,16 @@ export const Constants = {
     Enums: {
       account_event_state: ["active", "needs_review", "excluded", "ended"],
       account_role: ["operator", "platform_admin"],
+      collection_job_status: [
+        "queued",
+        "running",
+        "succeeded",
+        "partial",
+        "failed",
+        "skipped",
+      ],
       event_certainty: ["confirmed", "provisional"],
       run_trigger: ["cron", "manual"],
     },
   },
-} as const
-
+} as const;

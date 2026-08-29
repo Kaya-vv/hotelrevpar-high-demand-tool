@@ -1,5 +1,5 @@
 {
-  "count": 2,
+  "count": 3,
   "next": null,
   "results": [
     {
@@ -23,6 +23,22 @@
       "local_rank": 60,
       "phq_attendance": null,
       "location": [5.47, 51.45]
+    },
+    {
+      "id": "phq-3",
+      "title": "Duplicate concert listing",
+      "category": "concerts",
+      "start": "2027-11-05T19:00:00Z",
+      "end": "2027-11-05T22:00:00Z",
+      "state": "deleted",
+      "deleted_reason": "duplicate",
+      "duplicate_of_id": "phq-1",
+      "cancelled": null,
+      "postponed": null,
+      "local_rank": 50,
+      "phq_attendance": null,
+      "location": [5.48, 51.44],
+      "entities": [{ "name": "Klokgebouw", "type": "venue" }]
     }
   ]
 }

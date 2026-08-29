@@ -1,11 +1,9 @@
-import { runCollection } from "@/features/collection/run";
+import { enqueueCollectionAreas } from "@/features/collection/jobs";
 import { requireAccount } from "@/lib/auth/require-account";
 import { createServerClient } from "@/lib/supabase/server";
 
-export const maxDuration = 300;
-
 export async function POST(_request: Request, { params }: { params: Promise<{ areaId: string }> }) {
-  const { accountId } = await requireAccount();
+  const { accountId, userId } = await requireAccount();
   const { areaId } = await params;
   const { data: area, error } = await (await createServerClient())
     .from("collection_areas")
@@ -17,6 +15,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ ar
   if (error) throw error;
   if (!area) return Response.json({ error: "Regio niet gevonden." }, { status: 404 });
 
-  return Response.json(await runCollection({ accountId, areaId, trigger: "manual" }));
+  const result = await enqueueCollectionAreas({ accountId, areaIds: [areaId], trigger: "manual", createdBy: userId });
+  return Response.json({ batchId: result.batchId, queued: result.queued, skipped: result.skipped });
 }
 

@@ -5,14 +5,14 @@ export function SourceHealthTable({ runs }: { runs: SourceHealthRun[] }) {
     <div className="health-list">
       {runs.map((run) => (
         <details className="panel" key={run.id}>
-          <summary><strong>{run.accountName}</strong><span>{run.areaName}</span><span>{new Date(run.startedAt).toLocaleString("nl-NL")}</span><span>{run.errorSummary ?? "Voltooid"}</span></summary>
+          <summary><strong>{run.accountName}</strong><span>{run.areaName}</span><span>{new Date(run.startedAt).toLocaleString("nl-NL")}</span><span>{run.errorSummary ?? (run.finishedAt ? "Voltooid" : "Bezig")}</span></summary>
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Bron</th><th>Status</th><th>Laatste succes</th><th>Fout</th><th>Gevonden</th><th>Uniek</th><th>Duplicaten</th><th>Review</th><th>Requests</th><th>Input</th><th>Output</th><th>Search</th></tr></thead>
+              <thead><tr><th>Bron</th><th>Status</th><th>Laatste succes</th><th>Fout</th><th>Gevonden</th><th>Uniek</th><th>Duplicaten</th><th>Review</th><th>Requests</th><th>AI-calls</th><th>Input</th><th>Output</th><th>Search</th><th>Fetch</th></tr></thead>
               <tbody>{run.sources.map((source) => (
                 <tr key={source.name}>
-                  <td>{source.name}</td><td>{source.state}</td><td>{source.lastSuccess ? new Date(source.lastSuccess).toLocaleString("nl-NL") : "Geen"}</td><td>{source.currentError ?? ""}</td>
-                  <td>{source.found}</td><td>{source.unique}</td><td>{source.duplicates}</td><td>{source.reviews}</td><td>{source.requests}</td><td>{source.inputTokens}</td><td>{source.outputTokens}</td><td>{source.webSearchRequests}</td>
+                  <td>{source.name}</td><td>{!run.finishedAt && source.state === "not_run" ? "Wachten" : source.state}</td><td>{source.lastSuccess ? new Date(source.lastSuccess).toLocaleString("nl-NL") : "Geen"}</td><td>{source.currentError ?? ""}</td>
+                  <td>{source.found}</td><td>{source.unique}</td><td>{source.duplicates}</td><td>{source.reviews}</td><td>{source.requests}</td><td>{source.usageCalls}</td><td>{source.inputTokens}</td><td>{source.outputTokens}</td><td>{source.webSearchRequests}</td><td>{source.webFetchRequests}</td>
                 </tr>
               ))}</tbody>
             </table>

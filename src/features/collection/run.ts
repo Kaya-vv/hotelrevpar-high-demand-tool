@@ -1,11 +1,25 @@
-import type { EventCandidate, SourceName } from "@/features/events/types";
 import { distanceKm } from "@/features/events/distance";
+import {
+  applyEvidenceReview,
+  asProvisional,
+  demandReviewFingerprint,
+  prefilterHotelDemand,
+  type DemandTriage,
+  type EvidenceReview,
+} from "@/features/events/hotel-demand";
+import type { EventCandidate, SourceName } from "@/features/events/types";
 
-import { collectClaude } from "./sources/claude";
+import {
+  collectClaude,
+  triagePredictHqCandidates,
+  verifyPredictHqCandidates,
+  type ClaudeUsageEvent,
+} from "./sources/claude";
 import { collectOpenHolidays } from "./sources/openholidays";
 import { collectPredictHq } from "./sources/predicthq";
 import { collectRijksoverheid } from "./sources/rijksoverheid";
 import { collectTicketmaster } from "./sources/ticketmaster";
+import { collectUefaForecasts } from "./sources/uefa";
 import type { SourceResult } from "./types";
 
 export type CollectionAreaContext = {
@@ -33,18 +47,88 @@ export type CollectionContext = {
   window: { start: string; end: string };
 };
 
-export type PersistResult = { state: "active" | "needs_review" | "excluded"; duplicate: boolean };
+export type PersistResult = {
+  state: "active" | "needs_review" | "excluded";
+  duplicate: boolean;
+  eventId?: string;
+};
+export type StoredDemandTriage = DemandTriage & { fingerprint: string };
+export type StoredEvidenceReview = EvidenceReview & { fingerprint: string };
 
 export type CollectionRepository = {
   startRun: (input: RunCollectionInput) => Promise<string>;
-  loadContext: (accountId: string, areaId: string) => Promise<CollectionContext>;
-  persistCandidate: (context: CollectionContext, candidate: EventCandidate) => Promise<PersistResult>;
-  finishRun: (runId: string, sourceResults: Record<string, unknown>, costUsage: Record<string, number>, errorSummary?: string) => Promise<void>;
+  loadContext: (
+    accountId: string,
+    areaId: string
+  ) => Promise<CollectionContext>;
+  persistCandidate: (
+    context: CollectionContext,
+    candidate: EventCandidate
+  ) => Promise<PersistResult>;
+  loadDemandTriages: (
+    context: CollectionContext,
+    candidates: EventCandidate[]
+  ) => Promise<Record<string, StoredDemandTriage>>;
+  saveDemandTriages: (
+    context: CollectionContext,
+    reviews: StoredDemandTriage[]
+  ) => Promise<void>;
+  loadEvidenceReviews: (
+    candidates: EventCandidate[]
+  ) => Promise<Record<string, StoredEvidenceReview>>;
+  saveEvidenceReviews: (reviews: StoredEvidenceReview[]) => Promise<void>;
+  hideCandidates: (
+    context: CollectionContext,
+    candidates: EventCandidate[]
+  ) => Promise<void>;
+  shouldRunClaudeDiscovery: (context: CollectionContext) => Promise<boolean>;
+  recalculateScores: (context: CollectionContext) => Promise<void>;
+  recordUsage: (
+    runId: string,
+    source: SourceName,
+    usage: ClaudeUsageEvent
+  ) => Promise<void>;
+  finishRun: (
+    runId: string,
+    sourceResults: Record<string, unknown>,
+    costUsage: Record<string, number>,
+    errorSummary?: string
+  ) => Promise<void>;
 };
 
 type Collector = (context: CollectionContext) => Promise<SourceResult>;
-type RunDependencies = { repository: CollectionRepository; collectors: Partial<Record<SourceName, Collector>> };
-export type RunCollectionInput = { accountId: string; areaId: string; trigger: "cron" | "manual" };
+type DemandTriageReviewer = (input: {
+  candidates: EventCandidate[];
+  hotelName: string;
+  location: string;
+  radiusKm: number;
+  distancesKm?: Record<string, number>;
+}) => Promise<{
+  reviews: DemandTriage[];
+  requests: number;
+  usage: Record<string, number>;
+}>;
+type EvidenceReviewer = (input: {
+  candidates: EventCandidate[];
+  hotelName: string;
+  location: string;
+  radiusKm: number;
+}) => Promise<{
+  reviews: EvidenceReview[];
+  requests: number;
+  usage: Record<string, number>;
+}>;
+type RunDependencies = {
+  repository: CollectionRepository;
+  collectors: Partial<Record<SourceName, Collector>>;
+  demandTriageReviewer?: DemandTriageReviewer;
+  evidenceReviewer?: EvidenceReviewer;
+};
+export type RunCollectionInput = {
+  accountId: string;
+  areaId: string;
+  trigger: "cron" | "manual";
+};
 export type CollectionRunSummary = {
   runId: string;
   status: "completed" | "partial" | "already_running";
@@ -58,11 +142,17 @@ class SourceUnavailableError extends Error {
 }
 
 function configured(value: string | undefined, source: string) {
-  if (!value) throw new SourceUnavailableError("unlicensed", `${source} credentials are missing.`);
+  if (!value)
+    throw new SourceUnavailableError(
+      "unlicensed",
+      `${source} credentials are missing.`
+    );
   return value;
 }
 
-function defaultCollectors(): Partial<Record<SourceName, Collector>> {
+function defaultCollectors(
+  onUsage: (source: SourceName, usage: ClaudeUsageEvent) => Promise<void>
+): Partial<Record<SourceName, Collector>> {
   return {
     rijksoverheid: (context) => collectRijksoverheid(context.window),
     openholidays: (context) => collectOpenHolidays(context.window),
@@ -81,38 +171,88 @@ function defaultCollectors(): Partial<Record<SourceName, Collector>> {
         latitude: context.area.latitude,
         longitude: context.area.longitude,
         radiusKm: context.area.radiusKm,
-        accessToken: configured(process.env.PREDICTHQ_ACCESS_TOKEN, "PredictHQ"),
+        accessToken: configured(
+          process.env.PREDICTHQ_ACCESS_TOKEN,
+          "PredictHQ"
+        ),
       }),
     claude: (context) => {
       configured(process.env.ANTHROPIC_API_KEY, "Anthropic");
-      return collectClaude({ ...context.window, location: context.area.searchLocation, radiusKm: context.area.radiusKm });
+      return collectClaude({
+        ...context.window,
+        location: context.area.searchLocation,
+        radiusKm: context.area.radiusKm,
+        onUsage: (usage) => onUsage("claude", usage),
+      });
     },
+    uefa: (context) => Promise.resolve(collectUefaForecasts(context.window)),
+  };
+}
+
+function defaultDemandTriageReviewer(
+  onUsage: (source: SourceName, usage: ClaudeUsageEvent) => Promise<void>
+): DemandTriageReviewer {
+  return (input) => {
+    configured(process.env.ANTHROPIC_API_KEY, "Anthropic");
+    return triagePredictHqCandidates({
+      ...input,
+      onUsage: (usage) => onUsage("predicthq", usage),
+    });
+  };
+}
+
+function defaultEvidenceReviewer(
+  onUsage: (source: SourceName, usage: ClaudeUsageEvent) => Promise<void>
+): EvidenceReviewer {
+  return (input) => {
+    configured(process.env.ANTHROPIC_API_KEY, "Anthropic");
+    return verifyPredictHqCandidates({
+      ...input,
+      onUsage: (usage) => onUsage("predicthq", usage),
+    });
   };
 }
 
 function relevantToHotel(candidate: EventCandidate, hotel: HotelContext) {
-  if (candidate.category === "school_holiday") return candidate.regionScope === hotel.holidayRegion;
+  if (candidate.category === "school_holiday")
+    return candidate.regionScope === hotel.holidayRegion;
   if (candidate.category === "public_holiday") return true;
   if (candidate.latitude === null || candidate.longitude === null) return false;
-  return distanceKm(hotel.latitude, hotel.longitude, candidate.latitude, candidate.longitude) <= hotel.demandRadiusKm;
+  return (
+    distanceKm(
+      hotel.latitude,
+      hotel.longitude,
+      candidate.latitude,
+      candidate.longitude
+    ) <= hotel.demandRadiusKm
+  );
 }
 
 function errorState(reason: unknown) {
-  if (reason instanceof SourceUnavailableError) return { state: reason.state, error: reason.message };
+  if (reason instanceof SourceUnavailableError)
+    return { state: reason.state, error: reason.message };
   return { state: "failed", error: errorMessage(reason) };
 }
 
 function errorMessage(reason: unknown) {
   if (reason instanceof Error) return reason.message;
-  if (reason && typeof reason === "object" && "message" in reason && typeof reason.message === "string") return reason.message;
+  if (
+    reason &&
+    typeof reason === "object" &&
+    "message" in reason &&
+    typeof reason.message === "string"
+  )
+    return reason.message;
   return String(reason);
 }
 
 export async function runCollection(
   input: RunCollectionInput,
-  dependencies?: RunDependencies,
+  dependencies?: RunDependencies
 ): Promise<CollectionRunSummary> {
-  const repository = dependencies?.repository ?? (await import("./repository")).createCollectionRepository();
+  const repository =
+    dependencies?.repository ??
+    (await import("./repository")).createCollectionRepository();
   let runId: string;
   try {
     runId = await repository.startRun(input);
@@ -130,16 +270,43 @@ export async function runCollection(
 
   try {
     const context = await repository.loadContext(input.accountId, input.areaId);
-    const collectors = dependencies?.collectors ?? defaultCollectors();
-    const tasks = context.area.enabledSources.map(async (source) => {
+    const observeUsage = (source: SourceName, event: ClaudeUsageEvent) =>
+      repository.recordUsage(runId, source, event);
+    const collectors =
+      dependencies?.collectors ?? defaultCollectors(observeUsage);
+    const demandTriageReviewer = dependencies
+      ? dependencies.demandTriageReviewer
+      : defaultDemandTriageReviewer(observeUsage);
+    const evidenceReviewer = dependencies
+      ? dependencies.evidenceReviewer
+      : defaultEvidenceReviewer(observeUsage);
+    const sourcesToRun: SourceName[] = [];
+    for (const source of context.area.enabledSources) {
+      if (
+        source === "claude" &&
+        !(await repository.shouldRunClaudeDiscovery(context))
+      ) {
+        sourceResults.claude = {
+          state: "skipped",
+          reason: "Claude discovery runs at most once every 28 days.",
+        };
+      } else {
+        sourcesToRun.push(source);
+      }
+    }
+    const tasks = sourcesToRun.map(async (source) => {
       const collector = collectors[source];
-      if (!collector) throw new SourceUnavailableError("disabled", `${source} is not configured.`);
+      if (!collector)
+        throw new SourceUnavailableError(
+          "disabled",
+          `${source} is not configured.`
+        );
       return collector(context);
     });
     const settled = await Promise.allSettled(tasks);
 
     for (let index = 0; index < settled.length; index += 1) {
-      const source = context.area.enabledSources[index];
+      const source = sourcesToRun[index];
       const result = settled[index];
       if (result.status === "rejected") {
         failed = true;
@@ -147,29 +314,266 @@ export async function runCollection(
         continue;
       }
 
-      const relevant = result.value.candidates.filter((event) => context.hotels.some((hotel) => relevantToHotel(event, hotel)));
-      const unique = new Map(relevant.map((event) => [`${event.provider}:${event.providerEventId}`, event]));
+      const relevant = result.value.candidates.filter((event) =>
+        context.hotels.some((hotel) => relevantToHotel(event, hotel))
+      );
+      const missingLocationCount = result.value.candidates.filter(
+        (event) =>
+          !["school_holiday", "public_holiday"].includes(event.category) &&
+          (event.latitude === null || event.longitude === null)
+      ).length;
+      const unique = new Map(
+        relevant.map((event) => [
+          `${event.provider}:${event.providerEventId}`,
+          event,
+        ])
+      );
+      let candidates = [...unique.values()];
+      let hiddenCount = 0;
+      let cachedCount = 0;
+      let provisionalCount = 0;
+      let triageRequests = 0;
+      let verificationRequests = 0;
+      let sourceError: string | null = null;
+      const sourceUsage = { ...result.value.usage };
+
+      if (source === "predicthq") {
+        const direct: EventCandidate[] = [];
+        const directProvisional: EventCandidate[] = [];
+        const toTriage: EventCandidate[] = [];
+        const hidden: EventCandidate[] = [];
+        for (const event of candidates) {
+          const decision = prefilterHotelDemand(event);
+          if (decision.action === "persist") direct.push(event);
+          if (decision.action === "provisional")
+            directProvisional.push(
+              asProvisional(
+                event,
+                "Voorlopig vraagmoment op basis van een bekende competitiekalender."
+              )
+            );
+          if (decision.action === "triage") toTriage.push(event);
+          if (decision.action === "exclude") hidden.push(event);
+        }
+
+        const cached = await repository.loadDemandTriages(context, toTriage);
+        const stale = toTriage.filter(
+          (event) =>
+            cached[event.providerEventId]?.fingerprint !==
+            demandReviewFingerprint(event)
+        );
+        const triages = new Map<string, StoredDemandTriage>();
+        toTriage.forEach((event) => {
+          const review = cached[event.providerEventId];
+          if (review?.fingerprint === demandReviewFingerprint(event)) {
+            triages.set(event.providerEventId, review);
+            cachedCount += 1;
+          }
+        });
+
+        if (stale.length) {
+          if (!demandTriageReviewer) {
+            failed = true;
+            sourceResults[source] = {
+              state: "unlicensed",
+              error: "Anthropic is required to triage PredictHQ candidates.",
+            };
+            continue;
+          }
+          let triaged: Awaited<ReturnType<DemandTriageReviewer>>;
+          try {
+            triaged = await demandTriageReviewer({
+              candidates: stale,
+              hotelName: context.area.name,
+              location: context.area.searchLocation,
+              radiusKm: context.area.radiusKm,
+              distancesKm: Object.fromEntries(
+                stale.flatMap((event) =>
+                  event.latitude === null || event.longitude === null
+                    ? []
+                    : [
+                        [
+                          event.providerEventId,
+                          distanceKm(
+                            context.area.latitude,
+                            context.area.longitude,
+                            event.latitude,
+                            event.longitude
+                          ),
+                        ],
+                      ]
+                )
+              ),
+            });
+          } catch (error) {
+            failed = true;
+            sourceResults[source] = errorState(error);
+            continue;
+          }
+          triageRequests = triaged.requests;
+          Object.entries(triaged.usage).forEach(([key, value]) => {
+            sourceUsage[key] = (sourceUsage[key] ?? 0) + value;
+          });
+          const staleById = new Map(
+            stale.map((event) => [event.providerEventId, event])
+          );
+          const fresh = triaged.reviews.flatMap((review) => {
+            const event = staleById.get(review.providerEventId);
+            return event
+              ? [{ ...review, fingerprint: demandReviewFingerprint(event) }]
+              : [];
+          });
+          await repository.saveDemandTriages(context, fresh);
+          fresh.forEach((review) =>
+            triages.set(review.providerEventId, review)
+          );
+        }
+
+        const provisional = [...directProvisional];
+        const toVerify: EventCandidate[] = [];
+        for (const event of toTriage) {
+          const review = triages.get(event.providerEventId);
+          if (!review || review.decision === "exclude") hidden.push(event);
+          if (review?.decision === "provisional")
+            provisional.push(asProvisional(event, review.evidenceText));
+          if (review?.decision === "verify") toVerify.push(event);
+        }
+
+        const evidence = new Map<string, StoredEvidenceReview>();
+        const cachedEvidence = await repository.loadEvidenceReviews(toVerify);
+        const missingEvidence: EventCandidate[] = [];
+        toVerify.forEach((event) => {
+          const review = cachedEvidence[event.providerEventId];
+          if (review?.fingerprint === demandReviewFingerprint(event)) {
+            evidence.set(event.providerEventId, review);
+            cachedCount += 1;
+          } else {
+            missingEvidence.push(event);
+          }
+        });
+
+        const verificationQueue = missingEvidence.slice(0, 10);
+        missingEvidence
+          .slice(10)
+          .forEach((event) =>
+            provisional.push(
+              asProvisional(
+                event,
+                "Webcontrole uitgesteld door de limiet van tien controles per run."
+              )
+            )
+          );
+        if (verificationQueue.length) {
+          if (!evidenceReviewer) {
+            verificationQueue.forEach((event) =>
+              provisional.push(
+                asProvisional(
+                  event,
+                  "Nog niet via een openbare bron gecontroleerd."
+                )
+              )
+            );
+            failed = true;
+            sourceError =
+              "Anthropic is required to verify High/Piek PredictHQ candidates.";
+          } else {
+            try {
+              const verified = await evidenceReviewer({
+                candidates: verificationQueue,
+                hotelName: context.area.name,
+                location: context.area.searchLocation,
+                radiusKm: context.area.radiusKm,
+              });
+              verificationRequests = verified.requests;
+              Object.entries(verified.usage).forEach(([key, value]) => {
+                sourceUsage[key] = (sourceUsage[key] ?? 0) + value;
+              });
+              const eventById = new Map(
+                verificationQueue.map((event) => [event.providerEventId, event])
+              );
+              const fresh = verified.reviews.flatMap((review) => {
+                const event = eventById.get(review.providerEventId);
+                return event
+                  ? [{ ...review, fingerprint: demandReviewFingerprint(event) }]
+                  : [];
+              });
+              await repository.saveEvidenceReviews(fresh);
+              fresh.forEach((review) =>
+                evidence.set(review.providerEventId, review)
+              );
+            } catch (error) {
+              failed = true;
+              verificationQueue.forEach((event) =>
+                provisional.push(
+                  asProvisional(event, "Webcontrole kon niet worden afgerond.")
+                )
+              );
+              sourceError = errorMessage(error);
+            }
+          }
+        }
+
+        const verifiedCandidates: EventCandidate[] = [];
+        for (const event of toVerify) {
+          const review = evidence.get(event.providerEventId);
+          if (review?.decision === "verified")
+            verifiedCandidates.push(applyEvidenceReview(event, review));
+          if (review?.decision === "unverifiable")
+            provisional.push(asProvisional(event, review.evidenceText));
+          if (
+            !review &&
+            !provisional.some(
+              (candidate) => candidate.providerEventId === event.providerEventId
+            )
+          ) {
+            provisional.push(
+              asProvisional(
+                event,
+                "Nog niet via een openbare bron gecontroleerd."
+              )
+            );
+          }
+        }
+        await repository.hideCandidates(context, hidden);
+        hiddenCount = hidden.length;
+        provisionalCount = provisional.length;
+        candidates = [...direct, ...verifiedCandidates, ...provisional];
+      }
+
       let reviewCount = 0;
       let duplicateCount = relevant.length - unique.size;
-      for (const event of unique.values()) {
+      const canonicalIds = new Set<string>();
+      const canonicalReviewIds = new Set<string>();
+      for (const event of candidates) {
         const persisted = await repository.persistCandidate(context, event);
         if (persisted.state === "needs_review") reviewCount += 1;
+        if (persisted.eventId) canonicalIds.add(persisted.eventId);
+        if (persisted.state === "needs_review" && persisted.eventId)
+          canonicalReviewIds.add(persisted.eventId);
         if (persisted.duplicate) duplicateCount += 1;
       }
-      Object.entries(result.value.usage).forEach(([key, value]) => {
+      Object.entries(sourceUsage).forEach(([key, value]) => {
         usage[key] = (usage[key] ?? 0) + value;
       });
       sourceResults[source] = {
-        state: unique.size ? "success" : "zero",
-        candidates: unique.size,
+        state: sourceError ? "partial" : candidates.length ? "success" : "zero",
+        ...(sourceError ? { error: sourceError } : {}),
+        candidates: candidates.length,
         found: result.value.candidates.length,
-        unique: unique.size,
-        requests: result.value.requests,
-        reviews: reviewCount,
+        unique: canonicalIds.size || candidates.length,
+        requests: result.value.requests + triageRequests + verificationRequests,
+        triageRequests,
+        verificationRequests,
+        cached: cachedCount,
+        excluded: hiddenCount,
+        provisional: provisionalCount,
+        reviews: canonicalReviewIds.size || reviewCount,
+        missingLocation: missingLocationCount,
         duplicates: duplicateCount,
-        usage: result.value.usage,
+        usage: sourceUsage,
       };
     }
+    await repository.recalculateScores(context);
   } catch (error) {
     failed = true;
     fatalError = error;
@@ -178,7 +582,7 @@ export async function runCollection(
       runId,
       sourceResults,
       usage,
-      fatalError ? errorMessage(fatalError) : undefined,
+      fatalError ? errorMessage(fatalError) : undefined
     );
   }
 

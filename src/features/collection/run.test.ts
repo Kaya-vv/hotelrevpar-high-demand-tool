@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { EventCandidate } from "@/features/events/types";
+import { demandReviewFingerprint } from "@/features/events/hotel-demand";
 
 import { runCollection, type CollectionRepository } from "./run";
 import { sourceChange } from "./source-change";
@@ -34,6 +35,14 @@ function repository(overrides: Partial<CollectionRepository> = {}): CollectionRe
       hotels: [{ id: "hotel-1", latitude: 51.44, longitude: 5.48, demandRadiusKm: 25, holidayRegion: "south" }],
     }),
     persistCandidate: vi.fn().mockResolvedValue({ state: "active", duplicate: false }),
+    loadDemandTriages: vi.fn().mockResolvedValue({}),
+    saveDemandTriages: vi.fn().mockResolvedValue(undefined),
+    loadEvidenceReviews: vi.fn().mockResolvedValue({}),
+    saveEvidenceReviews: vi.fn().mockResolvedValue(undefined),
+    hideCandidates: vi.fn().mockResolvedValue(undefined),
+    shouldRunClaudeDiscovery: vi.fn().mockResolvedValue(true),
+    recalculateScores: vi.fn().mockResolvedValue(undefined),
+    recordUsage: vi.fn().mockResolvedValue(undefined),
     finishRun: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
@@ -148,5 +157,119 @@ describe("runCollection", () => {
     )).rejects.toBe(databaseError);
 
     expect(repo.finishRun).toHaveBeenCalledWith("run-1", {}, {}, "URI too long");
+  });
+
+  it("uses cheap triage before persisting Claude-verified hotel demand", async () => {
+    const plausible = { ...candidate, provider: "predicthq" as const, providerEventId: "phq-major", category: "expos", localRank: 75, primarySourceConfirmed: false };
+    const amateur = { ...plausible, providerEventId: "phq-amateur", category: "sports", attendance: 1500, localRank: 82 };
+    const repo = repository({
+      loadContext: vi.fn().mockResolvedValue({
+        area: { id: "area-1", accountId: "account-1", name: "Testhotel", searchLocation: "Eindhoven", latitude: 51.44, longitude: 5.48, radiusKm: 25, enabledSources: ["predicthq"] },
+        hotels: [{ id: "hotel-1", latitude: 51.44, longitude: 5.48, demandRadiusKm: 25, holidayRegion: "south" }],
+      }),
+    });
+    const demandTriageReviewer = vi.fn().mockResolvedValue({
+      reviews: [{ providerEventId: "phq-major", decision: "verify", confidence: "high", demandLevel: "high", evidenceText: "Landelijke vakbeurs." }],
+      requests: 1,
+      usage: { inputTokens: 100, outputTokens: 30, webSearchRequests: 0 },
+    });
+    const evidenceReviewer = vi.fn().mockResolvedValue({
+      reviews: [{ providerEventId: "phq-major", decision: "verified", confidence: "high", sourceUrl: "https://organizer.nl/major", evidenceText: "Primaire bron bevestigd." }],
+      requests: 1,
+      usage: { inputTokens: 100, outputTokens: 30, webSearchRequests: 1 },
+    });
+
+    await runCollection(
+      { accountId: "account-1", areaId: "area-1", trigger: "manual" },
+      { repository: repo, collectors: { predicthq: vi.fn().mockResolvedValue({ source: "predicthq", candidates: [plausible, amateur], requests: 1, usage: {} }) }, demandTriageReviewer, evidenceReviewer },
+    );
+
+    expect(demandTriageReviewer).toHaveBeenCalledWith(expect.objectContaining({ candidates: [plausible], hotelName: "Testhotel" }));
+    expect(evidenceReviewer).toHaveBeenCalledWith(expect.objectContaining({ candidates: [plausible], hotelName: "Testhotel" }));
+    expect(repo.persistCandidate).toHaveBeenCalledTimes(1);
+    expect(repo.persistCandidate).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ providerEventId: "phq-major", publicSourceUrl: "https://organizer.nl/major", primarySourceConfirmed: true }));
+    expect(repo.hideCandidates).toHaveBeenCalledWith(expect.anything(), [amateur]);
+    expect(repo.saveDemandTriages).toHaveBeenCalledWith(expect.anything(), [expect.objectContaining({ fingerprint: demandReviewFingerprint(plausible) })]);
+    expect(repo.saveEvidenceReviews).toHaveBeenCalledWith([expect.objectContaining({ fingerprint: demandReviewFingerprint(plausible) })]);
+  });
+
+  it("reuses unchanged hotel triage and global evidence without calling Claude", async () => {
+    const plausible = { ...candidate, provider: "predicthq" as const, providerEventId: "phq-major", category: "expos", localRank: 75, primarySourceConfirmed: false };
+    const cachedTriage = { providerEventId: plausible.providerEventId, fingerprint: demandReviewFingerprint(plausible), decision: "verify" as const, confidence: "high" as const, demandLevel: "high" as const, evidenceText: "Landelijke vakbeurs." };
+    const cachedEvidence = { providerEventId: plausible.providerEventId, fingerprint: demandReviewFingerprint(plausible), decision: "verified" as const, confidence: "high" as const, sourceUrl: "https://organizer.nl/major", evidenceText: "Primaire bron bevestigd." };
+    const repo = repository({
+      loadContext: vi.fn().mockResolvedValue({
+        area: { id: "area-1", accountId: "account-1", name: "Testhotel", searchLocation: "Eindhoven", latitude: 51.44, longitude: 5.48, radiusKm: 25, enabledSources: ["predicthq"] },
+        hotels: [{ id: "hotel-1", latitude: 51.44, longitude: 5.48, demandRadiusKm: 25, holidayRegion: "south" }],
+      }),
+      loadDemandTriages: vi.fn().mockResolvedValue({ "phq-major": cachedTriage }),
+      loadEvidenceReviews: vi.fn().mockResolvedValue({ "phq-major": cachedEvidence }),
+    });
+    const demandTriageReviewer = vi.fn();
+    const evidenceReviewer = vi.fn();
+
+    await runCollection(
+      { accountId: "account-1", areaId: "area-1", trigger: "manual" },
+      { repository: repo, collectors: { predicthq: vi.fn().mockResolvedValue({ source: "predicthq", candidates: [plausible], requests: 1, usage: {} }) }, demandTriageReviewer, evidenceReviewer },
+    );
+
+    expect(demandTriageReviewer).not.toHaveBeenCalled();
+    expect(evidenceReviewer).not.toHaveBeenCalled();
+    expect(repo.persistCandidate).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ publicSourceUrl: cachedEvidence.sourceUrl }));
+  });
+
+  it("caps web verification at ten candidates and keeps overflow provisional", async () => {
+    const candidates = Array.from({ length: 12 }, (_, index) => ({
+      ...candidate,
+      provider: "predicthq" as const,
+      providerEventId: `phq-${index}`,
+      category: "expos",
+      localRank: 90,
+      primarySourceConfirmed: false,
+    }));
+    const repo = repository({
+      loadContext: vi.fn().mockResolvedValue({
+        area: { id: "area-1", accountId: "account-1", name: "Testhotel", searchLocation: "Eindhoven", latitude: 51.44, longitude: 5.48, radiusKm: 25, enabledSources: ["predicthq"] },
+        hotels: [{ id: "hotel-1", latitude: 51.44, longitude: 5.48, demandRadiusKm: 25, holidayRegion: "south" }],
+      }),
+    });
+    const demandTriageReviewer = vi.fn().mockResolvedValue({
+      reviews: candidates.map((event) => ({ providerEventId: event.providerEventId, decision: "verify" as const, confidence: "high" as const, demandLevel: "high" as const, evidenceText: "Groot evenement." })),
+      requests: 1,
+      usage: {},
+    });
+    const evidenceReviewer = vi.fn().mockImplementation(async ({ candidates: verificationCandidates }: { candidates: EventCandidate[] }) => ({
+      reviews: verificationCandidates.map((event: EventCandidate) => ({ providerEventId: event.providerEventId, decision: "verified" as const, confidence: "high" as const, sourceUrl: `https://example.com/${event.providerEventId}`, evidenceText: "Bevestigd." })),
+      requests: verificationCandidates.length,
+      usage: {},
+    }));
+
+    const result = await runCollection(
+      { accountId: "account-1", areaId: "area-1", trigger: "manual" },
+      { repository: repo, collectors: { predicthq: vi.fn().mockResolvedValue({ source: "predicthq", candidates, requests: 1, usage: {} }) }, demandTriageReviewer, evidenceReviewer },
+    );
+
+    expect(evidenceReviewer).toHaveBeenCalledWith(expect.objectContaining({ candidates: candidates.slice(0, 10) }));
+    expect(repo.persistCandidate).toHaveBeenCalledTimes(12);
+    expect(result.sourceResults.predicthq).toMatchObject({ verificationRequests: 10, provisional: 2 });
+  });
+
+  it("runs broad Claude discovery at most once per 28 days", async () => {
+    const claude = vi.fn();
+    const repo = repository({
+      shouldRunClaudeDiscovery: vi.fn().mockResolvedValue(false),
+      loadContext: vi.fn().mockResolvedValue({
+        area: { id: "area-1", accountId: "account-1", name: "Testhotel", searchLocation: "Eindhoven", latitude: 51.44, longitude: 5.48, radiusKm: 25, enabledSources: ["claude"] },
+        hotels: [{ id: "hotel-1", latitude: 51.44, longitude: 5.48, demandRadiusKm: 25, holidayRegion: "south" }],
+      }),
+    });
+
+    const result = await runCollection(
+      { accountId: "account-1", areaId: "area-1", trigger: "manual" },
+      { repository: repo, collectors: { claude } },
+    );
+
+    expect(claude).not.toHaveBeenCalled();
+    expect(result.sourceResults.claude).toMatchObject({ state: "skipped" });
   });
 });

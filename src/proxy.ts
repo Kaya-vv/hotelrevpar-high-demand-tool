@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 
 export function isPublicPath(pathname: string) {
-  return pathname === "/login" || pathname === "/api/cron/collect";
+  return pathname === "/login" || pathname === "/api/cron/collect" || pathname === "/api/queues/collect-hotel";
 }
 
 export async function proxy(request: NextRequest) {

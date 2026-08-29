@@ -1,5 +1,18 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "src/app/api/queues/collect-hotel/route.ts": {
+      "maxDuration": 300,
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "hotel-collection",
+          "maxConcurrency": 2,
+          "retryAfterSeconds": 30
+        }
+      ]
+    }
+  },
   "crons": [{ "path": "/api/cron/collect", "schedule": "0 5 * * 1" }]
 }
 

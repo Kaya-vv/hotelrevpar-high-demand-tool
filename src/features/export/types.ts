@@ -1,9 +1,11 @@
+import type { DemandLevel } from "@/features/events/importance";
+
 export type ExportEvent = {
   id: string;
   title: string;
   startAt: string;
   endAt: string;
-  hotels: Array<{ id: string; code: string; importance: "Low" | "Medium" | "High" }>;
+  hotels: Array<{ id: string; code: string; importance: DemandLevel }>;
 };
 
 export type RevControlRow = {

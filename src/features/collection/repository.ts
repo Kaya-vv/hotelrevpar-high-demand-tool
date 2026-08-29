@@ -1,13 +1,36 @@
 import { normalizeCandidate } from "@/features/events/normalize";
+import { fetchInBatches } from "@/lib/supabase/fetch-in-batches";
 import { classifyMatch } from "@/features/events/match";
+import { resolvedReviewState, reviewFingerprint } from "@/features/events/review-fingerprint";
 import { scoreHotelEvent } from "@/features/events/score";
-import type { ValidationReason } from "@/features/events/types";
+import type { EventCandidate, ValidationReason } from "@/features/events/types";
 import { validateCandidate } from "@/features/events/validate";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Json } from "@/lib/supabase/database.types";
 
-import type { CollectionContext, CollectionRepository, RunCollectionInput } from "./run";
+import type {
+  CollectionContext,
+  CollectionRepository,
+  RunCollectionInput,
+  StoredDemandTriage,
+  StoredEvidenceReview,
+} from "./run";
 import { sourceChange } from "./source-change";
+
+const structuredUpdateProviders = new Set(["rijksoverheid", "openholidays", "ticketmaster", "predicthq"]);
+const automatedSourceStates = new Set<EventCandidate["sourceState"]>(["cancelled", "postponed", "removed"]);
+const automatedStatusReasons = new Set<ValidationReason>(["cancelled", "postponed", "removed"]);
+
+function publicSourceUrl(candidate: EventCandidate) {
+  const value = candidate.publicSourceUrl ?? (candidate.primarySourceConfirmed ? candidate.sourceUrl : null);
+  if (!value) return null;
+  if (/[\s'"{}\[\]]/.test(value)) return null;
+  try {
+    return new URL(value).hostname === "api.predicthq.com" ? null : value;
+  } catch {
+    return null;
+  }
+}
 
 function window() {
   const start = new Date();
@@ -70,6 +93,117 @@ export function createCollectionRepository(): CollectionRepository {
       } as CollectionContext;
     },
 
+    async loadDemandTriages(context, candidates) {
+      if (!candidates.length) return {};
+      const rows = await fetchInBatches(candidates.map((candidate) => candidate.providerEventId), (ids) =>
+        supabase
+          .from("event_candidate_reviews")
+          .select("provider_event_id, fingerprint, decision, confidence, demand_level, source_url, evidence_text")
+          .eq("collection_area_id", context.area.id)
+          .eq("provider", "predicthq")
+          .in("provider_event_id", ids),
+      );
+      return Object.fromEntries(rows.map((row) => [row.provider_event_id, {
+        providerEventId: row.provider_event_id,
+        fingerprint: row.fingerprint,
+        decision: row.decision as StoredDemandTriage["decision"],
+        confidence: row.confidence as StoredDemandTriage["confidence"],
+        demandLevel: row.demand_level as StoredDemandTriage["demandLevel"],
+        evidenceText: row.evidence_text,
+      } satisfies StoredDemandTriage]));
+    },
+
+    async saveDemandTriages(context, reviews) {
+      if (!reviews.length) return;
+      const { error } = await supabase.from("event_candidate_reviews").upsert(reviews.map((review) => ({
+        collection_area_id: context.area.id,
+        provider: "predicthq",
+        provider_event_id: review.providerEventId,
+        fingerprint: review.fingerprint,
+        decision: review.decision,
+        confidence: review.confidence,
+        demand_level: review.demandLevel,
+        source_url: null,
+        evidence_text: review.evidenceText,
+        checked_at: new Date().toISOString(),
+      })));
+      if (error) throw error;
+    },
+
+    async loadEvidenceReviews(candidates) {
+      if (!candidates.length) return {};
+      const rows = await fetchInBatches(candidates.map((candidate) => candidate.providerEventId), (ids) =>
+        supabase
+          .from("event_evidence_cache")
+          .select("provider_event_id, fingerprint, decision, confidence, source_url, evidence_text")
+          .eq("provider", "predicthq")
+          .in("provider_event_id", ids),
+      );
+      return Object.fromEntries(rows.map((row) => [row.provider_event_id, {
+        providerEventId: row.provider_event_id,
+        fingerprint: row.fingerprint,
+        decision: row.decision as StoredEvidenceReview["decision"],
+        confidence: row.confidence as StoredEvidenceReview["confidence"],
+        sourceUrl: row.source_url,
+        evidenceText: row.evidence_text,
+      } satisfies StoredEvidenceReview]));
+    },
+
+    async saveEvidenceReviews(reviews) {
+      if (!reviews.length) return;
+      const { error } = await supabase.from("event_evidence_cache").upsert(reviews.map((review) => ({
+        provider: "predicthq",
+        provider_event_id: review.providerEventId,
+        fingerprint: review.fingerprint,
+        decision: review.decision,
+        confidence: review.confidence,
+        source_url: review.sourceUrl,
+        evidence_text: review.evidenceText,
+        checked_at: new Date().toISOString(),
+      })));
+      if (error) throw error;
+    },
+
+    async hideCandidates(context, candidates) {
+      if (!candidates.length) return;
+      const sources = await fetchInBatches(candidates.map((candidate) => candidate.providerEventId), (ids) =>
+        supabase.from("event_sources").select("event_id").eq("provider", "predicthq").in("provider_event_id", ids),
+      );
+      const eventIds = [...new Set(sources.map((source) => source.event_id))];
+      for (let index = 0; index < eventIds.length; index += 50) {
+        const ids = eventIds.slice(index, index + 50);
+        const { error: linkError } = await supabase
+          .from("account_event_areas")
+          .delete()
+          .eq("account_id", context.area.accountId)
+          .eq("collection_area_id", context.area.id)
+          .in("event_id", ids);
+        if (linkError) throw linkError;
+        const { error: scoreError } = await supabase
+          .from("hotel_event_scores")
+          .delete()
+          .in("hotel_id", context.hotels.map((hotel) => hotel.id))
+          .in("event_id", ids);
+        if (scoreError) throw scoreError;
+      }
+    },
+
+    async shouldRunClaudeDiscovery(context) {
+      const { data, error } = await supabase
+        .from("collection_runs")
+        .select("finished_at")
+        .eq("account_id", context.area.accountId)
+        .eq("collection_area_id", context.area.id)
+        .not("finished_at", "is", null)
+        .filter("source_results->claude->>state", "in", "(success,zero)")
+        .order("finished_at", { ascending: false })
+        .limit(1);
+      if (error) throw error;
+      const lastDiscovery = data[0];
+      if (!lastDiscovery?.finished_at) return true;
+      return Date.now() - new Date(lastDiscovery.finished_at).getTime() >= 28 * 24 * 60 * 60 * 1000;
+    },
+
     async persistCandidate(context, candidate) {
       const normalized = normalizeCandidate(candidate);
       const { data: existingSource, error: sourceError } = await supabase
@@ -82,8 +216,9 @@ export function createCollectionRepository(): CollectionRepository {
 
       let eventId: string | null = existingSource?.event_id ?? null;
       let conflict: ValidationReason | null = null;
-      let preserveCanonical = false;
+      let preserveCanonical = automatedSourceStates.has(candidate.sourceState);
       let duplicate = false;
+      let reviewTargetEventId: string | null = null;
 
       if (existingSource) {
         const change = sourceChange(
@@ -91,45 +226,72 @@ export function createCollectionRepository(): CollectionRepository {
           candidate,
         );
         conflict = change.conflict;
-        preserveCanonical = change.preserveCanonical;
+        preserveCanonical = preserveCanonical || change.preserveCanonical;
+        if (conflict && structuredUpdateProviders.has(candidate.provider) && !automatedSourceStates.has(candidate.sourceState)) {
+          conflict = null;
+          preserveCanonical = false;
+        }
       } else {
-        const dayStart = `${normalized.localStartDate}T00:00:00Z`;
-        const dayEnd = `${normalized.localStartDate}T23:59:59Z`;
-        const { data: nearby, error: nearbyError } = await supabase
-          .from("events")
-          .select("*")
-          .gte("start_at", dayStart)
-          .lte("start_at", dayEnd);
-        if (nearbyError) throw nearbyError;
-        const match = classifyMatch(
-          normalized,
-          nearby.map((event) =>
-            normalizeCandidate({
-              provider: candidate.provider,
-              providerEventId: "",
-              sourceUrl: candidate.sourceUrl,
-              title: event.title,
-              category: event.category,
-              venue: event.venue,
-              latitude: event.latitude,
-              longitude: event.longitude,
-              regionScope: event.region_scope,
-              startAt: event.start_at,
-              endAt: event.end_at,
-              sourceState: event.source_state === "predicted" ? "predicted" : "active",
-              certainty: event.certainty,
-              localRank: null,
-              attendance: null,
-              venueCapacity: null,
-              evidenceText: null,
-              primarySourceConfirmed: true,
-            }),
-          ).map((event, index) => ({ ...event, id: nearby[index].id })),
-        );
-        if (match.kind === "exact") eventId = match.eventId;
-        if (match.kind === "uncertain") {
-          duplicate = true;
-          conflict = "duplicate_uncertain";
+        if (candidate.providerDuplicateOfId) {
+          const { data: duplicateTarget, error: duplicateTargetError } = await supabase
+            .from("event_sources")
+            .select("event_id")
+            .eq("provider", candidate.provider)
+            .eq("provider_event_id", candidate.providerDuplicateOfId)
+            .maybeSingle();
+          if (duplicateTargetError) throw duplicateTargetError;
+          if (duplicateTarget) {
+            eventId = duplicateTarget.event_id;
+            duplicate = true;
+            preserveCanonical = true;
+          }
+        }
+
+        if (!eventId) {
+          const dayStart = `${normalized.localStartDate}T00:00:00Z`;
+          const dayEnd = `${normalized.localStartDate}T23:59:59Z`;
+          const { data: nearby, error: nearbyError } = await supabase
+            .from("events")
+            .select("*")
+            .gte("start_at", dayStart)
+            .lte("start_at", dayEnd);
+          if (nearbyError) throw nearbyError;
+          const match = classifyMatch(
+            normalized,
+            nearby.map((event) =>
+              normalizeCandidate({
+                provider: candidate.provider,
+                providerEventId: "",
+                sourceUrl: candidate.sourceUrl,
+                title: event.title,
+                category: event.category,
+                venue: event.venue,
+                latitude: event.latitude,
+                longitude: event.longitude,
+                regionScope: event.region_scope,
+                startAt: event.start_at,
+                endAt: event.end_at,
+                sourceState: event.source_state === "predicted" ? "predicted" : "active",
+                certainty: event.certainty,
+                localRank: null,
+                attendance: null,
+                venueCapacity: null,
+                aiImpactPoints: null,
+                evidenceText: null,
+                primarySourceConfirmed: true,
+              }),
+            ).map((event, index) => ({ ...event, id: nearby[index].id })),
+          );
+          if (match.kind === "exact") {
+            eventId = match.eventId;
+            duplicate = true;
+            preserveCanonical = true;
+          }
+          if (match.kind === "uncertain") {
+            duplicate = true;
+            conflict = "duplicate_uncertain";
+            reviewTargetEventId = match.eventId;
+          }
         }
       }
 
@@ -156,14 +318,18 @@ export function createCollectionRepository(): CollectionRepository {
         if (error) throw error;
       }
 
-      const { error: evidenceError } = await supabase.from("event_sources").upsert(
+      const verifiedPublicUrl = publicSourceUrl(candidate);
+      const primarySourceConfirmed = candidate.primarySourceConfirmed && Boolean(verifiedPublicUrl);
+      const { data: evidence, error: evidenceError } = await supabase.from("event_sources").upsert(
         {
           event_id: eventId,
           provider: candidate.provider,
           provider_event_id: candidate.providerEventId,
           source_url: candidate.sourceUrl,
+          public_source_url: verifiedPublicUrl,
           extracted_title: candidate.title,
           extracted_start_at: candidate.startAt,
+          extracted_end_at: candidate.endAt,
           extracted_location: candidate.venue ?? candidate.regionScope,
           evidence_text: candidate.evidenceText,
           source_state: candidate.sourceState,
@@ -171,32 +337,74 @@ export function createCollectionRepository(): CollectionRepository {
           local_rank: candidate.localRank,
           attendance: candidate.attendance,
           venue_capacity: candidate.venueCapacity,
-          primary_source_confirmed: candidate.primarySourceConfirmed,
+          ai_impact_points: candidate.aiImpactPoints ?? null,
+          primary_source_confirmed: primarySourceConfirmed,
+          provider_duplicate_of_id: candidate.providerDuplicateOfId ?? null,
+          provider_deleted_reason: candidate.providerDeletedReason ?? null,
+          provider_cancelled_at: candidate.providerCancelledAt ?? null,
+          provider_postponed_at: candidate.providerPostponedAt ?? null,
           checked_at: new Date().toISOString(),
         },
         { onConflict: "provider,provider_event_id" },
-      );
+      ).select("id").single();
       if (evidenceError) throw evidenceError;
 
       const validation = validateCandidate(
-        candidate,
+        { ...candidate, primarySourceConfirmed },
         context.window,
         conflict as Parameters<typeof validateCandidate>[2],
       );
       const { data: existingDecision, error: decisionReadError } = await supabase
         .from("account_events")
-        .select("state")
+        .select("state, resolved_review_fingerprint, automation_reason")
         .eq("account_id", context.area.accountId)
         .eq("event_id", eventId)
         .maybeSingle();
       if (decisionReadError) throw decisionReadError;
-      const state = existingDecision?.state === "excluded" && !conflict ? "excluded" : validation.state;
-      const { error: decisionError } = await supabase.from("account_events").upsert({
+      const fingerprint = validation.state === "needs_review" && validation.reason
+        ? reviewFingerprint(candidate, validation.reason, reviewTargetEventId)
+        : null;
+      let validationState = validation.state;
+      let validationReason = validation.reason;
+      if (validation.state === "excluded" && validation.reason && automatedStatusReasons.has(validation.reason)) {
+        const { data: activeEvidence, error: activeEvidenceError } = await supabase
+          .from("event_sources")
+          .select("id")
+          .eq("event_id", eventId)
+          .eq("source_state", "active")
+          .eq("primary_source_confirmed", true)
+          .neq("id", evidence.id)
+          .limit(1);
+        if (activeEvidenceError) throw activeEvidenceError;
+        if (activeEvidence.length) {
+          validationState = "active";
+          validationReason = null;
+        }
+      }
+      const state = resolvedReviewState({
+        validationState,
+        existingState: existingDecision?.state,
+        existingFingerprint: existingDecision?.resolved_review_fingerprint,
+        fingerprint,
+        conflict: Boolean(conflict),
+        automatedExclusion: Boolean(existingDecision?.automation_reason),
+      });
+      const existingManualExclusion = existingDecision?.state === "excluded" && !existingDecision.automation_reason;
+      const automationReason = !existingManualExclusion && state === "excluded" && validationReason && automatedStatusReasons.has(validationReason)
+        ? `provider_${validationReason}`
+        : null;
+      const decision = {
         account_id: context.area.accountId,
         event_id: eventId,
         state,
-        review_reason: validation.reason,
-      });
+        review_reason: state === "needs_review" ? validationReason : null,
+        review_target_event_id: state === "needs_review" ? reviewTargetEventId : null,
+        review_source_id: state === "needs_review" ? evidence.id : null,
+        review_fingerprint: fingerprint,
+        automation_reason: automationReason,
+        ...(!fingerprint ? { resolved_review_fingerprint: null } : {}),
+      };
+      const { error: decisionError } = await supabase.from("account_events").upsert(decision);
       if (decisionError) throw decisionError;
 
       const { error: areaLinkError } = await supabase.from("account_event_areas").upsert({
@@ -235,7 +443,112 @@ export function createCollectionRepository(): CollectionRepository {
         if (scoreError) throw scoreError;
       }
 
-      return { state, duplicate };
+      return { state, duplicate, eventId };
+    },
+
+    async recalculateScores(context) {
+      const { data: links, error: linkError } = await supabase
+        .from("account_event_areas")
+        .select("event_id")
+        .eq("account_id", context.area.accountId)
+        .eq("collection_area_id", context.area.id);
+      if (linkError) throw linkError;
+      if (!links.length) return;
+
+      const linkedIds = links.map((link) => link.event_id);
+      const decisions = await fetchInBatches(linkedIds, (ids) =>
+        supabase.from("account_events").select("event_id").eq("account_id", context.area.accountId).eq("state", "active").in("event_id", ids),
+      );
+      const activeIds = decisions.map((decision) => decision.event_id);
+      if (!activeIds.length) return;
+      const [events, sources] = await Promise.all([
+        fetchInBatches(activeIds, (ids) => supabase.from("events").select("*").in("id", ids)),
+        fetchInBatches(activeIds, (ids) => supabase.from("event_sources").select("*").in("event_id", ids)),
+      ]);
+      const candidates = events.flatMap((event) => {
+        const evidence = sources
+          .filter((source) => source.event_id === event.id)
+          .sort((left, right) =>
+            (right.local_rank ?? -1) - (left.local_rank ?? -1)
+            || (right.attendance ?? -1) - (left.attendance ?? -1),
+          )[0];
+        if (!evidence) return [];
+        return [{
+          eventId: event.id,
+          candidate: {
+            provider: evidence.provider as EventCandidate["provider"],
+            providerEventId: evidence.provider_event_id,
+            sourceUrl: evidence.source_url,
+            publicSourceUrl: evidence.public_source_url,
+            title: event.title,
+            category: event.category,
+            venue: event.venue,
+            latitude: event.latitude,
+            longitude: event.longitude,
+            regionScope: event.region_scope,
+            startAt: event.start_at,
+            endAt: event.end_at,
+            sourceState: event.source_state as EventCandidate["sourceState"],
+            providerDuplicateOfId: evidence.provider_duplicate_of_id,
+            providerDeletedReason: evidence.provider_deleted_reason,
+            providerCancelledAt: evidence.provider_cancelled_at,
+            providerPostponedAt: evidence.provider_postponed_at,
+            certainty: event.certainty,
+            localRank: evidence.local_rank,
+            attendance: evidence.attendance,
+            venueCapacity: evidence.venue_capacity,
+            aiImpactPoints: evidence.ai_impact_points,
+            evidenceText: evidence.evidence_text,
+            primarySourceConfirmed: evidence.primary_source_confirmed,
+          } satisfies EventCandidate,
+        }];
+      });
+
+      for (const hotel of context.hotels) {
+        const bases = new Map(candidates.map(({ eventId, candidate }) => [
+          eventId,
+          scoreHotelEvent({ candidate, hotel, overlaps: [] }),
+        ]));
+        const rows = candidates.map(({ eventId, candidate }) => {
+          const overlaps = candidates
+            .filter((other) => other.eventId !== eventId)
+            .map((other) => ({
+              startAt: other.candidate.startAt,
+              endAt: other.candidate.endAt,
+              preOverlapTotal: bases.get(other.eventId)?.total ?? 0,
+            }));
+          const score = scoreHotelEvent({ candidate, hotel, overlaps });
+          return {
+            hotel_id: hotel.id,
+            event_id: eventId,
+            distance_km: score.distanceKm,
+            impact_points: score.impactPoints,
+            distance_points: score.distancePoints,
+            stay_pressure_points: score.stayPressurePoints,
+            total: score.total,
+            suggested_importance: score.suggestedImportance,
+            impact_basis: score.impactBasis,
+          };
+        });
+        for (let index = 0; index < rows.length; index += 200) {
+          const { error } = await supabase.from("hotel_event_scores").upsert(rows.slice(index, index + 200));
+          if (error) throw error;
+        }
+      }
+    },
+
+    async recordUsage(runId, source, usage) {
+      const { error } = await supabase.from("collection_usage_events").insert({
+        collection_run_id: runId,
+        source,
+        phase: usage.phase,
+        model: usage.model,
+        input_tokens: usage.inputTokens,
+        output_tokens: usage.outputTokens,
+        web_search_requests: usage.webSearchRequests,
+        web_fetch_requests: usage.webFetchRequests,
+      });
+      if (error) throw error;
     },
 
     async finishRun(runId, sourceResults, costUsage, errorSummary) {

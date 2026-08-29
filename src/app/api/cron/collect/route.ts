@@ -1,11 +1,11 @@
-import { runCollection } from "@/features/collection/run";
+import { enqueueCollectionAreas, type EnqueueResult } from "@/features/collection/jobs";
 
 export const maxDuration = 300;
 
 type CronDependencies = {
   secret: string | undefined;
   listAreas: () => Promise<Array<{ id: string; accountId: string }>>;
-  run: (input: { accountId: string; areaId: string; trigger: "cron" }) => Promise<unknown>;
+  enqueue: (input: { accountId: string; areaIds: string[]; trigger: "cron" }) => Promise<EnqueueResult>;
 };
 
 export function createCronHandler(dependencies: CronDependencies) {
@@ -13,18 +13,22 @@ export function createCronHandler(dependencies: CronDependencies) {
     if (!dependencies.secret || request.headers.get("authorization") !== `Bearer ${dependencies.secret}`) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
-    const runs = [];
-    for (const area of await dependencies.listAreas()) {
-      runs.push(await dependencies.run({ accountId: area.accountId, areaId: area.id, trigger: "cron" }));
-    }
-    return Response.json({ runs });
+    const areas = await dependencies.listAreas();
+    const byAccount = new Map<string, typeof areas>();
+    for (const area of areas) byAccount.set(area.accountId, [...(byAccount.get(area.accountId) ?? []), area]);
+    const batches = await Promise.all(
+      [...byAccount].map(([accountId, accountAreas]) =>
+        dependencies.enqueue({ accountId, areaIds: accountAreas.map((area) => area.id), trigger: "cron" }),
+      ),
+    );
+    return Response.json({ batches });
   };
 }
 
 export async function GET(request: Request) {
   return createCronHandler({
     secret: process.env.CRON_SECRET,
-    run: runCollection,
+    enqueue: enqueueCollectionAreas,
     listAreas: async () => {
       const { createAdminClient } = await import("@/lib/supabase/admin");
       const admin = createAdminClient();

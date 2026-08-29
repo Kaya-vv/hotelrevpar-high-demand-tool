@@ -46,4 +46,3 @@ export async function requirePlatformAdmin() {
   if (account.role !== "platform_admin") redirect("/calendar");
   return account;
 }
-
