@@ -8,12 +8,14 @@ import { validateCandidate } from "@/features/events/validate";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Json } from "@/lib/supabase/database.types";
 
-import type {
-  CollectionContext,
-  CollectionRepository,
-  RunCollectionInput,
-  StoredDemandTriage,
-  StoredEvidenceReview,
+import {
+  claudeDiscoveryDue,
+  collectionWindow,
+  type CollectionContext,
+  type CollectionRepository,
+  type RunCollectionInput,
+  type StoredDemandTriage,
+  type StoredEvidenceReview,
 } from "./run";
 import { sourceChange } from "./source-change";
 
@@ -30,13 +32,6 @@ function publicSourceUrl(candidate: EventCandidate) {
   } catch {
     return null;
   }
-}
-
-function window() {
-  const start = new Date();
-  const end = new Date(start);
-  end.setUTCFullYear(end.getUTCFullYear() + 1);
-  return { start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10) };
 }
 
 export function createCollectionRepository(): CollectionRepository {
@@ -89,7 +84,7 @@ export function createCollectionRepository(): CollectionRepository {
           demandRadiusKm: hotel.demand_radius_km,
           holidayRegion: hotel.holiday_region,
         }],
-        window: window(),
+        window: collectionWindow(),
       } as CollectionContext;
     },
 
@@ -199,9 +194,7 @@ export function createCollectionRepository(): CollectionRepository {
         .order("finished_at", { ascending: false })
         .limit(1);
       if (error) throw error;
-      const lastDiscovery = data[0];
-      if (!lastDiscovery?.finished_at) return true;
-      return Date.now() - new Date(lastDiscovery.finished_at).getTime() >= 28 * 24 * 60 * 60 * 1000;
+      return claudeDiscoveryDue(data[0]?.finished_at ?? null);
     },
 
     async persistCandidate(context, candidate) {

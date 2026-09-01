@@ -20,7 +20,7 @@ import { collectPredictHq } from "./sources/predicthq";
 import { collectRijksoverheid } from "./sources/rijksoverheid";
 import { collectTicketmaster } from "./sources/ticketmaster";
 import { collectUefaForecasts } from "./sources/uefa";
-import type { SourceResult } from "./types";
+import type { CollectionWindow, SourceResult } from "./types";
 
 export type CollectionAreaContext = {
   id: string;
@@ -44,8 +44,28 @@ export type HotelContext = {
 export type CollectionContext = {
   area: CollectionAreaContext;
   hotels: HotelContext[];
-  window: { start: string; end: string };
+  window: CollectionWindow;
 };
+
+export function collectionWindow(now = new Date()): CollectionWindow {
+  const end = new Date(now);
+  end.setUTCDate(end.getUTCDate() + 90);
+  return {
+    start: now.toISOString().slice(0, 10),
+    end: end.toISOString().slice(0, 10),
+  };
+}
+
+export function claudeDiscoveryDue(
+  lastFinishedAt: string | null,
+  now = new Date(),
+) {
+  return (
+    !lastFinishedAt ||
+    now.getTime() - new Date(lastFinishedAt).getTime() >=
+      7 * 24 * 60 * 60 * 1000
+  );
+}
 
 export type PersistResult = {
   state: "active" | "needs_review" | "excluded";
@@ -288,7 +308,7 @@ export async function runCollection(
       ) {
         sourceResults.claude = {
           state: "skipped",
-          reason: "Claude discovery runs at most once every 28 days.",
+          reason: "Claude discovery runs at most once every 7 days.",
         };
       } else {
         sourcesToRun.push(source);

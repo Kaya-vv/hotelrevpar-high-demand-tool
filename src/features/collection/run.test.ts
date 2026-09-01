@@ -3,7 +3,12 @@ import { describe, expect, it, vi } from "vitest";
 import type { EventCandidate } from "@/features/events/types";
 import { demandReviewFingerprint } from "@/features/events/hotel-demand";
 
-import { runCollection, type CollectionRepository } from "./run";
+import {
+  claudeDiscoveryDue,
+  collectionWindow,
+  runCollection,
+  type CollectionRepository,
+} from "./run";
 import { sourceChange } from "./source-change";
 
 const candidate: EventCandidate = {
@@ -26,6 +31,20 @@ const candidate: EventCandidate = {
   evidenceText: null,
   primarySourceConfirmed: true,
 };
+
+it("uses a rolling 90-day collection window", () => {
+  expect(collectionWindow(new Date("2026-09-01T12:00:00Z"))).toEqual({
+    start: "2026-09-01",
+    end: "2026-11-30",
+  });
+});
+
+it("runs Claude discovery again after seven days", () => {
+  const now = new Date("2026-09-01T12:00:00Z");
+  expect(claudeDiscoveryDue(null, now)).toBe(true);
+  expect(claudeDiscoveryDue("2026-08-26T12:00:01Z", now)).toBe(false);
+  expect(claudeDiscoveryDue("2026-08-25T12:00:00Z", now)).toBe(true);
+});
 
 function repository(overrides: Partial<CollectionRepository> = {}): CollectionRepository {
   return {
@@ -305,7 +324,7 @@ describe("runCollection", () => {
     expect(repo.persistCandidate).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ providerEventId: "phq-2", primarySourceConfirmed: true }));
   });
 
-  it("runs broad Claude discovery at most once per 28 days", async () => {
+  it("runs Claude discovery at most once every 7 days", async () => {
     const claude = vi.fn();
     const repo = repository({
       shouldRunClaudeDiscovery: vi.fn().mockResolvedValue(false),
@@ -321,6 +340,9 @@ describe("runCollection", () => {
     );
 
     expect(claude).not.toHaveBeenCalled();
-    expect(result.sourceResults.claude).toMatchObject({ state: "skipped" });
+    expect(result.sourceResults.claude).toEqual({
+      state: "skipped",
+      reason: "Claude discovery runs at most once every 7 days.",
+    });
   });
 });
