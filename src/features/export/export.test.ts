@@ -13,12 +13,14 @@ describe("RevControl export", () => {
         startAt: "2027-10-16T10:00:00+02:00",
         endAt: "2027-10-24T22:00:00+02:00",
         hotels: [
-          { id: "hotel-1", code: "MATCH", importance: "High" },
-          { id: "hotel-2", code: "REINE", importance: "Medium" },
-          { id: "hotel-3", code: "PEAK", importance: "Peak" },
+          { id: "hotel-1", code: "MATCH", importance: "High", impactBasis: "attendance" },
+          { id: "hotel-2", code: "REINE", importance: "Medium", impactBasis: "attendance" },
+          { id: "hotel-3", code: "PEAK", importance: "Peak", impactBasis: "attendance" },
+          { id: "hotel-4", code: "LOW", importance: "Low", impactBasis: "attendance" },
+          { id: "hotel-5", code: "DEFAULT", importance: "Medium", impactBasis: "default" },
         ],
       }],
-      ["hotel-1", "hotel-2", "hotel-3"],
+      ["hotel-1", "hotel-2", "hotel-3", "hotel-4", "hotel-5"],
     );
     const buffer = await buildRevControlWorkbook(rows);
     const workbook = new ExcelJS.Workbook();

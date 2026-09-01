@@ -1,5 +1,8 @@
 import { createServerClient } from "@/lib/supabase/server";
-import type { DemandLevel } from "@/features/events/importance";
+import {
+  isPublishableDemand,
+  type DemandLevel,
+} from "@/features/events/importance";
 import { getHotelScope } from "@/features/workspace/hotel-context";
 import { fetchInBatches } from "@/lib/supabase/fetch-in-batches";
 
@@ -122,7 +125,10 @@ export async function getCalendarData(
           distancePoints: score.distance_points,
           stayPressurePoints: score.stay_pressure_points,
           distanceKm: score.distance_km,
-        }));
+        }))
+        .filter((score) =>
+          isPublishableDemand(score.importance, score.impactBasis)
+        );
       return {
         id: event.id,
         title: decision?.override_title ?? event.title,

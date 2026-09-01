@@ -5,7 +5,12 @@ export type ExportEvent = {
   title: string;
   startAt: string;
   endAt: string;
-  hotels: Array<{ id: string; code: string; importance: DemandLevel }>;
+  hotels: Array<{
+    id: string;
+    code: string;
+    importance: DemandLevel;
+    impactBasis: string;
+  }>;
 };
 
 export type RevControlRow = {

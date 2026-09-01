@@ -8,3 +8,10 @@ export const demandLabels: Record<DemandLevel, string> = {
 };
 
 export const demandLevels = Object.keys(demandLabels) as DemandLevel[];
+
+export function isPublishableDemand(
+  importance: DemandLevel,
+  impactBasis: string,
+) {
+  return importance !== "Low" && impactBasis !== "default";
+}

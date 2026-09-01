@@ -1,3 +1,5 @@
+import { isPublishableDemand } from "@/features/events/importance";
+
 import type { ExportEvent, RevControlRow } from "./types";
 
 function excelDate(value: string) {
@@ -11,7 +13,10 @@ export function mapRevControlRows(events: ExportEvent[], selectedHotelIds: strin
     .flatMap((event) => {
       const groups = new Map<RevControlRow["importance"], string[]>();
       event.hotels.forEach((hotel) => {
-        if (!selected.has(hotel.id)) return;
+        if (
+          !selected.has(hotel.id) ||
+          !isPublishableDemand(hotel.importance, hotel.impactBasis)
+        ) return;
         const importance = hotel.importance === "Peak" ? "High" : hotel.importance;
         groups.set(importance, [...(groups.get(importance) ?? []), hotel.code]);
       });

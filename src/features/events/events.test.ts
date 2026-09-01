@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { distanceKm } from "./distance";
+import { isPublishableDemand } from "./importance";
 import { classifyMatch } from "./match";
 import { normalizeCandidate, normalizeText } from "./normalize";
 import { impact, importance, scoreHotelEvent } from "./score";
@@ -29,6 +30,13 @@ const candidate: EventCandidate = {
 };
 
 describe("event domain", () => {
+  it("publishes Medium demand with evidence and hides Low or default demand", () => {
+    expect(isPublishableDemand("Medium", "attendance")).toBe(true);
+    expect(isPublishableDemand("High", "ai_assessment")).toBe(true);
+    expect(isPublishableDemand("Medium", "default")).toBe(false);
+    expect(isPublishableDemand("Low", "attendance")).toBe(false);
+  });
+
   it("normalizes accents and punctuation", () => {
     expect(normalizeText("  Café-déjà! ")).toBe("cafe deja");
   });

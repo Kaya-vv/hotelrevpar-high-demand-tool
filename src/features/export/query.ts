@@ -31,7 +31,7 @@ export async function loadExportEvents(accountId: string, month: string, selecte
   const [exportEvents, scores] = eventIds.length
     ? await Promise.all([
         fetchInBatches(eventIds, (ids) => supabase.from("events").select("id, title, start_at, end_at, certainty").in("id", ids).lte("start_at", `${bounds.end}T23:59:59Z`).gte("end_at", `${bounds.start}T00:00:00Z`)),
-        fetchInBatches(eventIds, (ids) => supabase.from("hotel_event_scores").select("event_id, hotel_id, suggested_importance, importance_override").in("event_id", ids).in("hotel_id", selectedHotelIds)),
+        fetchInBatches(eventIds, (ids) => supabase.from("hotel_event_scores").select("event_id, hotel_id, suggested_importance, importance_override, impact_basis").in("event_id", ids).in("hotel_id", selectedHotelIds)),
       ])
     : [[], []];
 
@@ -50,6 +50,7 @@ export async function loadExportEvents(accountId: string, month: string, selecte
           id: score.hotel_id,
           code: hotelCodes.get(score.hotel_id)!,
           importance: (score.importance_override ?? score.suggested_importance) as DemandLevel,
+          impactBasis: score.impact_basis,
         })),
     };
   });
