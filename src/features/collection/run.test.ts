@@ -7,6 +7,7 @@ import {
   claudeDiscoveryDue,
   collectionWindow,
   runCollection,
+  selectClaudeRefreshUrls,
   type CollectionRepository,
 } from "./run";
 import { sourceChange } from "./source-change";
@@ -46,12 +47,50 @@ it("runs Claude discovery again after seven days", () => {
   expect(claudeDiscoveryDue("2026-08-25T12:00:00Z", now)).toBe(true);
 });
 
+it("selects the oldest unique Claude pages inside the active window", () => {
+  const rows = [
+    {
+      source_url: "https://venue.nl/oldest",
+      extracted_start_at: "2026-10-10T10:00:00Z",
+      extracted_end_at: "2026-10-11T20:00:00Z",
+      checked_at: "2026-08-01T00:00:00Z",
+    },
+    {
+      source_url: "https://venue.nl/newer",
+      extracted_start_at: "2026-11-10T10:00:00Z",
+      extracted_end_at: "2026-11-10T22:00:00Z",
+      checked_at: "2026-08-15T00:00:00Z",
+    },
+    {
+      source_url: "https://venue.nl/oldest",
+      extracted_start_at: "2026-10-10T10:00:00Z",
+      extracted_end_at: "2026-10-11T20:00:00Z",
+      checked_at: "2026-08-20T00:00:00Z",
+    },
+    {
+      source_url: "https://venue.nl/outside",
+      extracted_start_at: "2027-01-10T10:00:00Z",
+      extracted_end_at: "2027-01-10T20:00:00Z",
+      checked_at: "2026-07-01T00:00:00Z",
+    },
+  ];
+
+  expect(
+    selectClaudeRefreshUrls(
+      rows,
+      { start: "2026-09-01", end: "2026-11-30" },
+      2,
+    ),
+  ).toEqual(["https://venue.nl/oldest", "https://venue.nl/newer"]);
+});
+
 function repository(overrides: Partial<CollectionRepository> = {}): CollectionRepository {
   return {
     startRun: vi.fn().mockResolvedValue("run-1"),
     loadContext: vi.fn().mockResolvedValue({
       area: { id: "area-1", accountId: "account-1", name: "MATCH", searchLocation: "Eindhoven", latitude: 51.44, longitude: 5.48, radiusKm: 30, enabledSources: ["ticketmaster", "claude"] },
       hotels: [{ id: "hotel-1", latitude: 51.44, longitude: 5.48, demandRadiusKm: 25, holidayRegion: "south" }],
+      knownClaudeUrls: [],
     }),
     persistCandidate: vi.fn().mockResolvedValue({ state: "active", duplicate: false }),
     loadDemandTriages: vi.fn().mockResolvedValue({}),

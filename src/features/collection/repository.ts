@@ -11,6 +11,7 @@ import type { Json } from "@/lib/supabase/database.types";
 import {
   claudeDiscoveryDue,
   collectionWindow,
+  selectClaudeRefreshUrls,
   type CollectionContext,
   type CollectionRepository,
   type RunCollectionInput,
@@ -66,6 +67,25 @@ export function createCollectionRepository(): CollectionRepository {
       const hotelResult = await supabase.from("hotels").select("*").eq("id", area.hotel_id).eq("account_id", accountId).single();
       if (hotelResult.error) throw hotelResult.error;
       const hotel = hotelResult.data;
+      const window = collectionWindow();
+      const { data: linkData, error: linkError } = await supabase
+        .from("account_event_areas")
+        .select("event_id")
+        .eq("account_id", accountId)
+        .eq("collection_area_id", areaId);
+      if (linkError) throw linkError;
+      const links = linkData ?? [];
+      const claudeSources = links.length
+        ? await fetchInBatches(
+          links.map((link) => link.event_id),
+          (ids) => supabase
+            .from("event_sources")
+            .select("source_url, extracted_start_at, extracted_end_at, checked_at")
+            .eq("provider", "claude")
+            .eq("primary_source_confirmed", true)
+            .in("event_id", ids),
+        )
+        : [];
       return {
         area: {
           id: area.id,
@@ -84,7 +104,8 @@ export function createCollectionRepository(): CollectionRepository {
           demandRadiusKm: hotel.demand_radius_km,
           holidayRegion: hotel.holiday_region,
         }],
-        window: collectionWindow(),
+        window,
+        knownClaudeUrls: selectClaudeRefreshUrls(claudeSources, window),
       } as CollectionContext;
     },
 

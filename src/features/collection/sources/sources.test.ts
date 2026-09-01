@@ -244,6 +244,72 @@ describe("source adapters", () => {
     });
   });
 
+  it("refreshes a known owner page and preserves its cancelled status", async () => {
+    const knownUrl = "https://venue.nl/known-event";
+    const emptySearch = {
+      content: [],
+      usage: {
+        input_tokens: 50,
+        output_tokens: 10,
+        server_tool_use: { web_search_requests: 1 },
+      },
+    };
+    const create = vi
+      .fn()
+      .mockResolvedValueOnce(emptySearch)
+      .mockResolvedValueOnce(emptySearch)
+      .mockResolvedValueOnce(emptySearch)
+      .mockResolvedValueOnce({
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              events: [
+                {
+                  sourceUrl: knownUrl,
+                  title: "Cancelled conference",
+                  category: "conferences",
+                  venue: "Venue",
+                  latitude: 51.44,
+                  longitude: 5.48,
+                  regionScope: null,
+                  startAt: "2027-09-01T10:00:00+02:00",
+                  endAt: "2027-09-02T22:00:00+02:00",
+                  status: "cancelled",
+                  ownerType: "venue",
+                  evidenceText: "Official cancellation notice.",
+                  impactPoints: 45,
+                  titleConfirmed: true,
+                  dateConfirmed: true,
+                  locationConfirmed: true,
+                },
+              ],
+            }),
+          },
+        ],
+        usage: {
+          input_tokens: 200,
+          output_tokens: 80,
+          server_tool_use: { web_fetch_requests: 1 },
+        },
+      });
+
+    const result = await collectClaude({
+      ...window,
+      location: "Eindhoven",
+      radiusKm: 25,
+      knownUrls: [knownUrl],
+      model: "claude-test",
+      client: { messages: { create } } as unknown as Anthropic,
+    });
+
+    expect(create.mock.calls[3][0].messages[0].content).toContain(knownUrl);
+    expect(result.candidates[0]).toMatchObject({
+      provider: "claude",
+      sourceState: "cancelled",
+    });
+  });
+
   it("identifies a Claude search timeout", async () => {
     const create = vi.fn().mockRejectedValue(new APIConnectionTimeoutError());
     const client = { messages: { create } } as unknown as Anthropic;

@@ -45,6 +45,14 @@ export type CollectionContext = {
   area: CollectionAreaContext;
   hotels: HotelContext[];
   window: CollectionWindow;
+  knownClaudeUrls: string[];
+};
+
+type ClaudeSourceRow = {
+  source_url: string;
+  extracted_start_at: string;
+  extracted_end_at: string | null;
+  checked_at: string;
 };
 
 export function collectionWindow(now = new Date()): CollectionWindow {
@@ -65,6 +73,26 @@ export function claudeDiscoveryDue(
     now.getTime() - new Date(lastFinishedAt).getTime() >=
       7 * 24 * 60 * 60 * 1000
   );
+}
+
+export function selectClaudeRefreshUrls(
+  rows: ClaudeSourceRow[],
+  window: CollectionWindow,
+  limit = 8,
+) {
+  return [
+    ...new Map(
+      rows
+        .filter(
+          (row) =>
+            row.extracted_start_at.slice(0, 10) <= window.end &&
+            (row.extracted_end_at ?? row.extracted_start_at).slice(0, 10) >=
+              window.start,
+        )
+        .sort((left, right) => left.checked_at.localeCompare(right.checked_at))
+        .map((row) => [row.source_url, row] as const),
+    ).keys(),
+  ].slice(0, limit);
 }
 
 export type PersistResult = {
@@ -202,6 +230,7 @@ function defaultCollectors(
         ...context.window,
         location: context.area.searchLocation,
         radiusKm: context.area.radiusKm,
+        knownUrls: context.knownClaudeUrls,
         onUsage: (usage) => onUsage("claude", usage),
       });
     },
