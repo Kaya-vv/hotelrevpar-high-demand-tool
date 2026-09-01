@@ -499,7 +499,7 @@ describe("source adapters", () => {
       hotelName: "Testhotel",
       location: "Eindhoven",
       radiusKm: 25,
-      model: "claude-test",
+      model: "claude-sonnet-5",
       client,
     });
 
@@ -518,6 +518,7 @@ describe("source adapters", () => {
       format: expect.objectContaining({ type: "json_schema" }),
     });
     expect(create.mock.calls[0][0].tools[0].max_uses).toBe(1);
+    expect(create.mock.calls[0][0].thinking).toEqual({ type: "disabled" });
   });
 
   it("gives events on the same source page separate stable IDs", () => {

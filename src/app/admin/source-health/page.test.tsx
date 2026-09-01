@@ -51,4 +51,19 @@ describe("SourceHealthTable", () => {
     expect(within(container).getByText("Wachten")).toBeInTheDocument();
     expect(within(container).queryByText("Voltooid")).not.toBeInTheDocument();
   });
+
+  it("calls a finished run with a partial provider partly completed", () => {
+    const { container } = render(<SourceHealthTable runs={[{
+      id: "run-partial",
+      accountName: "Robert",
+      areaName: "Eindhoven",
+      startedAt: "2027-08-27T05:00:00Z",
+      finishedAt: "2027-08-27T05:01:00Z",
+      errorSummary: null,
+      sources: [{ name: "predicthq", state: "partial", lastSuccess: null, currentError: "Een controle mislukte.", found: 20, unique: 18, duplicates: 2, reviews: 0, requests: 6, inputTokens: 300, outputTokens: 80, webSearchRequests: 5, webFetchRequests: 0, usageCalls: 6 }],
+    }]} />);
+
+    expect(within(container).getByText("Deels voltooid")).toBeInTheDocument();
+    expect(within(container).queryByText("Voltooid")).not.toBeInTheDocument();
+  });
 });

@@ -1,11 +1,21 @@
 import type { SourceHealthRun } from "@/features/accounts/source-health";
 
+export function runStatusLabel(run: SourceHealthRun) {
+  if (!run.finishedAt) return "Bezig";
+  if (run.errorSummary) return run.errorSummary;
+  return run.sources.some((source) =>
+    ["partial", "error", "failed", "unlicensed"].includes(source.state)
+  )
+    ? "Deels voltooid"
+    : "Voltooid";
+}
+
 export function SourceHealthTable({ runs }: { runs: SourceHealthRun[] }) {
   return (
     <div className="health-list">
       {runs.map((run) => (
         <details className="panel" key={run.id}>
-          <summary><strong>{run.accountName}</strong><span>{run.areaName}</span><span>{new Date(run.startedAt).toLocaleString("nl-NL")}</span><span>{run.errorSummary ?? (run.finishedAt ? "Voltooid" : "Bezig")}</span></summary>
+          <summary><strong>{run.accountName}</strong><span>{run.areaName}</span><span>{new Date(run.startedAt).toLocaleString("nl-NL")}</span><span>{runStatusLabel(run)}</span></summary>
           <div className="table-wrap">
             <table>
               <thead><tr><th>Bron</th><th>Status</th><th>Laatste succes</th><th>Fout</th><th>Gevonden</th><th>Uniek</th><th>Duplicaten</th><th>Review</th><th>Requests</th><th>AI-calls</th><th>Input</th><th>Output</th><th>Search</th><th>Fetch</th></tr></thead>

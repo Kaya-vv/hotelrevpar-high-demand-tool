@@ -440,6 +440,9 @@ export async function verifyPredictHqCandidates(input: {
     const message = await requestPhase("verification", () => client.messages.create({
       model,
       max_tokens: 1_000,
+      ...(model.startsWith("claude-sonnet-5")
+        ? { thinking: { type: "disabled" as const } }
+        : {}),
       tools: [
         { type: "web_search_20260318", name: "web_search", allowed_callers: ["direct"], max_uses: 1, response_inclusion: "full", user_location: { type: "approximate", country: "NL", city: input.location, timezone: "Europe/Amsterdam" } },
       ],

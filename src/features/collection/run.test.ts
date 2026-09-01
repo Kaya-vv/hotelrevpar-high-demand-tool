@@ -218,7 +218,7 @@ describe("runCollection", () => {
     expect(repo.persistCandidate).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ publicSourceUrl: cachedEvidence.sourceUrl }));
   });
 
-  it("caps web verification at ten candidates and keeps overflow provisional", async () => {
+  it("verifies five candidates per run and keeps overflow provisional", async () => {
     const candidates = Array.from({ length: 12 }, (_, index) => ({
       ...candidate,
       provider: "predicthq" as const,
@@ -249,9 +249,60 @@ describe("runCollection", () => {
       { repository: repo, collectors: { predicthq: vi.fn().mockResolvedValue({ source: "predicthq", candidates, requests: 1, usage: {} }) }, demandTriageReviewer, evidenceReviewer },
     );
 
-    expect(evidenceReviewer).toHaveBeenCalledWith(expect.objectContaining({ candidates: candidates.slice(0, 10) }));
+    expect(evidenceReviewer).toHaveBeenCalledTimes(5);
+    candidates.slice(0, 5).forEach((event, index) => {
+      expect(evidenceReviewer).toHaveBeenNthCalledWith(
+        index + 1,
+        expect.objectContaining({ candidates: [event] }),
+      );
+    });
+    expect(repo.saveEvidenceReviews).toHaveBeenCalledTimes(5);
     expect(repo.persistCandidate).toHaveBeenCalledTimes(12);
-    expect(result.sourceResults.predicthq).toMatchObject({ verificationRequests: 10, provisional: 2 });
+    expect(result.sourceResults.predicthq).toMatchObject({ verificationRequests: 5, provisional: 7 });
+  });
+
+  it("keeps and caches successful verifications when another candidate fails", async () => {
+    const candidates = Array.from({ length: 3 }, (_, index) => ({
+      ...candidate,
+      provider: "predicthq" as const,
+      providerEventId: `phq-${index}`,
+      category: "expos",
+      localRank: 90,
+      primarySourceConfirmed: false,
+    }));
+    const repo = repository({
+      loadContext: vi.fn().mockResolvedValue({
+        area: { id: "area-1", accountId: "account-1", name: "Testhotel", searchLocation: "Eindhoven", latitude: 51.44, longitude: 5.48, radiusKm: 25, enabledSources: ["predicthq"] },
+        hotels: [{ id: "hotel-1", latitude: 51.44, longitude: 5.48, demandRadiusKm: 25, holidayRegion: "south" }],
+      }),
+    });
+    const demandTriageReviewer = vi.fn().mockResolvedValue({
+      reviews: candidates.map((event) => ({ providerEventId: event.providerEventId, decision: "verify" as const, confidence: "high" as const, demandLevel: "high" as const, evidenceText: "Groot evenement." })),
+      requests: 1,
+      usage: {},
+    });
+    const evidenceReviewer = vi.fn().mockImplementation(async ({ candidates: [event] }: { candidates: EventCandidate[] }) => {
+      if (event.providerEventId === "phq-1") throw new Error("token limit");
+      return {
+        reviews: [{ providerEventId: event.providerEventId, decision: "verified" as const, confidence: "high" as const, sourceUrl: `https://example.com/${event.providerEventId}`, evidenceText: "Bevestigd." }],
+        requests: 1,
+        usage: { inputTokens: 100, outputTokens: 30, webSearchRequests: 1 },
+      };
+    });
+
+    const result = await runCollection(
+      { accountId: "account-1", areaId: "area-1", trigger: "manual" },
+      { repository: repo, collectors: { predicthq: vi.fn().mockResolvedValue({ source: "predicthq", candidates, requests: 1, usage: {} }) }, demandTriageReviewer, evidenceReviewer },
+    );
+
+    expect(result.status).toBe("partial");
+    expect(result.sourceResults.predicthq).toMatchObject({ state: "partial", verificationRequests: 3, provisional: 1 });
+    expect(repo.saveEvidenceReviews).toHaveBeenCalledTimes(2);
+    expect(repo.saveEvidenceReviews).toHaveBeenNthCalledWith(1, [expect.objectContaining({ providerEventId: "phq-0" })]);
+    expect(repo.saveEvidenceReviews).toHaveBeenNthCalledWith(2, [expect.objectContaining({ providerEventId: "phq-2" })]);
+    expect(repo.persistCandidate).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ providerEventId: "phq-0", primarySourceConfirmed: true }));
+    expect(repo.persistCandidate).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ providerEventId: "phq-1", certainty: "provisional" }));
+    expect(repo.persistCandidate).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ providerEventId: "phq-2", primarySourceConfirmed: true }));
   });
 
   it("runs broad Claude discovery at most once per 28 days", async () => {

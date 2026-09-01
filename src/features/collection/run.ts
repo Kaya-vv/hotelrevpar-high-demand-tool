@@ -452,14 +452,14 @@ export async function runCollection(
           }
         });
 
-        const verificationQueue = missingEvidence.slice(0, 10);
+        const verificationQueue = missingEvidence.slice(0, 5);
         missingEvidence
-          .slice(10)
+          .slice(5)
           .forEach((event) =>
             provisional.push(
               asProvisional(
                 event,
-                "Webcontrole uitgesteld door de limiet van tien controles per run."
+                "Webcontrole uitgesteld door de limiet van vijf controles per run."
               )
             )
           );
@@ -477,38 +477,44 @@ export async function runCollection(
             sourceError =
               "Anthropic is required to verify High/Piek PredictHQ candidates.";
           } else {
-            try {
-              const verified = await evidenceReviewer({
-                candidates: verificationQueue,
-                hotelName: context.area.name,
-                location: context.area.searchLocation,
-                radiusKm: context.area.radiusKm,
-              });
-              verificationRequests = verified.requests;
-              Object.entries(verified.usage).forEach(([key, value]) => {
-                sourceUsage[key] = (sourceUsage[key] ?? 0) + value;
-              });
-              const eventById = new Map(
-                verificationQueue.map((event) => [event.providerEventId, event])
-              );
-              const fresh = verified.reviews.flatMap((review) => {
-                const event = eventById.get(review.providerEventId);
-                return event
-                  ? [{ ...review, fingerprint: demandReviewFingerprint(event) }]
-                  : [];
-              });
-              await repository.saveEvidenceReviews(fresh);
-              fresh.forEach((review) =>
-                evidence.set(review.providerEventId, review)
-              );
-            } catch (error) {
-              failed = true;
-              verificationQueue.forEach((event) =>
+            const verificationErrors: string[] = [];
+            for (const event of verificationQueue) {
+              let requestCounted = false;
+              try {
+                const verified = await evidenceReviewer({
+                  candidates: [event],
+                  hotelName: context.area.name,
+                  location: context.area.searchLocation,
+                  radiusKm: context.area.radiusKm,
+                });
+                verificationRequests += Math.max(1, verified.requests);
+                requestCounted = true;
+                Object.entries(verified.usage).forEach(([key, value]) => {
+                  sourceUsage[key] = (sourceUsage[key] ?? 0) + value;
+                });
+                const fresh = verified.reviews.flatMap((review) =>
+                  review.providerEventId === event.providerEventId
+                    ? [{ ...review, fingerprint: demandReviewFingerprint(event) }]
+                    : []
+                );
+                if (!fresh.length) {
+                  throw new Error("Claude gaf geen bruikbaar verificatieresultaat.");
+                }
+                await repository.saveEvidenceReviews(fresh);
+                fresh.forEach((review) =>
+                  evidence.set(review.providerEventId, review)
+                );
+              } catch (error) {
+                failed = true;
+                if (!requestCounted) verificationRequests += 1;
+                verificationErrors.push(errorMessage(error));
                 provisional.push(
                   asProvisional(event, "Webcontrole kon niet worden afgerond.")
-                )
-              );
-              sourceError = errorMessage(error);
+                );
+              }
+            }
+            if (verificationErrors.length) {
+              sourceError = `${verificationErrors.length} van ${verificationQueue.length} webcontroles mislukt. ${verificationErrors[0]}`;
             }
           }
         }
