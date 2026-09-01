@@ -1,4 +1,5 @@
 import Anthropic, { APIConnectionTimeoutError } from "@anthropic-ai/sdk";
+import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 
@@ -47,31 +48,6 @@ const outputSchema = z.object({
   ),
 });
 
-const outputJsonSchema = {
-  type: "object",
-  additionalProperties: false,
-  properties: {
-    events: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          sourceUrl: { type: "string", format: "uri" }, title: { type: "string" }, category: { type: "string" },
-          venue: { type: ["string", "null"] }, latitude: { type: ["number", "null"] }, longitude: { type: ["number", "null"] },
-          regionScope: { type: ["string", "null"] }, startAt: { type: "string" }, endAt: { type: "string" },
-          status: { type: "string", enum: ["active", "cancelled", "postponed"] },
-          ownerType: { type: "string" }, evidenceText: { type: ["string", "null"] },
-          impactPoints: { type: ["integer", "null"], enum: [20, 35, 45, 60, null] }, titleConfirmed: { type: "boolean" },
-          dateConfirmed: { type: "boolean" }, locationConfirmed: { type: "boolean" },
-        },
-        required: ["sourceUrl", "title", "category", "venue", "latitude", "longitude", "regionScope", "startAt", "endAt", "status", "ownerType", "evidenceText", "impactPoints", "titleConfirmed", "dateConfirmed", "locationConfirmed"],
-      },
-    },
-  },
-  required: ["events"],
-} as const;
-
 const demandTriageSchema = z.object({
   reviews: z.array(z.object({
     providerEventId: z.string(),
@@ -81,28 +57,6 @@ const demandTriageSchema = z.object({
     evidenceText: z.string(),
   })),
 });
-
-const demandTriageJsonSchema = {
-  type: "object",
-  additionalProperties: false,
-  properties: {
-    reviews: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          providerEventId: { type: "string" }, decision: { type: "string", enum: ["exclude", "verify", "provisional"] },
-          confidence: { type: "string", enum: ["high", "medium", "low"] },
-          demandLevel: { type: "string", enum: ["low", "medium", "high", "peak"] },
-          evidenceText: { type: "string" },
-        },
-        required: ["providerEventId", "decision", "confidence", "demandLevel", "evidenceText"],
-      },
-    },
-  },
-  required: ["reviews"],
-} as const;
 
 const evidenceReviewSchema = z.object({
   providerEventId: z.string(),
@@ -115,20 +69,6 @@ const evidenceReviewSchema = z.object({
   dateConfirmed: z.boolean(),
   locationConfirmed: z.boolean(),
 });
-
-const evidenceReviewJsonSchema = {
-  type: "object",
-  additionalProperties: false,
-  properties: {
-    providerEventId: { type: "string" },
-    decision: { type: "string", enum: ["verified", "unverifiable"] },
-    confidence: { type: "string", enum: ["high", "medium", "low"] },
-    sourceUrl: { type: ["string", "null"], format: "uri" },
-    ownerType: { type: "string" }, evidenceText: { type: "string" },
-    titleConfirmed: { type: "boolean" }, dateConfirmed: { type: "boolean" }, locationConfirmed: { type: "boolean" },
-  },
-  required: ["providerEventId", "decision", "confidence", "sourceUrl", "ownerType", "evidenceText", "titleConfirmed", "dateConfirmed", "locationConfirmed"],
-} as const;
 
 function sourceUrls(message: Anthropic.Message) {
   const urls = new Set<string>();
@@ -299,6 +239,9 @@ export async function collectClaude(
     const message = await requestPhase("verification", () => client.messages.create({
       model,
       max_tokens: 4_000,
+      ...(model.startsWith("claude-sonnet-5")
+        ? { thinking: { type: "disabled" as const } }
+        : {}),
       tools: [{
         type: "web_fetch_20250910",
         name: "web_fetch",
@@ -306,7 +249,7 @@ export async function collectClaude(
         max_content_tokens: 2_000,
         citations: { enabled: false },
       }],
-      output_config: { format: { type: "json_schema", schema: outputJsonSchema } },
+      output_config: { format: zodOutputFormat(outputSchema) },
       messages: [{
         role: "user",
         content: `Open deze pagina's en controleer per evenement titel, datum, locatie en status. Gebruik status active, cancelled of postponed. Neem alleen evenementen in het venster op. Geef impactPoints 20, 35, 45 of 60 op basis van gepubliceerde schaal, capaciteit of landelijke aantrekkingskracht; gebruik null als de bron dit niet ondersteunt. Geef een specifieke locatie zodat die gegeocodeerd kan worden. Pagina's:\n${batch.join("\n")}`,
@@ -397,7 +340,7 @@ export async function triagePredictHqCandidates(input: {
     const message = await requestPhase("verification", () => client.messages.create({
       model,
       max_tokens: 5_000,
-      output_config: { format: { type: "json_schema", schema: demandTriageJsonSchema } },
+      output_config: { format: zodOutputFormat(demandTriageSchema) },
       messages: [{
         role: "user",
         content: `Classificeer elk PredictHQ-kandidaat voor ${input.hotelName} in ${input.location}, binnen ${input.radiusKm} km. Gebruik alleen de metadata hieronder en doe geen aannames over feitelijke bevestiging. De afstandKm is door de applicatie berekend; schat de afstand niet zelf. Kies exclude voor lokale, kleine of terugkerende activiteiten zonder aannemelijke extra overnachtingsvraag. Kies verify alleen voor actieve evenementen met waarschijnlijke High/Piek hotelvraag die een webcontrole waard zijn. Kies provisional voor Medium-signalen en voor sterke voorspelde evenementen. Voorspelde evenementen mogen nooit verify krijgen. Geef voor ieder ID precies een korte beslissing. Kandidaten:\n${JSON.stringify(batch.map((candidate) => ({ id: candidate.providerEventId, title: candidate.title, category: candidate.category, state: candidate.sourceState, startAt: candidate.startAt, endAt: candidate.endAt, attendance: candidate.attendance, localRank: candidate.localRank, venue: candidate.venue, distanceKm: input.distancesKm?.[candidate.providerEventId] ?? null })))}`,
@@ -480,7 +423,7 @@ export async function verifyPredictHqCandidates(input: {
       tools: [
         { type: "web_search_20260318", name: "web_search", allowed_callers: ["direct"], max_uses: 1, response_inclusion: "full", user_location: { type: "approximate", country: "NL", city: input.location, timezone: "Europe/Amsterdam" } },
       ],
-      output_config: { format: { type: "json_schema", schema: evidenceReviewJsonSchema } },
+      output_config: { format: zodOutputFormat(evidenceReviewSchema) },
       messages: [{
         role: "user",
         content: `Controleer dit actieve PredictHQ-evenement voor ${input.hotelName} in ${input.location}. Zoek maximaal één openbare primaire bron van de organisator, locatie, sportbond, club of ticketverkoper. Kies sourceUrl exact uit de zoekresultaten. Markeer verified alleen als titel, datum en locatie overeenkomen. Geef unverifiable als geen primaire bron binnen deze ene zoekpoging gevonden wordt. Kandidaat:\n${JSON.stringify({ id: candidate.providerEventId, title: candidate.title, category: candidate.category, startAt: candidate.startAt, endAt: candidate.endAt, attendance: candidate.attendance, localRank: candidate.localRank, venue: candidate.venue })}`,

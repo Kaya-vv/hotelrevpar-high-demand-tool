@@ -333,6 +333,7 @@ export async function runCollection(
     for (const source of context.area.enabledSources) {
       if (
         source === "claude" &&
+        input.trigger === "cron" &&
         !(await repository.shouldRunClaudeDiscovery(context))
       ) {
         sourceResults.claude = {

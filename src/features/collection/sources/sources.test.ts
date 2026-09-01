@@ -202,7 +202,7 @@ describe("source adapters", () => {
       ...window,
       location: "Utrecht",
       radiusKm: 25,
-      model: "claude-test",
+      model: "claude-sonnet-5",
       client,
     });
     expect(create).toHaveBeenCalledTimes(4);
@@ -226,6 +226,7 @@ describe("source adapters", () => {
       maxRetries: 0,
     });
     expect(firstVerificationRequest.max_tokens).toBe(4_000);
+    expect(firstVerificationRequest.thinking).toEqual({ type: "disabled" });
     expect(firstVerificationRequest.tools[0]).toEqual({
       type: "web_fetch_20250910",
       name: "web_fetch",
@@ -234,6 +235,10 @@ describe("source adapters", () => {
       citations: { enabled: false },
     });
     expect(firstVerificationRequest.messages[0].content).toContain(urls[2]);
+    expect(
+      firstVerificationRequest.output_config.format.schema.properties.events
+        .items.properties.impactPoints,
+    ).not.toHaveProperty("enum");
     expect(result.requests).toBe(4);
     expect(result.candidates[0]).toMatchObject({
       sourceUrl: urls[0],

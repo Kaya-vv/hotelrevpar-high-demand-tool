@@ -363,7 +363,7 @@ describe("runCollection", () => {
     expect(repo.persistCandidate).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ providerEventId: "phq-2", primarySourceConfirmed: true }));
   });
 
-  it("runs Claude discovery at most once every 7 days", async () => {
+  it("runs scheduled Claude discovery at most once every 7 days", async () => {
     const claude = vi.fn();
     const repo = repository({
       shouldRunClaudeDiscovery: vi.fn().mockResolvedValue(false),
@@ -374,7 +374,7 @@ describe("runCollection", () => {
     });
 
     const result = await runCollection(
-      { accountId: "account-1", areaId: "area-1", trigger: "manual" },
+      { accountId: "account-1", areaId: "area-1", trigger: "cron" },
       { repository: repo, collectors: { claude } },
     );
 
@@ -383,5 +383,28 @@ describe("runCollection", () => {
       state: "skipped",
       reason: "Claude discovery runs at most once every 7 days.",
     });
+  });
+
+  it("runs Claude discovery on manual refresh during the 7-day cooldown", async () => {
+    const claude = vi.fn().mockResolvedValue({
+      source: "claude",
+      candidates: [],
+      requests: 1,
+      usage: {},
+    });
+    const repo = repository({
+      shouldRunClaudeDiscovery: vi.fn().mockResolvedValue(false),
+      loadContext: vi.fn().mockResolvedValue({
+        area: { id: "area-1", accountId: "account-1", name: "Testhotel", searchLocation: "Eindhoven", latitude: 51.44, longitude: 5.48, radiusKm: 25, enabledSources: ["claude"] },
+        hotels: [{ id: "hotel-1", latitude: 51.44, longitude: 5.48, demandRadiusKm: 25, holidayRegion: "south" }],
+      }),
+    });
+
+    await runCollection(
+      { accountId: "account-1", areaId: "area-1", trigger: "manual" },
+      { repository: repo, collectors: { claude } },
+    );
+
+    expect(claude).toHaveBeenCalledOnce();
   });
 });
