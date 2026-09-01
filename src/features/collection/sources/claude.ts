@@ -36,6 +36,7 @@ const outputSchema = z.object({
       regionScope: z.string().nullable(),
       startAt: z.string(),
       endAt: z.string(),
+      status: z.enum(["active", "cancelled", "postponed"]),
       ownerType: z.string(),
       evidenceText: z.string().nullable(),
       impactPoints: z.union([z.literal(20), z.literal(35), z.literal(45), z.literal(60)]).nullable(),
@@ -59,11 +60,12 @@ const outputJsonSchema = {
           sourceUrl: { type: "string", format: "uri" }, title: { type: "string" }, category: { type: "string" },
           venue: { type: ["string", "null"] }, latitude: { type: ["number", "null"] }, longitude: { type: ["number", "null"] },
           regionScope: { type: ["string", "null"] }, startAt: { type: "string" }, endAt: { type: "string" },
+          status: { type: "string", enum: ["active", "cancelled", "postponed"] },
           ownerType: { type: "string" }, evidenceText: { type: ["string", "null"] },
           impactPoints: { type: ["integer", "null"], enum: [20, 35, 45, 60, null] }, titleConfirmed: { type: "boolean" },
           dateConfirmed: { type: "boolean" }, locationConfirmed: { type: "boolean" },
         },
-        required: ["sourceUrl", "title", "category", "venue", "latitude", "longitude", "regionScope", "startAt", "endAt", "ownerType", "evidenceText", "impactPoints", "titleConfirmed", "dateConfirmed", "locationConfirmed"],
+        required: ["sourceUrl", "title", "category", "venue", "latitude", "longitude", "regionScope", "startAt", "endAt", "status", "ownerType", "evidenceText", "impactPoints", "titleConfirmed", "dateConfirmed", "locationConfirmed"],
       },
     },
   },
@@ -228,6 +230,12 @@ async function observeUsage(observer: UsageObserver | undefined, event: ClaudeUs
   if (observer) await observer(event);
 }
 
+const searchGroups = [
+  "congressen, vakbeurzen, conferenties, universitaire introducties en open dagen",
+  "grote concerten, festivals, arena-evenementen en stadionevenementen",
+  "nationale of internationale sporttoernooien en Europese thuiswedstrijden",
+] as const;
+
 export async function collectClaude(
   input: CollectionWindow & {
     location: string;
@@ -236,39 +244,57 @@ export async function collectClaude(
     client?: Anthropic;
     onUsage?: UsageObserver;
     geocode?: (query: string) => Promise<{ latitude: number; longitude: number } | null>;
+    knownUrls?: string[];
   },
 ): Promise<SourceResult> {
   const model = input.model ?? process.env.ANTHROPIC_MODEL;
   if (!model) throw new Error("ANTHROPIC_MODEL is required for the Claude source.");
   const client = input.client ?? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  const search = await requestPhase("search", () => client.messages.create({
-    model,
-    max_tokens: 1200,
-    tools: [{
-      type: "web_search_20260318",
-      name: "web_search",
-      allowed_callers: ["direct"],
-      max_uses: 2,
-      response_inclusion: "full",
-      user_location: { type: "approximate", country: "NL", city: input.location, timezone: "Europe/Amsterdam" },
-    }],
-    messages: [{
-      role: "user",
-      content: `Vind geplande evenementen binnen ${input.radiusKm} km van ${input.location} tussen ${input.start} en ${input.end} die hotelvraag kunnen verhogen. Geef voorrang aan organisatoren, locaties, clubs, universiteiten en gemeenten. Sla feestdagen en schoolvakanties over; die komen uit officiële bronnen.`,
-    }],
-  }, searchRequestOptions));
-  await observeUsage(input.onUsage, usageEvent(search, "discovery", model));
-  const urls = sourceUrls(search).slice(0, 8);
+  const searches: Anthropic.Message[] = [];
+  for (const focus of searchGroups) {
+    const search = await requestPhase("search", () => client.messages.create({
+      model,
+      max_tokens: 800,
+      tools: [{
+        type: "web_search_20260318",
+        name: "web_search",
+        allowed_callers: ["direct"],
+        max_uses: 1,
+        response_inclusion: "full",
+      }],
+      messages: [{
+        role: "user",
+        content: `Vind binnen ${input.radiusKm} km van ${input.location} tussen ${input.start} en ${input.end} alleen ${focus} met aannemelijke extra hotelvraag. Zoek op het open web en geef voorrang aan een specifieke evenementpagina van de organisator, locatie, club, universiteit, federatie of gemeente. Lokale agenda's en ticketlijsten zijn alleen ontdekking; geef waar mogelijk de pagina van de evenement-eigenaar terug.`,
+      }],
+    }, searchRequestOptions));
+    await observeUsage(input.onUsage, usageEvent(search, "discovery", model));
+    searches.push(search);
+  }
+  const urls = [...new Set([
+    ...(input.knownUrls ?? []),
+    ...searches.flatMap(sourceUrls),
+  ])].slice(0, 16);
   if (!urls.length) {
     return {
       source: "claude",
       candidates: [],
-      requests: 1,
-      usage: { inputTokens: search.usage.input_tokens, outputTokens: search.usage.output_tokens },
+      requests: searches.length,
+      usage: {
+        inputTokens: searches.reduce((total, message) => total + message.usage.input_tokens, 0),
+        outputTokens: searches.reduce((total, message) => total + message.usage.output_tokens, 0),
+        webSearchRequests: searches.reduce(
+          (total, message) => total + (message.usage.server_tool_use?.web_search_requests ?? 0),
+          0,
+        ),
+        webFetchRequests: 0,
+      },
     };
   }
 
-  const batches = [urls.slice(0, 4), urls.slice(4)].filter((batch) => batch.length);
+  const batches = Array.from(
+    { length: Math.ceil(urls.length / 4) },
+    (_, index) => urls.slice(index * 4, index * 4 + 4),
+  );
   const verified = await Promise.all(batches.map(async (batch) => {
     const message = await requestPhase("verification", () => client.messages.create({
       model,
@@ -283,7 +309,7 @@ export async function collectClaude(
       output_config: { format: { type: "json_schema", schema: outputJsonSchema } },
       messages: [{
         role: "user",
-        content: `Open deze pagina's en controleer per evenement titel, datum en locatie. Neem alleen evenementen in het venster op. Geef impactPoints 20, 35, 45 of 60 op basis van gepubliceerde schaal, capaciteit of landelijke aantrekkingskracht; gebruik null als de bron dit niet ondersteunt. Geef een specifieke locatie zodat die gegeocodeerd kan worden. Pagina's:\n${batch.join("\n")}`,
+        content: `Open deze pagina's en controleer per evenement titel, datum, locatie en status. Gebruik status active, cancelled of postponed. Neem alleen evenementen in het venster op. Geef impactPoints 20, 35, 45 of 60 op basis van gepubliceerde schaal, capaciteit of landelijke aantrekkingskracht; gebruik null als de bron dit niet ondersteunt. Geef een specifieke locatie zodat die gegeocodeerd kan worden. Pagina's:\n${batch.join("\n")}`,
       }],
     }, verificationRequestOptions));
     await observeUsage(input.onUsage, usageEvent(message, "discovery_fetch", model));
@@ -314,7 +340,7 @@ export async function collectClaude(
       regionScope: event.regionScope,
       startAt: event.startAt,
       endAt: event.endAt,
-      sourceState: "active" as const,
+      sourceState: event.status,
       certainty: "confirmed" as const,
       localRank: null,
       attendance: null,
@@ -331,14 +357,22 @@ export async function collectClaude(
     return candidate;
   }));
 
+  const messages = [...searches, ...verified];
   return {
     source: "claude",
     candidates,
-    requests: 1 + verified.length,
+    requests: messages.length,
     usage: {
-      inputTokens: search.usage.input_tokens + verified.reduce((total, message) => total + message.usage.input_tokens, 0),
-      outputTokens: search.usage.output_tokens + verified.reduce((total, message) => total + message.usage.output_tokens, 0),
-      webSearchRequests: search.usage.server_tool_use?.web_search_requests ?? 0,
+      inputTokens: messages.reduce((total, message) => total + message.usage.input_tokens, 0),
+      outputTokens: messages.reduce((total, message) => total + message.usage.output_tokens, 0),
+      webSearchRequests: messages.reduce(
+        (total, message) => total + (message.usage.server_tool_use?.web_search_requests ?? 0),
+        0,
+      ),
+      webFetchRequests: messages.reduce(
+        (total, message) => total + (message.usage.server_tool_use?.web_fetch_requests ?? 0),
+        0,
+      ),
     },
   };
 }
