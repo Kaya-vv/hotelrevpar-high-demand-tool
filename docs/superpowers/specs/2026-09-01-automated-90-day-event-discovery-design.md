@@ -1,7 +1,7 @@
 # Automated 90-Day Event Discovery
 
 Date: 2026-09-01
-Status: Approved direction, awaiting written-spec review
+Status: Approved direction, revised for city-independent discovery
 
 ## 1. Goal
 
@@ -15,7 +15,7 @@ The design must work without PredictHQ. PredictHQ may remain an enrichment sourc
 - Show events with Medium, High, or Peak hotel-demand scores.
 - Keep Low and weakly supported events out of subscriber views and exports.
 - Keep source conflicts in quarantine and report their count to platform health screens.
-- Use Claude for controlled discovery and extraction from trusted public sources.
+- Use Claude for bounded open-web discovery and extraction from official event-owner pages.
 - Use Ticketmaster, government data, and UEFA data as category-specific supplements.
 - Reuse the existing per-hotel source controls. Do not build an old-version versus new-version mode.
 - Replace the existing shallow Claude search in place. Do not maintain two Claude collectors.
@@ -24,26 +24,24 @@ The design must work without PredictHQ. PredictHQ may remain an enrichment sourc
 
 ### 3.1 Main discovery layer
 
-Use a small trusted-source registry for each pilot city. Include official sites for:
+Claude runs bounded open-web searches for the requested city and date window. Split discovery into focused category groups:
 
-- convention and exhibition centres;
-- stadiums, clubs, and sports federations;
-- universities and major education events;
-- concert halls, arenas, and festival organisers;
-- municipalities and destination-marketing organisations.
+- conventions, exhibitions, conferences, and major education events;
+- concerts, festivals, arena events, and stadium events;
+- national or international sports events.
 
-Store the pilot registry in code. Add an administration interface after expansion beyond the pilot cities creates a measured maintenance need.
+Do not configure domains per city. A venue calendar, municipal agenda, destination-marketing site, or ticket listing may reveal a candidate. Search must request an event page from the organiser, venue, club, university, federation, or municipality, and the final gate must reject candidates without that evidence.
 
-Claude searches the registered domains and extracts event facts. The organiser, venue, club, university, federation, or municipality page supplies the evidence.
+Fetch each candidate page and accept the event only when the page confirms its title, date, location, and demand evidence. Store successful source URLs through the existing event-source records. Later weekly runs refresh a bounded set of those URLs and also run fresh searches, so a new city can start without source setup and established cities retain useful source history.
 
 ### 3.2 Supplementary structured sources
 
 - Rijksoverheid and OpenHolidays supply school and public holidays.
-- Ticketmaster supplies ticketed entertainment when its terms permit the intended commercial use.
+- Ticketmaster supplies ticketed entertainment in locations covered by its API when its terms permit the intended commercial use.
 - UEFA supplies published competition windows and later confirmed fixtures.
 - PredictHQ supplies enrichment after written permission and acceptable pricing.
 
-No single provider defines the calendar.
+No single provider defines the calendar. Region-limited supplementary sources may be skipped outside their coverage; Claude discovery must not require them.
 
 ## 4. Collection Flow
 
@@ -51,15 +49,15 @@ For each hotel area:
 
 1. Build the rolling window from today through day 90.
 2. Refresh stored source pages for active events inside that window. Update confirmed dates, locations, postponements, and cancellations.
-3. Search trusted domains in focused category groups: business and education, live entertainment and festivals, and major sports.
-4. Fetch the resulting official pages.
+3. Run bounded open-web searches in focused category groups: business and education, live entertainment and festivals, and major sports.
+4. Fetch candidate pages and retain only events supported by an official event-owner page.
 5. Extract structured title, start, end, location, category, source URL, and demand evidence.
 6. Normalize and deduplicate candidates across all enabled sources.
 7. Apply the evidence and demand gates.
 8. Persist accepted events and calculate hotel-specific scores.
 9. Record source counts, failures, token use, web searches, and fetches.
 
-Limit each search and fetch phase to a fixed request budget. Carry undiscovered future events into the next collection cycle through the rolling window instead of expanding one run without a bound.
+Limit each search and fetch phase to a fixed request budget. Carry undiscovered future events into the next collection cycle through the rolling window instead of expanding one run without a bound. Do not reject a city because the application has no preconfigured domains for it.
 
 ## 5. Automated Evidence and Demand Gate
 
@@ -141,7 +139,8 @@ The report supports the later PredictHQ decision. Do not claim Claude matches Pr
 Add focused checks for:
 
 - the 90-day window boundary;
-- Claude search restrictions and request budgets;
+- open-web Claude search and request budgets;
+- discovery for a city with no preconfigured source list;
 - official-source title, date, and location confirmation;
 - rejection of non-holiday events that rely on default impact points;
 - automatic inclusion at Medium or above;
@@ -160,8 +159,8 @@ This design skips:
 - a permanent version-mode framework;
 - a second Claude collector;
 - subscriber event review;
-- a trusted-source administration interface;
+- a city-specific source registry or administration interface;
 - another commercial event aggregator;
 - a separate worker service or machine-learning demand model.
 
-Add source-registry administration after expansion beyond the pilot cities makes code-owned configuration costly. Add a longer search horizon after the pilot shows that 90 days gives managers too little lead time.
+Add a longer search horizon after the pilot shows that 90 days gives managers too little lead time. Add source configuration only if measured search failures show that open discovery plus stored successful URLs cannot cover a recurring source.

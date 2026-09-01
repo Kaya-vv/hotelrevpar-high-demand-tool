@@ -4,7 +4,7 @@
 
 **Goal:** Build an automated rolling 90-day demand calendar that uses controlled Claude discovery, hides weak demand, and keeps PredictHQ as an admin-controlled enrichment source.
 
-**Architecture:** Keep the existing collector and per-hotel source controls. Replace the broad Claude query with three bounded searches over code-owned official domains, refresh a bounded set of stored Claude source pages, and filter subscriber calendar and export output through one shared publishability rule. Store Low and weak events for provenance, but keep them out of subscriber output.
+**Architecture:** Keep the existing collector and per-hotel source controls. Replace the broad Claude query with three bounded open-web searches for the requested city, verify results through official event-owner pages, refresh a bounded set of stored successful URLs, and filter subscriber calendar and export output through one shared publishability rule. Store Low and weak events for provenance, but keep them out of subscriber output.
 
 **Tech Stack:** Next.js 16.3.3, TypeScript 6.0.3, Anthropic SDK 0.121.0, Supabase Postgres, Zod 4.4.3, Vitest 4.1.11
 
@@ -12,6 +12,7 @@
 
 - Search 90 days ahead and run collection once a week.
 - Show Medium, High, and Peak events with a non-default demand basis.
+- Support a new city without adding domains or source configuration.
 - Do not add a version-mode framework, dependency, worker service, or subscriber review flow.
 - Keep PredictHQ behind the existing platform-admin source checkbox.
 - Do not use PredictHQ data outside its permitted trial or written commercial rights.
@@ -23,8 +24,7 @@
 
 ## File Map
 
-- Create `src/features/collection/sources/trusted-event-domains.ts`: code-owned Eindhoven and Rotterdam domain registry.
-- Modify `src/features/collection/sources/claude.ts`: focused searches, bounded fetches, stored-page refresh input, and event status extraction.
+- Modify `src/features/collection/sources/claude.ts`: focused open-web searches, bounded fetches, official-owner verification, stored-page refresh input, and event status extraction.
 - Modify `src/features/collection/sources/sources.test.ts`: Claude source contract checks.
 - Modify `src/features/collection/repository.ts`: 90-day window, seven-day cadence, and bounded stored Claude URLs.
 - Modify `src/features/collection/run.ts`: pass stored Claude URLs and update cadence text.
@@ -154,24 +154,22 @@ git commit -m "feat: use a rolling 90-day collection window"
 
 ---
 
-### Task 2: Replace broad Claude discovery with bounded official-domain searches
+### Task 2: Replace broad Claude discovery with bounded open-web searches
 
 **Files:**
-- Create: `src/features/collection/sources/trusted-event-domains.ts`
 - Modify: `src/features/collection/sources/claude.ts:231-343`
 - Test: `src/features/collection/sources/sources.test.ts:141-245`
 
 **Interfaces:**
-- Produces: `trustedEventDomains(location: string): string[]`
 - Extends: `collectClaude(input)` with optional `knownUrls?: string[]`
 - Preserves: `collectClaude(input): Promise<SourceResult>`
 
-- [ ] **Step 1: Write failing focused-search tests**
+- [ ] **Step 1: Write failing open-search tests**
 
 Replace the broad Claude discovery fixture with a four-call sequence: three search responses and one fetch response. Use this test body in `src/features/collection/sources/sources.test.ts`:
 
 ```ts
-it("searches trusted Eindhoven domains in three bounded groups", async () => {
+it("searches any requested city in three bounded groups", async () => {
   const searchResponse = (url: string) => ({
     content: [
       {
@@ -187,15 +185,11 @@ it("searches trusted Eindhoven domains in three bounded groups", async () => {
   });
   const create = vi
     .fn()
+    .mockResolvedValueOnce(searchResponse("https://www.jaarbeurs.nl/event"))
     .mockResolvedValueOnce(
-      searchResponse("https://www.thisiseindhoven.com/en/events/ddw")
+      searchResponse("https://www.tivolivredenburg.nl/agenda/event")
     )
-    .mockResolvedValueOnce(
-      searchResponse("https://www.psv.nl/media/artikel/wedstrijdprogramma")
-    )
-    .mockResolvedValueOnce(
-      searchResponse("https://www.tue.nl/en/events/open-day")
-    )
+    .mockResolvedValueOnce(searchResponse("https://www.fcutrecht.nl/wedstrijd"))
     .mockResolvedValueOnce({
       content: [
         {
@@ -203,18 +197,18 @@ it("searches trusted Eindhoven domains in three bounded groups", async () => {
           text: JSON.stringify({
             events: [
               {
-                sourceUrl: "https://www.thisiseindhoven.com/en/events/ddw",
-                title: "Dutch Design Week",
-                category: "festival",
-                venue: "Strijp-S",
-                latitude: 51.448,
-                longitude: 5.458,
+                sourceUrl: "https://www.jaarbeurs.nl/event",
+                title: "Vakbeurs Utrecht",
+                category: "expos",
+                venue: "Jaarbeurs",
+                latitude: 52.089,
+                longitude: 5.107,
                 regionScope: null,
                 startAt: "2026-10-17T10:00:00+02:00",
                 endAt: "2026-10-25T18:00:00+01:00",
                 status: "active",
                 ownerType: "organizer",
-                evidenceText: "Meerdaags evenement met landelijke bezoekers.",
+                evidenceText: "Meerdaagse vakbeurs met landelijke bezoekers.",
                 impactPoints: 45,
                 titleConfirmed: true,
                 dateConfirmed: true,
@@ -234,7 +228,7 @@ it("searches trusted Eindhoven domains in three bounded groups", async () => {
   const result = await collectClaude({
     start: "2026-09-01",
     end: "2026-11-30",
-    location: "Eindhoven",
+    location: "Utrecht",
     radiusKm: 25,
     model: "claude-test",
     client: { messages: { create } } as unknown as Anthropic,
@@ -248,31 +242,19 @@ it("searches trusted Eindhoven domains in three bounded groups", async () => {
       max_uses: 1,
       allowed_callers: ["direct"],
     });
-    expect(request.tools[0].allowed_domains).toContain(
-      "thisiseindhoven.com"
-    );
+    expect(request.tools[0]).not.toHaveProperty("allowed_domains");
   });
   expect(result).toMatchObject({ requests: 4 });
   expect(result.candidates[0]).toMatchObject({
-    title: "Dutch Design Week",
+    title: "Vakbeurs Utrecht",
     sourceState: "active",
     aiImpactPoints: 45,
+    primarySourceConfirmed: true,
   });
 });
-
-it("rejects Claude discovery for an unconfigured pilot city", async () => {
-  await expect(
-    collectClaude({
-      start: "2026-09-01",
-      end: "2026-11-30",
-      location: "Utrecht",
-      radiusKm: 25,
-      model: "claude-test",
-      client: { messages: { create: vi.fn() } } as unknown as Anthropic,
-    })
-  ).rejects.toThrow("Geen vertrouwde Claude-bronnen ingesteld voor Utrecht.");
-});
 ```
+
+Keep the existing non-owner test and make its purpose explicit: a local agenda or ticket listing with `ownerType: "other"` may supply a lead, but it must produce `primarySourceConfirmed: false` and fail the later official-source gate.
 
 - [ ] **Step 2: Run the source tests and confirm failure**
 
@@ -282,44 +264,11 @@ Run:
 pnpm.cmd vitest run src/features/collection/sources/sources.test.ts
 ```
 
-Expected: FAIL because discovery makes one broad search, has no domain registry, and does not parse `status`.
+Expected: FAIL because discovery makes one broad search, includes Netherlands-only location metadata, and does not parse `status`.
 
-- [ ] **Step 3: Create the pilot domain registry**
+- [ ] **Step 3: Implement three bounded Claude searches**
 
-Create `src/features/collection/sources/trusted-event-domains.ts`:
-
-```ts
-import { normalizeText } from "@/features/events/normalize";
-
-const domains: Record<string, string[]> = {
-  eindhoven: [
-    "thisiseindhoven.com",
-    "psv.nl",
-    "tue.nl",
-    "hightechcampus.com",
-    "evoluon.com",
-    "effenaar.nl",
-    "parktheater.nl",
-  ],
-  rotterdam: [
-    "rotterdamfestivals.nl",
-    "uitagendarotterdam.nl",
-    "ahoy.nl",
-    "feyenoord.nl",
-    "dedoelen.nl",
-    "eur.nl",
-    "rotterdam.nl",
-  ],
-};
-
-export function trustedEventDomains(location: string) {
-  return domains[normalizeText(location)] ?? [];
-}
-```
-
-- [ ] **Step 4: Implement three bounded Claude searches**
-
-In `src/features/collection/sources/claude.ts`, import `trustedEventDomains`, add `status` to both output schemas, and extend the input type:
+In `src/features/collection/sources/claude.ts`, add `status` to both output schemas and extend the input type:
 
 ```ts
 knownUrls?: string[];
@@ -353,13 +302,6 @@ const searchGroups = [
 Replace the single search call with:
 
 ```ts
-const domains = trustedEventDomains(input.location);
-if (!domains.length) {
-  throw new Error(
-    `Geen vertrouwde Claude-bronnen ingesteld voor ${input.location}.`
-  );
-}
-
 const searches: Anthropic.Message[] = [];
 for (const focus of searchGroups) {
   const search = await requestPhase("search", () =>
@@ -372,21 +314,14 @@ for (const focus of searchGroups) {
             type: "web_search_20260318",
             name: "web_search",
             allowed_callers: ["direct"],
-            allowed_domains: domains,
             max_uses: 1,
             response_inclusion: "full",
-            user_location: {
-              type: "approximate",
-              country: "NL",
-              city: input.location,
-              timezone: "Europe/Amsterdam",
-            },
           },
         ],
         messages: [
           {
             role: "user",
-            content: `Vind binnen ${input.radiusKm} km van ${input.location} tussen ${input.start} en ${input.end} alleen ${focus} met aannemelijke extra hotelvraag. Gebruik pagina's van de organisator, locatie, club, universiteit, federatie of gemeente.`,
+            content: `Vind binnen ${input.radiusKm} km van ${input.location} tussen ${input.start} en ${input.end} alleen ${focus} met aannemelijke extra hotelvraag. Zoek op het open web en geef voorrang aan een specifieke evenementpagina van de organisator, locatie, club, universiteit, federatie of gemeente. Lokale agenda's en ticketlijsten zijn alleen ontdekking; geef waar mogelijk de pagina van de evenement-eigenaar terug.`,
           },
         ],
       },
@@ -472,7 +407,7 @@ return {
 
 Update existing Claude output fixtures in the test file with `status: "active"`.
 
-- [ ] **Step 5: Run the source tests and confirm success**
+- [ ] **Step 4: Run the source tests and confirm success**
 
 Run:
 
@@ -482,11 +417,11 @@ pnpm.cmd vitest run src/features/collection/sources/sources.test.ts
 
 Expected: PASS with all source adapter tests passing.
 
-- [ ] **Step 6: Commit the task**
+- [ ] **Step 5: Commit the task**
 
 ```powershell
-git add -- src/features/collection/sources/trusted-event-domains.ts src/features/collection/sources/claude.ts src/features/collection/sources/sources.test.ts
-git commit -m "feat: focus Claude discovery on trusted event sources"
+git add -- src/features/collection/sources/claude.ts src/features/collection/sources/sources.test.ts
+git commit -m "feat: add bounded open-web event discovery"
 ```
 
 ---
@@ -616,6 +551,7 @@ const claudeSources = links.length
             "source_url, extracted_start_at, extracted_end_at, checked_at"
           )
           .eq("provider", "claude")
+          .eq("primary_source_confirmed", true)
           .in("event_id", ids)
     )
   : [];
@@ -646,7 +582,7 @@ Add `knownClaudeUrls: []` to the shared repository fixture in `run.test.ts`.
 In the Claude fetch prompt, require the status contract:
 
 ```ts
-content: `Open deze pagina's en controleer per evenement titel, datum, locatie en status. Gebruik status active, cancelled of postponed. Neem alleen evenementen in het venster op. Geef impactPoints 20, 35, 45 of 60 als de pagina zelf schaal, capaciteit of landelijke of internationale aantrekkingskracht ondersteunt; gebruik null zonder zo'n signaal. Pagina's:\n${batch.join("\n")}`,
+content: `Open deze pagina's en controleer per evenement titel, datum, locatie, status en eigenaarstype. Gebruik status active, cancelled of postponed. Markeer een lokale agenda of ticketlijst niet als organisator of evenement-eigenaar. Neem alleen evenementen in het venster op. Geef impactPoints 20, 35, 45 of 60 als de pagina zelf schaal, capaciteit of landelijke of internationale aantrekkingskracht ondersteunt; gebruik null zonder zo'n signaal. Pagina's:\n${batch.join("\n")}`,
 ```
 
 - [ ] **Step 5: Prove an official cancellation maps to exclusion input**
@@ -849,7 +785,7 @@ Update the runbook table so it requires these gates:
 
 ```markdown
 | 4 | Disable PredictHQ on the pilot hotels until written permission covers the intended use. |  |  |  |  |
-| 5 | Freeze the Eindhoven and Rotterdam known-event benchmark from Robert's existing calendars, exports, and known high-demand dates. |  |  |  |  |
+| 5 | Freeze a known-event benchmark for each pilot hotel from Robert's existing calendars, exports, and known high-demand dates. |  |  |  |  |
 | 6 | Run four collection cycles over rolling 90-day windows and record source failures and Claude cost. |  |  |  |  |
 | 7 | Confirm displayed and exported events are Medium or higher and use a non-default impact basis. |  |  |  |  |
 | 8 | Confirm Low, default-basis, unsupported, and conflicted events stay out of subscriber output. |  |  |  |  |
@@ -918,7 +854,7 @@ Confirm the final diff contains none of these:
 version-mode database field
 new package dependency
 subscriber review UI
-trusted-source admin UI
+city-specific source registry or admin UI
 second Claude collector
 new worker service
 ```
