@@ -6,7 +6,10 @@ import {
   getCalendarData,
 } from "@/features/calendar/query";
 import { RefreshHotelForm } from "@/features/collection/refresh-hotel-form";
-import { demandLabels, demandLevels } from "@/features/events/importance";
+import {
+  demandLabels,
+  publishableDemandLevels,
+} from "@/features/events/importance";
 import { overrideImportance } from "@/features/review/actions";
 import { requireAccount } from "@/lib/auth/require-account";
 
@@ -51,7 +54,7 @@ export default async function CalendarPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { accountId } = await requireAccount();
+  const { accountId, role } = await requireAccount();
   const params = await searchParams;
   const rawMonth = value(params, "month");
   const month =
@@ -71,8 +74,8 @@ export default async function CalendarPage({
       parsedDistance >= 0
         ? parsedDistance
         : undefined,
-    importance: demandLevels.includes(
-      rawImportance as typeof demandLevels[number]
+    importance: publishableDemandLevels.includes(
+      rawImportance as (typeof publishableDemandLevels)[number]
     )
       ? (rawImportance as CalendarFilters["importance"])
       : undefined,
@@ -173,7 +176,7 @@ export default async function CalendarPage({
           Vraaginschatting
           <select name="importance" defaultValue={filters.importance ?? ""}>
             <option value="">Alle niveaus</option>
-            {demandLevels.map((level) => (
+            {publishableDemandLevels.map((level) => (
               <option key={level} value={level}>
                 {demandLabels[level]}
               </option>
@@ -209,7 +212,9 @@ export default async function CalendarPage({
         events={data.events}
         latestRun={data.latestRun}
         view={view}
-        overrideImportanceAction={overrideImportance}
+        overrideImportanceAction={
+          role === "platform_admin" ? overrideImportance : undefined
+        }
       />
     </div>
   );

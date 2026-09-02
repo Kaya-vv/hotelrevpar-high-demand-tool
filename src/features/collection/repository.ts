@@ -3,6 +3,7 @@ import { fetchInBatches } from "@/lib/supabase/fetch-in-batches";
 import { classifyMatch } from "@/features/events/match";
 import { resolvedReviewState, reviewFingerprint } from "@/features/events/review-fingerprint";
 import { scoreHotelEvent } from "@/features/events/score";
+import { selectScoreEvidence } from "@/features/events/source-evidence";
 import type { EventCandidate, ValidationReason } from "@/features/events/types";
 import { validateCandidate } from "@/features/events/validate";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -18,7 +19,7 @@ import {
   type StoredDemandTriage,
   type StoredEvidenceReview,
 } from "./run";
-import { sourceChange } from "./source-change";
+import { shouldRefreshCanonical, sourceChange } from "./source-change";
 
 const structuredUpdateProviders = new Set(["rijksoverheid", "openholidays", "ticketmaster", "predicthq"]);
 const automatedSourceStates = new Set<EventCandidate["sourceState"]>(["cancelled", "postponed", "removed"]);
@@ -241,7 +242,12 @@ export function createCollectionRepository(): CollectionRepository {
         );
         conflict = change.conflict;
         preserveCanonical = preserveCanonical || change.preserveCanonical;
-        if (conflict && structuredUpdateProviders.has(candidate.provider) && !automatedSourceStates.has(candidate.sourceState)) {
+        if (
+          conflict &&
+          (structuredUpdateProviders.has(candidate.provider) ||
+            shouldRefreshCanonical(candidate)) &&
+          !automatedSourceStates.has(candidate.sourceState)
+        ) {
           conflict = null;
           preserveCanonical = false;
         }
@@ -299,7 +305,7 @@ export function createCollectionRepository(): CollectionRepository {
           if (match.kind === "exact") {
             eventId = match.eventId;
             duplicate = true;
-            preserveCanonical = true;
+            preserveCanonical = !shouldRefreshCanonical(candidate);
           }
           if (match.kind === "uncertain") {
             duplicate = true;
@@ -480,12 +486,10 @@ export function createCollectionRepository(): CollectionRepository {
         fetchInBatches(activeIds, (ids) => supabase.from("event_sources").select("*").in("event_id", ids)),
       ]);
       const candidates = events.flatMap((event) => {
-        const evidence = sources
-          .filter((source) => source.event_id === event.id)
-          .sort((left, right) =>
-            (right.local_rank ?? -1) - (left.local_rank ?? -1)
-            || (right.attendance ?? -1) - (left.attendance ?? -1),
-          )[0];
+        const evidence = selectScoreEvidence(
+          sources.filter((source) => source.event_id === event.id),
+          context.area.enabledSources,
+        );
         if (!evidence) return [];
         return [{
           eventId: event.id,
@@ -502,7 +506,7 @@ export function createCollectionRepository(): CollectionRepository {
             regionScope: event.region_scope,
             startAt: event.start_at,
             endAt: event.end_at,
-            sourceState: event.source_state as EventCandidate["sourceState"],
+            sourceState: evidence.source_state as EventCandidate["sourceState"],
             providerDuplicateOfId: evidence.provider_duplicate_of_id,
             providerDeletedReason: evidence.provider_deleted_reason,
             providerCancelledAt: evidence.provider_cancelled_at,
@@ -517,8 +521,18 @@ export function createCollectionRepository(): CollectionRepository {
           } satisfies EventCandidate,
         }];
       });
+      const supportedIds = new Set(candidates.map(({ eventId }) => eventId));
+      const unsupportedIds = activeIds.filter((id) => !supportedIds.has(id));
 
       for (const hotel of context.hotels) {
+        for (let index = 0; index < unsupportedIds.length; index += 50) {
+          const { error } = await supabase
+            .from("hotel_event_scores")
+            .delete()
+            .eq("hotel_id", hotel.id)
+            .in("event_id", unsupportedIds.slice(index, index + 50));
+          if (error) throw error;
+        }
         const bases = new Map(candidates.map(({ eventId, candidate }) => [
           eventId,
           scoreHotelEvent({ candidate, hotel, overlaps: [] }),

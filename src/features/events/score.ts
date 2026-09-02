@@ -1,6 +1,43 @@
 import { distanceKm } from "./distance";
 import type { DemandScore, EventCandidate } from "./types";
 
+const localDateTime = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Europe/Amsterdam",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+function localParts(value: string) {
+  const parts = Object.fromEntries(
+    localDateTime
+      .formatToParts(new Date(value))
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    hour: Number(parts.hour),
+    minute: Number(parts.minute),
+  };
+}
+
+function marqueeSport(category: string, title = "", regionScope = "") {
+  if (category !== "sports") return false;
+  const topClubCount = ["ajax", "feyenoord", "psv"].filter((club) =>
+    title.toLowerCase().includes(club),
+  ).length;
+  return (
+    /international|internationaal|european|europees/i.test(regionScope) ||
+    /champions league|europa league|conference league|wereldkampioenschap|world cup|\bwk\b|europees kampioenschap|\bek\b|finale/i.test(
+      title,
+    ) || topClubCount >= 2
+  );
+}
+
 export function importance(total: number): DemandScore["suggestedImportance"] {
   return total >= 85
     ? "Peak"
@@ -19,15 +56,8 @@ export function impact(input: {
   category: string;
   title?: string;
 }): { points: number; basis: DemandScore["impactBasis"] } {
-  const topClubCount = ["ajax", "feyenoord", "psv"].filter((club) =>
-    input.title?.toLowerCase().includes(club)
-  ).length;
-  const marqueeSport =
-    /champions league|europa league|conference league|wereldkampioenschap|world cup|\bwk\b|europees kampioenschap|\bek\b|finale/i.test(
-      input.title ?? ""
-    ) || topClubCount >= 2;
   const capSport = (points: number) =>
-    input.category === "sports" && !marqueeSport
+    input.category === "sports" && !marqueeSport(input.category, input.title)
       ? Math.min(points, 45)
       : points;
   if (input.aiImpactPoints !== undefined && input.aiImpactPoints !== null) {
@@ -108,16 +138,31 @@ export function scoreHotelEvent({
     }
   }
 
-  let stayPressurePoints =
-    candidate.startAt.slice(0, 10) !== candidate.endAt.slice(0, 10) ? 6 : 0;
-  const localEndHour = Number(candidate.endAt.slice(11, 13));
-  if (localEndHour >= 20) stayPressurePoints += 4;
+  const start = localParts(candidate.startAt);
+  const end = localParts(candidate.endAt);
+  const hasDuration = new Date(candidate.endAt) > new Date(candidate.startAt);
+  const allDayPlaceholder =
+    (start.hour === 0 &&
+      start.minute === 0 &&
+      end.hour === 23 &&
+      end.minute >= 59) ||
+    (candidate.startAt.slice(11, 16) === "00:00" &&
+      candidate.endAt.slice(11, 16) === "23:59");
+  let stayPressurePoints = !allDayPlaceholder && start.date !== end.date ? 6 : 0;
+  if (hasDuration && !allDayPlaceholder && end.hour >= 20) {
+    stayPressurePoints += 4;
+  }
   if (
     overlaps.some(
-      (other) =>
-        other.preOverlapTotal >= 40 &&
-        other.startAt.slice(0, 10) <= candidate.endAt.slice(0, 10) &&
-        other.endAt.slice(0, 10) >= candidate.startAt.slice(0, 10)
+      (other) => {
+        const otherStart = localParts(other.startAt).date;
+        const otherEnd = localParts(other.endAt).date;
+        return (
+          other.preOverlapTotal >= 40 &&
+          otherStart <= end.date &&
+          otherEnd >= start.date
+        );
+      },
     )
   ) {
     stayPressurePoints += 5;
@@ -129,13 +174,8 @@ export function scoreHotelEvent({
   );
   const routineSport =
     candidate.category === "sports" &&
-    !/champions league|europa league|conference league|wereldkampioenschap|world cup|\bwk\b|europees kampioenschap|\bek\b|finale/i.test(
-      candidate.title
-    ) &&
-    ["ajax", "feyenoord", "psv"].filter((club) =>
-      candidate.title.toLowerCase().includes(club)
-    ).length < 2;
-  const total = routineSport ? Math.min(84, rawTotal) : rawTotal;
+    !marqueeSport(candidate.category, candidate.title, candidate.regionScope ?? "");
+  const total = routineSport ? Math.min(69, rawTotal) : rawTotal;
 
   return {
     impactPoints: impactScore.points,

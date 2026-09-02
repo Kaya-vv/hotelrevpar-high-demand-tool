@@ -1,19 +1,19 @@
 # Automated 90-Day Event Discovery
 
 Date: 2026-09-01
-Status: Approved direction, revised for city-independent discovery
+Status: Approved direction, revised for PredictHQ-independent demo readiness
 
 ## 1. Goal
 
-Replace the broad 12-month collection strategy with an automated rolling 90-day demand calendar. Hotel managers receive a finished calendar and RevControl export. They do not review event candidates.
+Replace the broad 12-month collection strategy with an automated rolling 90-day demand calendar. Hotel managers receive a finished High/Peak calendar and do not review event candidates. Hosting and RevControl import validation remain outside the data-quality demo milestone.
 
 The design must work without PredictHQ. PredictHQ may remain an enrichment source if its response confirms acceptable pricing and rights for storage, combination, subscriber display, export, attribution, and AI transfer.
 
 ## 2. Product Decisions
 
 - Search 90 days ahead and run collection once a week.
-- Show events with Medium, High, or Peak hotel-demand scores.
-- Keep Low and weakly supported events out of subscriber views and exports.
+- Show only confirmed High or Peak hotel-demand scores to subscribers.
+- Keep Medium, Low, and weakly supported events out of subscriber views and exports.
 - Keep source conflicts in quarantine and report their count to platform health screens.
 - Use Claude for bounded open-web discovery and extraction from official event-owner pages.
 - Use Ticketmaster and government data as category-specific supplements.
@@ -24,15 +24,16 @@ The design must work without PredictHQ. PredictHQ may remain an enrichment sourc
 
 ### 3.1 Main discovery layer
 
-Claude runs bounded open-web searches for the requested city and date window. Split discovery into focused category groups:
+Claude runs twelve bounded open-web searches for the requested city and date window: four category groups in each of three 30-day slices. Every request must invoke web search. The category groups are:
 
-- conventions, exhibitions, conferences, and major education events;
-- concerts, festivals, arena events, and stadium events;
-- national or international sports events.
+- citywide festivals, design weeks, and marathons;
+- conventions, exhibitions, trade fairs, and conferences;
+- major concerts and multi-day entertainment events;
+- confirmed professional matches and sports tournaments.
 
 Do not configure domains per city. A venue calendar, municipal agenda, destination-marketing site, or ticket listing may reveal a candidate. Search must request an event page from the organiser, venue, club, university, federation, or municipality, and the final gate must reject candidates without that evidence.
 
-Fetch each candidate page and accept the event only when the page confirms its title, date, location, and demand evidence. Store successful source URLs through the existing event-source records. Later weekly runs refresh a bounded set of those URLs and also run fresh searches, so a new city can start without source setup and established cities retain useful source history.
+Fetch each candidate page in a separate request and accept the event only when the page confirms its title, date, location, and demand evidence for the current edition. Bind the event to the fetched URL. Ignore historical cumulative attendance and reject agenda or aggregator pages. One failed page must not discard successful pages. Store successful source URLs through the existing event-source records. Later weekly runs refresh a bounded set of those URLs and also run fresh searches, so a new city can start without source setup and established cities retain useful source history.
 
 ### 3.2 Supplementary structured sources
 
@@ -49,8 +50,8 @@ For each hotel area:
 
 1. Build the rolling window from today through day 90.
 2. Refresh stored source pages for active events inside that window. Update confirmed dates, locations, postponements, and cancellations.
-3. Run bounded open-web searches in focused category groups: business and education, live entertainment and festivals, and major sports.
-4. Fetch candidate pages and retain only events supported by an official event-owner page.
+3. Run the twelve required open-web searches.
+4. Fetch one candidate page per request and retain only events supported by an official event-owner page.
 5. Extract structured title, start, end, location, category, source URL, and demand evidence.
 6. Normalize and deduplicate candidates across all enabled sources.
 7. Apply the evidence and demand gates.
@@ -68,7 +69,7 @@ A non-holiday event from any source may enter the subscriber calendar when all c
 - The event falls inside the hotel's area and 90-day window.
 - No unresolved duplicate, date conflict, or venue conflict exists.
 - The source supports at least one demand signal.
-- The hotel-specific score reaches Medium, High, or Peak.
+- The hotel-specific score reaches High or Peak.
 
 Accepted demand signals are:
 
@@ -79,13 +80,13 @@ Accepted demand signals are:
 
 Claude general knowledge and the current default 20 impact points do not qualify as demand evidence. Ticketmaster or PredictHQ presence alone does not prove hotel-demand impact.
 
-Discard candidates with missing evidence or Low demand. Quarantine conflicts without placing a task in the hotel manager's workflow.
+Discard candidates with missing evidence or Medium/Low demand from subscriber output. Keep those scores internally. Quarantine conflicts without placing a task in the hotel manager's workflow.
 
 ## 6. Subscriber and Platform Experience
 
 Subscribers see:
 
-- the automated Medium-or-higher demand calendar;
+- the automated High/Peak demand calendar;
 - evidence links and demand-score explanations;
 - RevControl export for active events;
 - source freshness without a candidate-review queue.
@@ -104,7 +105,7 @@ Platform health information must not require event-by-event decisions. The syste
 
 Start the Claude-focused 90-day pilot without waiting for PredictHQ.
 
-Keep PredictHQ behind its existing source checkbox. Do not send PredictHQ records to Claude, display them to subscribers, or export them until written permission covers those actions. Use PredictHQ for internal comparison only when its trial terms permit that use.
+Keep PredictHQ behind its existing source checkbox. A disabled source cannot affect scores, source links, calendar output, or exports through an older shared event record. Do not send PredictHQ records to Claude, display them to subscribers, or export them until written permission covers those actions. Use PredictHQ for internal comparison only when its trial terms permit that use.
 
 If PredictHQ approves the use case and the price fits the product, enable it as enrichment. If PredictHQ declines or remains uneconomic, leave it disabled. The rest of the collection flow stays unchanged.
 
@@ -114,9 +115,9 @@ Freeze a known-event benchmark before the first run using Robert's existing cale
 
 Run one collection cycle over the same 90-day window with Claude, government sources, and Ticketmaster enabled. Enable PredictHQ for the paired comparison only when its trial terms permit it. This single run decides whether the build is ready for Robert's demo; later weekly runs measure production reliability.
 
-Compare:
+Run the demo comparison for one Eindhoven hotel and one Rotterdam hotel with a 25 km radius. Compare:
 
-- unique Medium-or-higher events by source;
+- unique High/Peak events by enabled source;
 - coverage of a fixed known-event benchmark;
 - unsupported or irrelevant events that reached the calendar;
 - source and verification failures;
@@ -125,11 +126,14 @@ Compare:
 
 The report supports the later PredictHQ decision. Do not claim Claude matches PredictHQ recall before the comparison supplies evidence.
 
-The demo gate passes when the run finds every benchmark Peak event and at least 80% of benchmark High events, publishes no unsupported High or Peak events, publishes no generic competition windows or duplicates, and costs less than the previous 238,421-input-token Claude run.
+The Eindhoven benchmark contains Dutch Design Week and ASML Marathon as Peak, plus GLOW, PSV–Club Brugge, PSV–Feyenoord, Helldorado, and Revolution Calling as High or higher. The Rotterdam benchmark contains WK Turnen as Peak, plus FERMA Forum, Left of the Dial, Feyenoord–Inter, and Feyenoord–FC Porto as High or higher. Include Wereldhavendagen as Peak only while it remains inside the collection window.
+
+The demo gate passes per city when the run finds every in-window benchmark Peak event and at least 80% of benchmark High events, publishes no unsupported High or Peak events, publishes no generic competition windows or duplicates, records twelve real Claude searches, receives no Claude source-level failure, and costs no more than €2 per hotel collection run in Anthropic billing.
 
 ## 9. Failure Handling
 
 - Let one failed source produce a partial run while other sources finish.
+- Let one failed Claude page leave successful page evidence intact; fail the Claude source when every page verification fails.
 - Keep prior confirmed events during a source outage.
 - Exclude cancellations and removed events after an official source confirms the change.
 - Hide unresolved conflicts from subscribers.
@@ -145,8 +149,11 @@ Add focused checks for:
 - discovery for a city with no preconfigured source list;
 - official-source title, date, and location confirmation;
 - rejection of non-holiday events that rely on default impact points;
-- automatic inclusion at Medium or above;
-- automatic exclusion below Medium;
+- automatic inclusion at High or Peak;
+- automatic exclusion at Medium or below;
+- enabled-source isolation for scoring, source links, calendar output, and exports;
+- Amsterdam-local all-day, multi-day, and late-end scoring;
+- routine league matches capped below High;
 - conflict quarantine without subscriber review work;
 - PredictHQ-disabled collection;
 - source provenance and comparison counts;

@@ -14,3 +14,12 @@ export function sourceChange(existing: ExistingSource, candidate: EventCandidate
   return { conflict: null, preserveCanonical: false as const };
 }
 
+export function shouldRefreshCanonical(candidate: EventCandidate) {
+  return (
+    candidate.provider === "claude" &&
+    candidate.sourceState === "active" &&
+    candidate.certainty === "confirmed" &&
+    candidate.primarySourceConfirmed
+  );
+}
+

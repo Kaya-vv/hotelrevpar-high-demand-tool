@@ -5,6 +5,7 @@ import {
 } from "@/features/events/importance";
 import { getHotelScope } from "@/features/workspace/hotel-context";
 import { fetchInBatches } from "@/lib/supabase/fetch-in-batches";
+import { isEnabledPrimarySource } from "@/features/events/source-evidence";
 
 import type { CalendarEvent, LatestRun } from "./calendar-view";
 import type { ReviewEvent } from "@/features/review/review-list";
@@ -65,9 +66,8 @@ export async function getCalendarData(
   accountId: string,
   filters: CalendarFilters
 ) {
-  const { supabase, hotels, selectedHotelId, areaId } = await getHotelScope(
-    accountId
-  );
+  const { supabase, hotels, selectedHotelId, areaId, enabledSources } =
+    await getHotelScope(accountId);
   const [{ decisions, events, sources }, linkedIds, runResult] =
     await Promise.all([
       loadAccountEvents(accountId, "active"),
@@ -113,6 +113,18 @@ export async function getCalendarData(
     )
     .map((event) => {
       const decision = decisionsByEvent.get(event.id);
+      const publishedSources = sources
+        .filter(
+          (source) =>
+            source.event_id === event.id &&
+            isEnabledPrimarySource(source, enabledSources),
+        )
+        .map((source) => ({
+          provider: source.provider,
+          url: source.public_source_url,
+          state: source.source_state,
+          primarySourceConfirmed: source.primary_source_confirmed,
+        }));
       const hotelScores = scores
         .filter((score) => score.event_id === event.id)
         .map((score) => ({
@@ -137,17 +149,11 @@ export async function getCalendarData(
         venue: decision?.override_venue ?? event.venue,
         startAt: decision?.override_start_at ?? event.start_at,
         endAt: decision?.override_end_at ?? event.end_at,
-        sources: sources
-          .filter((source) => source.event_id === event.id)
-          .map((source) => ({
-            provider: source.provider,
-            url: source.public_source_url,
-            state: source.source_state,
-            primarySourceConfirmed: source.primary_source_confirmed,
-          })),
+        sources: publishedSources,
         hotelScores,
       };
     })
+    .filter((event) => event.sources.length > 0)
     .filter((event) => event.hotelScores.length > 0)
     .filter((event) => !filters.category || event.category === filters.category)
     .filter(
@@ -185,9 +191,7 @@ export async function getCalendarData(
     latestRun,
     hotels,
     selectedHotelId,
-    categories: [
-      ...new Set(scopedEvents.map((event) => event.category)),
-    ].sort(),
+    categories: [...new Set(mapped.map((event) => event.category))].sort(),
   };
 }
 

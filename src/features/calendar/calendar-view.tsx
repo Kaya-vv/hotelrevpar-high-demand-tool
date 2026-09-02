@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import {
   demandLabels,
   demandLevels,
+  publishableDemandLevels,
   type DemandLevel,
 } from "@/features/events/importance";
 
@@ -193,12 +194,12 @@ function EventOverview({
   overrideImportanceAction?: (formData: FormData) => void | Promise<void>;
 }) {
   const counts = Object.fromEntries(
-    demandLevels.map((level) => [
+    publishableDemandLevels.map((level) => [
       level,
       events.filter((event) => event.hotelScores[0]?.importance === level)
         .length,
     ])
-  ) as Record<DemandLevel, number>;
+  ) as Record<(typeof publishableDemandLevels)[number], number>;
   const rows = (items: CalendarEvent[]) =>
     items.map((event) => {
       const score = event.hotelScores[0];
@@ -251,10 +252,10 @@ function EventOverview({
           <strong>{events.length}</strong>
           <span>bevestigde vraagmomenten</span>
         </div>
-        {["Peak", "High", "Medium", "Low"].map((level) => (
+        {publishableDemandLevels.map((level) => (
           <div key={level}>
-            <strong>{counts[level as DemandLevel]}</strong>
-            <span>{demandLabels[level as DemandLevel]}</span>
+            <strong>{counts[level]}</strong>
+            <span>{demandLabels[level]}</span>
           </div>
         ))}
       </div>

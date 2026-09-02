@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import { distanceKm } from "./distance";
-import { isPublishableDemand } from "./importance";
+import {
+  isPublishableDemand,
+  publishableDemandLevels,
+} from "./importance";
 import { classifyMatch } from "./match";
 import { normalizeCandidate, normalizeText } from "./normalize";
 import { impact, importance, scoreHotelEvent } from "./score";
+import { isEnabledPrimarySource } from "./source-evidence";
 import type { EventCandidate } from "./types";
 import { validateCandidate } from "./validate";
 
@@ -30,11 +34,27 @@ const candidate: EventCandidate = {
 };
 
 describe("event domain", () => {
-  it("publishes Medium demand with evidence and hides Low or default demand", () => {
-    expect(isPublishableDemand("Medium", "attendance")).toBe(true);
+  it("publishes only High and Peak demand with evidence", () => {
+    expect(publishableDemandLevels).toEqual(["High", "Peak"]);
+    expect(isPublishableDemand("Medium", "attendance")).toBe(false);
     expect(isPublishableDemand("High", "ai_assessment")).toBe(true);
-    expect(isPublishableDemand("Medium", "default")).toBe(false);
+    expect(isPublishableDemand("Peak", "attendance")).toBe(true);
+    expect(isPublishableDemand("High", "default")).toBe(false);
     expect(isPublishableDemand("Low", "attendance")).toBe(false);
+  });
+
+  it("requires an enabled active primary source with a public URL", () => {
+    const source = {
+      provider: "claude",
+      source_state: "active",
+      primary_source_confirmed: true,
+      public_source_url: "https://organizer.example/event",
+    };
+    expect(isEnabledPrimarySource(source, ["claude"])).toBe(true);
+    expect(isEnabledPrimarySource(source, ["predicthq"])).toBe(false);
+    expect(
+      isEnabledPrimarySource({ ...source, public_source_url: null }, ["claude"]),
+    ).toBe(false);
   });
 
   it("normalizes accents and punctuation", () => {
@@ -182,22 +202,24 @@ describe("event domain", () => {
     expect(impact(input)).toEqual(expected);
   });
 
-  it("keeps routine football below Peak while allowing marquee fixtures", () => {
+  it("keeps routine football below High while allowing marquee fixtures", () => {
+    const hotel = {
+      latitude: 51.44,
+      longitude: 5.48,
+      demandRadiusKm: 25,
+      holidayRegion: "south",
+    };
+    const routine = {
+      ...candidate,
+      title: "PSV vs Heerenveen",
+      category: "sports",
+      localRank: 95,
+      latitude: 51.44,
+      longitude: 5.48,
+    };
     const regular = scoreHotelEvent({
-      candidate: {
-        ...candidate,
-        title: "PSV vs Heerenveen",
-        category: "sports",
-        localRank: 95,
-        latitude: 51.44,
-        longitude: 5.48,
-      },
-      hotel: {
-        latitude: 51.44,
-        longitude: 5.48,
-        demandRadiusKm: 25,
-        holidayRegion: "south",
-      },
+      candidate: routine,
+      hotel,
       overlaps: [
         {
           startAt: candidate.startAt,
@@ -215,12 +237,7 @@ describe("event domain", () => {
         latitude: 51.44,
         longitude: 5.48,
       },
-      hotel: {
-        latitude: 51.44,
-        longitude: 5.48,
-        demandRadiusKm: 25,
-        holidayRegion: "south",
-      },
+      hotel,
       overlaps: [
         {
           startAt: candidate.startAt,
@@ -229,8 +246,118 @@ describe("event domain", () => {
         },
       ],
     });
-    expect(regular.suggestedImportance).toBe("High");
+    expect(regular.total).toBe(69);
+    expect(regular.suggestedImportance).toBe("Medium");
     expect(marquee.suggestedImportance).toBe("Peak");
+
+    const european = scoreHotelEvent({
+      candidate: {
+        ...routine,
+        title: "PSV - Club Brugge",
+        regionScope: "international",
+      },
+      hotel,
+      overlaps: [],
+    });
+    expect(european.suggestedImportance).toBe("High");
+  });
+
+  it("does not treat a Dutch all-day placeholder as multi-day or late", () => {
+    const score = scoreHotelEvent({
+      candidate: {
+        ...candidate,
+        aiImpactPoints: 45,
+        startAt: "2026-11-14T23:00:00Z",
+        endAt: "2026-11-15T22:59:59Z",
+        latitude: 51.44,
+        longitude: 5.48,
+      },
+      hotel: {
+        latitude: 51.44,
+        longitude: 5.48,
+        demandRadiusKm: 25,
+        holidayRegion: "south",
+      },
+      overlaps: [],
+    });
+
+    expect(score.stayPressurePoints).toBe(0);
+    expect(score.total).toBe(70);
+    expect(score.suggestedImportance).toBe("High");
+
+    const utcPlaceholder = scoreHotelEvent({
+      candidate: {
+        ...candidate,
+        aiImpactPoints: 45,
+        startAt: "2026-11-20T00:00:00Z",
+        endAt: "2026-11-20T23:59:00Z",
+        latitude: 51.44,
+        longitude: 5.48,
+      },
+      hotel: {
+        latitude: 51.44,
+        longitude: 5.48,
+        demandRadiusKm: 25,
+        holidayRegion: "south",
+      },
+      overlaps: [],
+    });
+    expect(utcPlaceholder.stayPressurePoints).toBe(0);
+
+    const multiDayPlaceholder = scoreHotelEvent({
+      candidate: {
+        ...candidate,
+        aiImpactPoints: 45,
+        startAt: "2026-11-20T00:00:00Z",
+        endAt: "2026-11-22T23:59:00Z",
+        latitude: 51.44,
+        longitude: 5.48,
+      },
+      hotel: {
+        latitude: 51.44,
+        longitude: 5.48,
+        demandRadiusKm: 25,
+        holidayRegion: "south",
+      },
+      overlaps: [],
+    });
+    expect(multiDayPlaceholder.stayPressurePoints).toBe(0);
+  });
+
+  it("keeps real multi-day and stated late-end bonuses", () => {
+    const hotel = {
+      latitude: 51.44,
+      longitude: 5.48,
+      demandRadiusKm: 25,
+      holidayRegion: "south",
+    };
+    const multiDay = scoreHotelEvent({
+      candidate: {
+        ...candidate,
+        aiImpactPoints: 35,
+        startAt: "2026-10-17T10:00:00+02:00",
+        endAt: "2026-10-18T17:00:00+02:00",
+        latitude: 51.44,
+        longitude: 5.48,
+      },
+      hotel,
+      overlaps: [],
+    });
+    const late = scoreHotelEvent({
+      candidate: {
+        ...candidate,
+        aiImpactPoints: 35,
+        startAt: "2026-10-17T18:00:00+02:00",
+        endAt: "2026-10-17T23:00:00+02:00",
+        latitude: 51.44,
+        longitude: 5.48,
+      },
+      hotel,
+      overlaps: [],
+    });
+
+    expect(multiDay.stayPressurePoints).toBe(6);
+    expect(late.stayPressurePoints).toBe(4);
   });
 
   it("uses Claude impact evidence when structured metrics are absent", () => {

@@ -1,6 +1,7 @@
 import type { DemandLevel } from "@/features/events/importance";
 import { createServerClient } from "@/lib/supabase/server";
 import { fetchInBatches } from "@/lib/supabase/fetch-in-batches";
+import { isEnabledPrimarySource } from "@/features/events/source-evidence";
 
 import type { ExportEvent } from "./types";
 
@@ -19,6 +20,12 @@ export async function loadExportEvents(accountId: string, month: string, selecte
     .in("id", selectedHotelIds);
   if (hotelError) throw hotelError;
   if (hotels.length !== selectedHotelIds.length) throw new Error("Een geselecteerd hotel hoort niet bij dit account.");
+  const { data: areas, error: areaError } = await supabase
+    .from("collection_areas")
+    .select("id, hotel_id, enabled_sources")
+    .eq("account_id", accountId)
+    .in("hotel_id", selectedHotelIds);
+  if (areaError) throw areaError;
 
   const { data: decisions, error: decisionError } = await supabase
     .from("account_events")
@@ -28,15 +35,34 @@ export async function loadExportEvents(accountId: string, month: string, selecte
   if (decisionError) throw decisionError;
   const eventIds = decisions.map((decision) => decision.event_id);
   const bounds = monthBounds(month);
-  const [exportEvents, scores] = eventIds.length
+  const areaIds = areas.map((area) => area.id);
+  const [exportEvents, scores, links, sources] = eventIds.length
     ? await Promise.all([
         fetchInBatches(eventIds, (ids) => supabase.from("events").select("id, title, start_at, end_at, certainty").in("id", ids).lte("start_at", `${bounds.end}T23:59:59Z`).gte("end_at", `${bounds.start}T00:00:00Z`)),
         fetchInBatches(eventIds, (ids) => supabase.from("hotel_event_scores").select("event_id, hotel_id, suggested_importance, importance_override, impact_basis").in("event_id", ids).in("hotel_id", selectedHotelIds)),
+        areaIds.length
+          ? fetchInBatches(areaIds, (ids) => supabase.from("account_event_areas").select("event_id, collection_area_id").eq("account_id", accountId).in("collection_area_id", ids))
+          : Promise.resolve([]),
+        fetchInBatches(eventIds, (ids) => supabase.from("event_sources").select("event_id, provider, source_state, primary_source_confirmed, public_source_url").in("event_id", ids)),
       ])
-    : [[], []];
+    : [[], [], [], []];
 
   const decisionsByEvent = new Map(decisions.map((decision) => [decision.event_id, decision]));
   const hotelCodes = new Map(hotels.map((hotel) => [hotel.id, hotel.revcontrol_code]));
+  const areaByHotel = new Map(areas.map((area) => [area.hotel_id, area]));
+  const linkedEvents = new Set(links.map((link) => `${link.collection_area_id}:${link.event_id}`));
+  const supported = (eventId: string, hotelId: string) => {
+    const area = areaByHotel.get(hotelId);
+    return Boolean(
+      area &&
+      linkedEvents.has(`${area.id}:${eventId}`) &&
+      sources.some(
+        (source) =>
+          source.event_id === eventId &&
+          isEnabledPrimarySource(source, area.enabled_sources),
+      )
+    );
+  };
   const events: ExportEvent[] = exportEvents.filter((event) => event.certainty === "confirmed").map((event) => {
     const decision = decisionsByEvent.get(event.id);
     return {
@@ -45,7 +71,7 @@ export async function loadExportEvents(accountId: string, month: string, selecte
       startAt: decision?.override_start_at ?? event.start_at,
       endAt: decision?.override_end_at ?? event.end_at,
       hotels: scores
-        .filter((score) => score.event_id === event.id)
+        .filter((score) => score.event_id === event.id && supported(event.id, score.hotel_id))
         .map((score) => ({
           id: score.hotel_id,
           code: hotelCodes.get(score.hotel_id)!,

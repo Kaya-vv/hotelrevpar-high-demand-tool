@@ -16,14 +16,28 @@ export async function getHotelScope(accountId: string, requestedHotelId?: string
   const storedHotelId = (await cookies()).get(SELECTED_HOTEL_COOKIE)?.value;
   const candidate = requestedHotelId ?? storedHotelId;
   const selectedHotelId = hotels.some((hotel) => hotel.id === candidate) ? candidate! : hotels[0]?.id ?? null;
-  if (!selectedHotelId) return { supabase, hotels, selectedHotelId, areaId: null };
+  if (!selectedHotelId) {
+    return {
+      supabase,
+      hotels,
+      selectedHotelId,
+      areaId: null,
+      enabledSources: [] as string[],
+    };
+  }
 
   const { data: area, error: areaError } = await supabase
     .from("collection_areas")
-    .select("id")
+    .select("id, enabled_sources")
     .eq("account_id", accountId)
     .eq("hotel_id", selectedHotelId)
     .maybeSingle();
   if (areaError) throw areaError;
-  return { supabase, hotels, selectedHotelId, areaId: area?.id ?? null };
+  return {
+    supabase,
+    hotels,
+    selectedHotelId,
+    areaId: area?.id ?? null,
+    enabledSources: area?.enabled_sources ?? [],
+  };
 }

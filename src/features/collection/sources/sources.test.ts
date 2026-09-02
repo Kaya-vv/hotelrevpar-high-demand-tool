@@ -161,13 +161,12 @@ describe("source adapters", () => {
     create.mockResolvedValueOnce({
         content: [
           fetchResult(urls[0]),
-          fetchResult(urls[1]),
           {
             type: "text",
             text: JSON.stringify({
               events: [
                 {
-                  sourceUrl: urls[0],
+                  sourceUrl: "https://invented.example/event",
                   title: "Vakbeurs Utrecht",
                   category: "expos",
                   venue: "Jaarbeurs",
@@ -184,24 +183,6 @@ describe("source adapters", () => {
                   dateConfirmed: true,
                   locationConfirmed: true,
                 },
-                {
-                  sourceUrl: urls[1],
-                  title: "Lokale netwerkborrel",
-                  category: "community",
-                  venue: "Jaarbeurs",
-                  latitude: 52.089,
-                  longitude: 5.107,
-                  regionScope: null,
-                  startAt: "2027-09-01T17:00:00+02:00",
-                  endAt: "2027-09-01T19:00:00+02:00",
-                  status: "active",
-                  ownerType: "venue",
-                  evidenceText: "Kleine lokale bijeenkomst.",
-                  impactPoints: 20,
-                  titleConfirmed: true,
-                  dateConfirmed: true,
-                  locationConfirmed: true,
-                },
               ],
             }),
           },
@@ -213,8 +194,62 @@ describe("source adapters", () => {
         },
       }).mockResolvedValueOnce({
         content: [
+          fetchResult(urls[1]),
+          {
+            type: "text",
+            text: JSON.stringify({
+              events: [{
+                sourceUrl: urls[1],
+                title: "Agenda-item",
+                category: "concert",
+                venue: "TivoliVredenburg",
+                latitude: 52.089,
+                longitude: 5.107,
+                regionScope: null,
+                startAt: "2027-09-01T20:00:00+02:00",
+                endAt: "2027-09-01T23:00:00+02:00",
+                status: "active",
+                ownerType: "other",
+                evidenceText: "Algemene agenda.",
+                impactPoints: 45,
+                titleConfirmed: true,
+                dateConfirmed: true,
+                locationConfirmed: true,
+              }],
+            }),
+          },
+        ],
+        usage: {
+          input_tokens: 100,
+          output_tokens: 20,
+          server_tool_use: { web_fetch_requests: 1 },
+        },
+      }).mockResolvedValueOnce({
+        content: [
           fetchResult(urls[2]),
-          { type: "text", text: JSON.stringify({ events: [] }) },
+          {
+            type: "text",
+            text: JSON.stringify({
+              events: [{
+                sourceUrl: urls[2],
+                title: "Lokale wedstrijd",
+                category: "sports",
+                venue: "Stadion Galgenwaard",
+                latitude: 52.089,
+                longitude: 5.107,
+                regionScope: null,
+                startAt: "2027-09-02T18:00:00+02:00",
+                endAt: "2027-09-02T20:00:00+02:00",
+                status: "active",
+                ownerType: "club",
+                evidenceText: "Geen hotelvraag onderbouwd.",
+                impactPoints: 20,
+                titleConfirmed: true,
+                dateConfirmed: true,
+                locationConfirmed: true,
+              }],
+            }),
+          },
         ],
         usage: {
           input_tokens: 100,
@@ -231,7 +266,7 @@ describe("source adapters", () => {
       model: "claude-sonnet-5",
       client,
     });
-    expect(create).toHaveBeenCalledTimes(14);
+    expect(create).toHaveBeenCalledTimes(15);
     create.mock.calls.slice(0, 12).forEach(([request]) => {
       expect(request.tools[0]).toMatchObject({
         type: "web_search_20260318",
@@ -240,36 +275,51 @@ describe("source adapters", () => {
         response_inclusion: "full",
       });
       expect(request.tools[0]).not.toHaveProperty("allowed_domains");
-      expect(request.tools[0]).not.toHaveProperty("user_location");
+      expect(request.tools[0].user_location).toEqual({
+        type: "approximate",
+        country: "NL",
+        city: "Utrecht",
+        timezone: "Europe/Amsterdam",
+      });
+      expect(request.tool_choice).toEqual({
+        type: "tool",
+        name: "web_search",
+      });
+      expect(request.thinking).toEqual({ type: "disabled" });
     });
     const firstVerificationRequest = create.mock.calls[12][0];
     expect(create.mock.calls[0][1]).toEqual({
-      timeout: 120_000,
-      maxRetries: 0,
+      timeout: 180_000,
+      maxRetries: 1,
     });
     expect(create.mock.calls[12][1]).toEqual({
       timeout: 180_000,
       maxRetries: 0,
     });
-    expect(firstVerificationRequest.max_tokens).toBe(1_500);
+    expect(firstVerificationRequest.max_tokens).toBe(2_000);
     expect(firstVerificationRequest.thinking).toEqual({ type: "disabled" });
     expect(firstVerificationRequest.tools[0]).toEqual({
-      type: "web_fetch_20250910",
+      type: "web_fetch_20260318",
       name: "web_fetch",
-      max_uses: 2,
-      max_content_tokens: 750,
+      allowed_callers: ["direct"],
+      max_uses: 1,
+      max_content_tokens: 1_500,
       citations: { enabled: false },
+      response_inclusion: "full",
     });
-    expect(create.mock.calls[13][0].messages[0].content).toContain(urls[2]);
+    expect(firstVerificationRequest.tool_choice).toBeUndefined();
+    expect(create.mock.calls[13][0].messages[0].content).toContain(urls[1]);
+    expect(create.mock.calls[14][0].messages[0].content).toContain(urls[2]);
     expect(create.mock.calls[0][0].messages[0].content).toContain("2027-08-01 en 2027-08-30");
     expect(create.mock.calls[4][0].messages[0].content).toContain("2027-08-31 en 2027-09-29");
     expect(create.mock.calls[8][0].messages[0].content).toContain("2027-09-30 en 2027-10-30");
     expect(create.mock.calls[3][0].messages[0].content).toContain("bevestigde professionele sportwedstrijden");
     expect(
-      firstVerificationRequest.output_config.format.schema.properties.events
-        .items.properties.impactPoints,
-    ).not.toHaveProperty("enum");
-    expect(result.requests).toBe(14);
+      JSON.stringify(firstVerificationRequest.output_config.format.schema),
+    ).not.toContain('"enum":[20');
+    expect(result.requests).toBe(15);
+    expect(result.usage.webSearchRequests).toBe(12);
+    expect(result.usage.webFetchRequests).toBe(3);
     expect(result.candidates).toHaveLength(1);
     expect(result.candidates[0]).toMatchObject({
       sourceUrl: urls[0],
@@ -334,6 +384,111 @@ describe("source adapters", () => {
       provider: "claude",
       sourceState: "cancelled",
     });
+  });
+
+  it("verifies Claude's chosen URL before raw search-result URLs", async () => {
+    const official = "https://official.example/event";
+    const rawResult = "https://aggregator.example/list";
+    const create = vi.fn();
+    for (let index = 0; index < 12; index += 1) {
+      create.mockResolvedValueOnce({
+        content: [
+          {
+            type: "web_search_tool_result",
+            content: [{ type: "web_search_result", url: rawResult }],
+          },
+          { type: "text", text: `Gekozen pagina:\n${official}` },
+        ],
+        usage: {
+          input_tokens: 100,
+          output_tokens: 20,
+          server_tool_use: { web_search_requests: 1 },
+        },
+      });
+    }
+    create.mockResolvedValueOnce({
+      content: [
+        fetchResult(official),
+        { type: "text", text: JSON.stringify({ events: [] }) },
+      ],
+      usage: {
+        input_tokens: 100,
+        output_tokens: 20,
+        server_tool_use: { web_fetch_requests: 1 },
+      },
+    });
+
+    await collectClaude({
+      ...claudeWindow,
+      location: "Utrecht",
+      radiusKm: 25,
+      model: "claude-sonnet-5",
+      client: { messages: { create } } as unknown as Anthropic,
+    });
+
+    expect(create).toHaveBeenCalledTimes(13);
+    expect(create.mock.calls[12][0].messages[0].content).toContain(official);
+    expect(create.mock.calls[12][0].messages[0].content).not.toContain(rawResult);
+  });
+
+  it("keeps successful page evidence when another Claude fetch fails", async () => {
+    const urls = ["https://venue.nl/broken", "https://organizer.nl/event"];
+    const create = vi.fn();
+    queueClaudeSearches(create, urls);
+    create.mockResolvedValueOnce({
+      stop_reason: "max_tokens",
+      content: [{ type: "thinking", thinking: "" }],
+      usage: {
+        input_tokens: 500,
+        output_tokens: 2_000,
+        server_tool_use: { web_fetch_requests: 1 },
+      },
+    });
+    create.mockResolvedValueOnce({
+      content: [
+        fetchResult(urls[1]),
+        {
+          type: "text",
+          text: JSON.stringify({
+            events: [{
+              sourceUrl: urls[1],
+              title: "International conference",
+              category: "conferences",
+              venue: "Conference Centre",
+              latitude: 51.44,
+              longitude: 5.48,
+              regionScope: null,
+              startAt: "2027-09-01T10:00:00+02:00",
+              endAt: "2027-09-03T17:00:00+02:00",
+              status: "active",
+              ownerType: "organizer",
+              evidenceText: "Three-day international conference.",
+              impactPoints: 45,
+              titleConfirmed: true,
+              dateConfirmed: true,
+              locationConfirmed: true,
+            }],
+          }),
+        },
+      ],
+      usage: {
+        input_tokens: 200,
+        output_tokens: 80,
+        server_tool_use: { web_fetch_requests: 1 },
+      },
+    });
+
+    const result = await collectClaude({
+      ...claudeWindow,
+      location: "Eindhoven",
+      radiusKm: 25,
+      model: "claude-test",
+      client: { messages: { create } } as unknown as Anthropic,
+    });
+
+    expect(result.requests).toBe(14);
+    expect(result.candidates).toHaveLength(1);
+    expect(result.usage.failedFetches).toBe(1);
   });
 
   it("identifies a Claude search timeout", async () => {

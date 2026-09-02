@@ -11,7 +11,7 @@ import { getAddressById, searchAddresses } from "@/features/portfolio/geocode";
 import type { CollectionWindow, SourceResult } from "../types";
 
 const ownerTypes = ["organizer", "venue", "club", "federation", "ticket_provider", "university", "municipality", "event_owner"] as const;
-const searchRequestOptions = { timeout: 120_000, maxRetries: 0 } as const;
+const searchRequestOptions = { timeout: 180_000, maxRetries: 1 } as const;
 const verificationRequestOptions = { timeout: 180_000, maxRetries: 0 } as const;
 const triageRequestOptions = { timeout: 90_000, maxRetries: 0 } as const;
 
@@ -38,14 +38,14 @@ const outputSchema = z.object({
       startAt: z.string(),
       endAt: z.string(),
       status: z.enum(["active", "cancelled", "postponed"]),
-      ownerType: z.string(),
+      ownerType: z.enum([...ownerTypes, "other"]),
       evidenceText: z.string().nullable(),
       impactPoints: z.number().int().nullable(),
       titleConfirmed: z.boolean(),
       dateConfirmed: z.boolean(),
       locationConfirmed: z.boolean(),
     }),
-  ),
+  ).max(1),
 });
 
 const demandTriageSchema = z.object({
@@ -205,7 +205,13 @@ function discoveryUrls(message: Anthropic.Message) {
         ) ?? []
       : []
   );
-  return [...new Set([...cited, ...sourceUrls(message)].filter(isPublicEvidenceUrl))]
+  const written = message.content.flatMap((block) =>
+    block.type === "text"
+      ? block.text.match(/https?:\/\/[^\s)\]}>,]+/g) ?? []
+      : [],
+  );
+  const selected = written.length ? written : [...cited, ...sourceUrls(message)];
+  return [...new Set(selected.filter(isPublicEvidenceUrl))]
     .slice(0, 2);
 }
 
@@ -228,27 +234,40 @@ export async function collectClaude(
     for (const focus of searchGroups) {
       const search = await requestPhase("search", () => client.messages.create({
         model,
-        max_tokens: 300,
+        max_tokens: 800,
+        ...(model.startsWith("claude-sonnet-5")
+          ? { thinking: { type: "disabled" as const } }
+          : {}),
         tools: [{
           type: "web_search_20260318",
           name: "web_search",
           allowed_callers: ["direct"],
           max_uses: 1,
           response_inclusion: "full",
+          user_location: {
+            type: "approximate",
+            country: "NL",
+            city: input.location,
+            timezone: "Europe/Amsterdam",
+          },
         }],
+        tool_choice: { type: "tool", name: "web_search" },
         messages: [{
           role: "user",
-          content: `Zoek binnen ${input.radiusKm} km van ${input.location} tussen ${window.start} en ${window.end} naar ${focus} die High- of Piek-hotelvraag kunnen veroorzaken. Kies maximaal twee sterke kandidaten. Geef alleen specifieke officiële evenementpagina's van de organisator, locatie, club, federatie, universiteit of gemeente. Gebruik agenda's en ticketlijsten alleen om die officiële pagina's te vinden. Geef geen voorspelde wedstrijdvensters of onbevestigde evenementen.`,
+          content: `Zoek binnen ${input.radiusKm} km van ${input.location} tussen ${window.start} en ${window.end} naar ${focus} die High- of Piek-hotelvraag kunnen veroorzaken. Kies maximaal twee sterke kandidaten. Geef alleen specifieke officiële evenementpagina's van de organisator, locatie, club, federatie, universiteit of gemeente. Gebruik agenda's en ticketlijsten alleen om die officiële pagina's te vinden. Geef geen voorspelde wedstrijdvensters of onbevestigde evenementen. Sluit af met alleen de maximaal twee gekozen volledige URL's, elk op een eigen regel, en noem geen andere URL's.`,
         }],
       }, searchRequestOptions));
       await observeUsage(input.onUsage, usageEvent(search, "discovery", model));
+      if (search.usage.server_tool_use?.web_search_requests !== 1) {
+        throw new Error("Claude discovery did not execute its required web search.");
+      }
       searches.push(search);
     }
   }
   const urls = [...new Set([
     ...(input.knownUrls ?? []).slice(0, 8),
     ...searches.flatMap(discoveryUrls),
-  ])].slice(0, 32);
+  ])].slice(0, 20);
   if (!urls.length) {
     return {
       source: "claude",
@@ -266,45 +285,93 @@ export async function collectClaude(
     };
   }
 
-  const batches = Array.from(
-    { length: Math.ceil(urls.length / 2) },
-    (_, index) => urls.slice(index * 2, index * 2 + 2),
-  );
-  const verified = await Promise.all(batches.map(async (batch) => {
-    const message = await requestPhase("verification", () => client.messages.create({
-      model,
-      max_tokens: 1_500,
-      ...(model.startsWith("claude-sonnet-5")
-        ? { thinking: { type: "disabled" as const } }
-        : {}),
-      tools: [{
-        type: "web_fetch_20250910",
-        name: "web_fetch",
-        max_uses: batch.length,
-        max_content_tokens: 750,
-        citations: { enabled: false },
-      }],
-      output_config: { format: zodOutputFormat(outputSchema) },
-      messages: [{
-        role: "user",
-        content: `Open deze officiële pagina's en controleer per evenement titel, datum, locatie en status. Gebruik status active, cancelled of postponed. Neem alleen evenementen tussen ${input.start} en ${input.end} binnen ${input.radiusKm} km van ${input.location} op. Classificeer de extra overnachtingsvraag voor hotels: 35 Medium, 45 High of 60 Piek. Baseer dit op broninformatie over bezoekers van buiten de regio, meerdaagse duur, internationaal of nationaal bereik, capaciteit en een laat programma. Gebruik null als de pagina geen hotelspecifiek vraagsignaal ondersteunt. Neem actieve evenementen met null of Low impact niet op. Geef een specifieke locatie zodat die gegeocodeerd kan worden. Pagina's:\n${batch.join("\n")}`,
-      }],
-    }, verificationRequestOptions));
-    await observeUsage(input.onUsage, usageEvent(message, "discovery_fetch", model));
-    return message;
-  }));
-  const events = verified.flatMap((message) => {
-    if (message.stop_reason === "max_tokens") {
-      throw new Error("Claude verification reached its token limit.");
-    }
-    const text = message.content.find((block) => block.type === "text")?.text;
-    if (!text) throw new Error("Claude verification returned no structured output.");
-    const observed = sourceUrls(message);
-    return outputSchema.parse(JSON.parse(text)).events.filter((event) =>
-      observedUrl(event.sourceUrl, observed) &&
-      (event.status !== "active" || [35, 45, 60].includes(event.impactPoints ?? 0))
+  const verified: Anthropic.Message[] = [];
+  let failedFetches = 0;
+  let firstFailure: unknown;
+  for (let index = 0; index < urls.length; index += 8) {
+    const settled = await Promise.allSettled(
+      urls.slice(index, index + 8).map(async (url) => {
+        const message = await requestPhase("verification", () =>
+          client.messages.create(
+            {
+              model,
+              max_tokens: 2_000,
+              ...(model.startsWith("claude-sonnet-5")
+                ? { thinking: { type: "disabled" as const } }
+                : {}),
+              tools: [
+                {
+                  type: "web_fetch_20260318",
+                  name: "web_fetch",
+                  allowed_callers: ["direct"],
+                  max_uses: 1,
+                  max_content_tokens: 1_500,
+                  citations: { enabled: false },
+                  response_inclusion: "full",
+                },
+              ],
+              output_config: { format: zodOutputFormat(outputSchema) },
+              messages: [
+                {
+                  role: "user",
+                  content: `Open deze specifieke officiële evenementpagina en controleer titel, datum, locatie en status. Gebruik status active, cancelled of postponed. Neem maximaal één evenement op, alleen tussen ${input.start} en ${input.end} en binnen ${input.radiusKm} km van ${input.location}. Neem bij een meerdaagse huidige editie de eerste en laatste bevestigde datum over; maak van een bevestigde meerdaagse editie geen eendaagse 00:00-23:59-vermelding. Classificeer aantoonbare extra overnachtingsvraag voor hotels: 35 Medium, 45 High of 60 Piek. Gebruik alleen feiten over de huidige editie. Negeer cumulatieve bezoekersaantallen van eerdere edities en algemene marketingclaims. Gebruik null als de pagina geen geloofwaardig signaal bevat over regionaal, nationaal of internationaal bereik, bezoekersaantallen, meerdaagse duur, een laat programma of hotelvraag. Reserveer 60 Piek voor stadsbrede, meerdaagse, internationale of uitzonderlijk grote evenementen. Neem actieve evenementen met null of Low impact niet op. Geef een specifieke locatie zodat die gegeocodeerd kan worden. Gebruik ownerType other voor een agenda, blog, zoekpagina of andere pagina die de evenementinformatie niet bezit. Pagina:\n${url}`,
+                },
+              ],
+            },
+            verificationRequestOptions,
+          ),
+        );
+        await observeUsage(
+          input.onUsage,
+          usageEvent(message, "discovery_fetch", model),
+        );
+        if (message.usage.server_tool_use?.web_fetch_requests !== 1) {
+          throw new Error("Claude verification did not execute its required web fetch.");
+        }
+        return message;
+      }),
     );
+    settled.forEach((result) => {
+      if (result.status === "fulfilled") {
+        verified.push(result.value);
+      } else {
+        failedFetches += 1;
+        firstFailure ??= result.reason;
+      }
+    });
+  }
+  if (!verified.length && firstFailure) throw firstFailure;
+  let parsedFetches = 0;
+  const events = verified.flatMap((message) => {
+    try {
+      if (message.stop_reason === "max_tokens") {
+        throw new Error("Claude verification reached its token limit.");
+      }
+      const text = message.content.find((block) => block.type === "text")?.text;
+      if (!text) throw new Error("Claude verification returned no structured output.");
+      const observed = sourceUrls(message);
+      const parsed = outputSchema.parse(JSON.parse(text));
+      parsedFetches += 1;
+      return parsed.events.flatMap((event) => {
+        const sourceUrl = supportedObservedUrl(
+          event.sourceUrl,
+          event.evidenceText ?? "",
+          observed,
+        );
+        return sourceUrl &&
+          event.ownerType !== "other" &&
+          (event.status !== "active" ||
+            [35, 45, 60].includes(event.impactPoints ?? 0))
+          ? [{ ...event, sourceUrl }]
+          : [];
+      });
+    } catch (error) {
+      failedFetches += 1;
+      firstFailure ??= error;
+      return [];
+    }
   });
+  if (!parsedFetches && firstFailure) throw firstFailure;
   const geocode = input.geocode ?? geocodeVenue;
   const candidates = await Promise.all(events.map(async (event) => {
     const resolved = event.latitude === null || event.longitude === null
@@ -343,7 +410,7 @@ export async function collectClaude(
   return {
     source: "claude",
     candidates,
-    requests: messages.length,
+    requests: searches.length + urls.length,
     usage: {
       inputTokens: messages.reduce((total, message) => total + message.usage.input_tokens, 0),
       outputTokens: messages.reduce((total, message) => total + message.usage.output_tokens, 0),
@@ -355,6 +422,7 @@ export async function collectClaude(
         (total, message) => total + (message.usage.server_tool_use?.web_fetch_requests ?? 0),
         0,
       ),
+      failedFetches,
     },
   };
 }

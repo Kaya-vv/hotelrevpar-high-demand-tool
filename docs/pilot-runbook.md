@@ -1,24 +1,33 @@
 # HotelRevPar High Demand Tool Pilot Runbook
 
-Record the evidence for each gate before inviting a paying subscriber.
+Record the evidence for each gate before calling the data-quality demo ready. Deployment and RevControl import remain later milestones.
 
 | # | Release gate | Date | Operator | Result | Link or file |
 |---:|---|---|---|---|---|
-| 1 | Configure Supabase, Vercel, Ticketmaster, Anthropic, and Cron secrets. Set the Supabase invite email URL to `{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=invite` and allow the production `/auth/confirm` redirect URL. |  |  |  |  |
-| 2 | Create Robert's platform account and operator portfolio. |  |  |  |  |
-| 3 | Add Eindhoven and Rotterdam areas and known hotels. |  |  |  |  |
-| 4 | Disable PredictHQ on the pilot hotels until written permission covers the intended use. |  |  |  |  |
-| 5 | Freeze a known-event benchmark for each pilot hotel from Robert's existing calendars, exports, and known high-demand dates. |  |  |  |  |
-| 6 | Run one rolling 90-day collection with Claude, government sources, and Ticketmaster enabled. Enable PredictHQ only when its trial terms permit the comparison. Record source failures and Claude cost. |  |  |  |  |
-| 6a | Confirm Claude searched four hotel-demand categories in each of three 30-day slices. Require all benchmark Peak events, at least 80% of benchmark High events, no unsupported High or Peak events, no generic competition windows or duplicates, and fewer than 238,421 Claude input tokens. |  |  |  |  |
-| 7 | Confirm displayed and exported events are Medium or higher and use a non-default impact basis. |  |  |  |  |
-| 8 | Confirm Low, default-basis, unsupported, and conflicted events stay out of subscriber output. |  |  |  |  |
-| 9 | Confirm one official cancellation leaves the subscriber calendar without a manager review task. |  |  |  |  |
-| 10 | Import the generated workbook into RevControl without repairing headers or dates. |  |  |  |  |
-| 11 | If PredictHQ grants permission, enable it with the existing source control and run one paired comparison over the same 90-day window. |  |  |  |  |
-| 12 | Record unique Medium-or-higher events by source, benchmark misses, false positives, failures, and cost per accepted event. |  |  |  |  |
-| 13 | Confirm RLS isolation tests, full tests, lint, typecheck, and production build pass. |  |  |  |  |
-| 14 | Compare the app colors against the live HotelRevPar website CSS and record any token correction. |  |  |  |  |
+| 1 | Configure local Supabase, Ticketmaster, and Anthropic secrets. |  |  |  |  |
+| 2 | Keep Testhotel unchanged. Add `Demo Eindhoven` at Vestdijk 5 with a 25 km radius and South holiday region, plus `Demo Rotterdam` at Weena 10 with a 25 km radius and Middle holiday region. |  |  |  |  |
+| 3 | Enable Claude, Ticketmaster, Rijksoverheid, and OpenHolidays. Disable PredictHQ on both demo hotels. |  |  |  |  |
+| 4 | Freeze the event benchmark below, then run one manual 90-day collection per demo hotel. |  |  |  |  |
+| 5 | Confirm Claude made twelve real web searches: four categories in each of three 30-day slices. |  |  |  |  |
+| 6 | Require every in-window Peak benchmark and at least 80% of High benchmarks for each city. |  |  |  |  |
+| 7 | Confirm every displayed event is confirmed High/Peak, has a current official page, and has defensible hotel-demand evidence. |  |  |  |  |
+| 8 | Confirm Medium, Low, default-basis, provisional, unsupported, disabled-source-only, conflicted, and duplicate events stay out of subscriber output. |  |  |  |  |
+| 9 | Confirm routine league fixtures remain below High and all-day placeholders receive no duration or late bonus. |  |  |  |  |
+| 10 | Confirm PredictHQ contributes no score, source link, visible event, or export row. |  |  |  |  |
+| 11 | Record the billed Anthropic cost for each hotel run and require no more than €2 per run. |  |  |  |  |
+| 12 | Confirm RLS isolation tests, full tests, lint, typecheck, production build, and diff check pass. |  |  |  |  |
+| 13 | Deferred: deploy the app and configure invites and Cron. |  |  |  |  |
+| 14 | Deferred: import the generated workbook into RevControl without repairing headers or dates. |  |  |  |  |
+| 15 | If PredictHQ grants written permission, run a separate paired comparison over the same window. |  |  |  |  |
+
+## Demo benchmark
+
+| City | Peak | High or higher |
+|---|---|---|
+| Eindhoven | [Dutch Design Week](https://ddw.nl/en/faq); [ASML Marathon Eindhoven](https://asmlmarathoneindhoven.nl/) | [GLOW](https://gloweindhoven.nl/en/practical/); PSV–Club Brugge and PSV–Feyenoord from the [PSV match centre](https://www.psv.nl/match-center); [Helldorado](https://www.helldoradofestival.com/); [Revolution Calling](https://www.revolutioncallingfest.com/about) |
+| Rotterdam | [WK Turnen](https://www.ahoy.nl/agenda/sport/wk-turnen?d=2026-10-25) | [FERMA Forum](https://ferma.eu/widening-the-lens-registrations-for-ferma-forum-2026-are-now-open/); [Left of the Dial](https://leftofthedial.nl/); Feyenoord–Inter and Feyenoord–FC Porto from the [Feyenoord Champions League schedule](https://www.feyenoord.com/nl/champions-league) |
+
+Add [Wereldhavendagen](https://wereldhavendagen.nl/het-programma-staat-online/) as a Rotterdam Peak benchmark only if it has not started before the run. Do not weaken the frozen benchmark after seeing collection results.
 
 ## Publishable events by source
 
@@ -41,8 +50,13 @@ join account_events as decision
 join events as event on event.id = link.event_id
 where decision.state = 'active'
   and coalesce(score.importance_override, score.suggested_importance)
-    in ('Medium', 'High', 'Peak')
+    in ('High', 'Peak')
   and score.impact_basis <> 'default'
+  and source.provider = any(area.enabled_sources)
+  and source.source_state = 'active'
+  and source.primary_source_confirmed
+  and source.public_source_url is not null
+  and event.certainty = 'confirmed'
   and event.start_at < current_date + interval '91 days'
   and event.end_at >= current_date
 group by area.name, source.provider
@@ -72,6 +86,13 @@ join account_events as decision
   and decision.account_id = link.account_id
 where decision.state = 'active'
   and event.certainty = 'confirmed'
+  and coalesce(score.importance_override, score.suggested_importance)
+    in ('High', 'Peak')
+  and score.impact_basis <> 'default'
+  and source.provider = any(area.enabled_sources)
+  and source.source_state = 'active'
+  and source.primary_source_confirmed
+  and source.public_source_url is not null
   and event.start_at < current_date + interval '91 days'
   and event.end_at >= current_date
 group by area.name, event.id, score.importance_override, score.suggested_importance
@@ -83,6 +104,6 @@ order by area.name, event.start_at, event.title;
 - Go or no-go:
 - Known-event recall by category:
 - False-positive rate:
-- Median first-discovery lead time:
-- Monthly provider and Anthropic cost:
+- Claude searches (expected 12 per hotel):
+- Anthropic cost per hotel collection run:
 - Sources to keep, change, or remove:

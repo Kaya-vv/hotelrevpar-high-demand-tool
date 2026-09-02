@@ -28,10 +28,9 @@ describe("RevControl export", () => {
     const sheet = workbook.getWorksheet("Blad1")!;
 
     expect(sheet.getRow(1).values).toEqual([undefined, ...REVCONTROL_HEADERS]);
-    expect(sheet.rowCount).toBe(3);
+    expect(sheet.rowCount).toBe(2);
     expect(sheet.getCell("A2").value).toBe("Yes");
     expect(sheet.getCell("J2").value).toBe("MATCH, PEAK");
-    expect(sheet.getCell("J3").value).toBe("REINE");
     expect(sheet.getCell("C2").value).toBeInstanceOf(Date);
     expect(sheet.getCell("D2").value).toBeInstanceOf(Date);
     expect(sheet.getCell("C2").numFmt).toBe("dd-mm-yyyy");

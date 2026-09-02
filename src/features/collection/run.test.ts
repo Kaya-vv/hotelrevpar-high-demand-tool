@@ -13,7 +13,7 @@ import {
   selectClaudeRefreshUrls,
   type CollectionRepository,
 } from "./run";
-import { sourceChange } from "./source-change";
+import { shouldRefreshCanonical, sourceChange } from "./source-change";
 
 const candidate: EventCandidate = {
   provider: "ticketmaster",
@@ -206,6 +206,20 @@ describe("runCollection", () => {
         { ...candidate, startAt: "2027-10-10T10:00:00+02:00" },
       ),
     ).toEqual({ conflict: null, preserveCanonical: false });
+  });
+
+  it("refreshes canonical data only from confirmed primary Claude evidence", () => {
+    expect(
+      shouldRefreshCanonical({ ...candidate, provider: "claude" }),
+    ).toBe(true);
+    expect(
+      shouldRefreshCanonical({
+        ...candidate,
+        provider: "claude",
+        primarySourceConfirmed: false,
+      }),
+    ).toBe(false);
+    expect(shouldRefreshCanonical(candidate)).toBe(false);
   });
 
   it("stores a useful message when persistence rejects with a database error object", async () => {

@@ -72,6 +72,21 @@ describe("CalendarView", () => {
       screen.getByRole("link", { name: /bekijk evenement/i })
     ).toHaveAttribute("href", "https://example.com/ddw");
     expect(screen.getByText("60 punten")).toBeInTheDocument();
+    expect(screen.queryByText("Verhoogd")).not.toBeInTheDocument();
+    expect(screen.queryByText("Laag")).not.toBeInTheDocument();
+    expect(screen.queryByText("Handmatige inschatting")).not.toBeInTheDocument();
+  });
+
+  it("shows score overrides only when the platform-admin action is supplied", () => {
+    render(
+      <CalendarView
+        month="2027-10"
+        events={events}
+        overrideImportanceAction={vi.fn()}
+      />,
+    );
+
+    expect(screen.getAllByText("Handmatige inschatting").length).toBeGreaterThan(0);
   });
 
   it("keeps the month calendar as an alternate view with scores in the agenda", () => {

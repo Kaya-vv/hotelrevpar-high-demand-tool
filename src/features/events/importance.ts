@@ -9,9 +9,15 @@ export const demandLabels: Record<DemandLevel, string> = {
 
 export const demandLevels = Object.keys(demandLabels) as DemandLevel[];
 
+export const publishableDemandLevels = ["High", "Peak"] as const;
+
 export function isPublishableDemand(
   importance: DemandLevel,
   impactBasis: string,
 ) {
-  return importance !== "Low" && impactBasis !== "default";
+  return (
+    publishableDemandLevels.includes(
+      importance as (typeof publishableDemandLevels)[number],
+    ) && impactBasis !== "default"
+  );
 }
