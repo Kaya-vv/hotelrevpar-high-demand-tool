@@ -168,6 +168,17 @@ function stripFragment(value: string | null) {
   return hash === -1 ? value : value.slice(0, hash);
 }
 
+function parentPath(value: string) {
+  try {
+    const url = new URL(value);
+    const segments = url.pathname.split("/").filter(Boolean);
+    if (segments.length < 2) return null;
+    return `${url.origin}/${segments.slice(0, -1).join("/")}`;
+  } catch {
+    return null;
+  }
+}
+
 function supportedObservedUrl(value: string | null, evidenceText: string, observed: string[]) {
   const publicObserved = observed.filter(isPublicEvidenceUrl);
   if (value && isPublicEvidenceUrl(value) && observedUrl(value, publicObserved)) {
@@ -325,7 +336,7 @@ export async function collectClaude(
           output_config: { format: zodOutputFormat(discoverySchema) },
           messages: [{
             role: "user",
-            content: `Voer eerst precies één web_search uit en antwoord nooit zonder zoekresultaten. Zoek evenementen binnen ${input.radiusKm} km van ${input.location} tussen ${window.start} en ${window.end}: ${focus}. Formuleer je zoekopdracht in het Nederlands met de stad en de maand, bijvoorbeeld "evenementen ${input.location} ${monthLabel}". Gebruik uitagenda's, toeristische kalenders, ticketlijsten en overzichtspagina's om namen van evenementen te leren; dat mag in deze stap. Geef per evenement de naam, begindatum en einddatum als YYYY-MM-DD, de plaats, de locatie en de officiële pagina van de organisator, locatie, club, federatie, universiteit of gemeente als die in de zoekresultaten staat. Verzin geen URL's en neem alleen URL's over die letterlijk in de zoekresultaten voorkomen; gebruik null als je de officiële pagina niet ziet. Geef maximaal zes evenementen die aannemelijk extra hotelovernachtingen veroorzaken en sla markten, wekelijkse activiteiten en kleine lokale programmering over. Geef daarnaast maximaal twee agenda- of overzichtspagina's die het volledigste programma voor deze periode lijken te bevatten. Geef daarna je antwoord in het gevraagde JSON-formaat.`,
+            content: `Voer eerst precies één web_search uit en antwoord nooit zonder zoekresultaten. Zoek evenementen binnen ${input.radiusKm} km van ${input.location} tussen ${window.start} en ${window.end}: ${focus}. Formuleer je zoekopdracht in het Nederlands met de stad en de maand, bijvoorbeeld "evenementen ${input.location} ${monthLabel}". Gebruik uitagenda's, toeristische kalenders, ticketlijsten en overzichtspagina's om namen van evenementen te leren; dat mag in deze stap. Geef per evenement de naam, begindatum en einddatum als YYYY-MM-DD, de plaats, de locatie en de officiële pagina van de organisator, locatie, club, federatie, universiteit of gemeente als die in de zoekresultaten staat. Verzin geen URL's en neem alleen URL's over die letterlijk in de zoekresultaten voorkomen; gebruik null als je de officiële pagina niet ziet. Geef maximaal zes evenementen die aannemelijk extra hotelovernachtingen veroorzaken en sla markten, wekelijkse activiteiten en kleine lokale programmering over. Geef daarnaast maximaal twee agendapagina's met het volledigste programma voor deze periode; kies bij voorkeur de agenda van een concrete zaal, poppodium, congrescentrum, stadion of organisator boven een breed stadsportaal of een landelijke zoeksite, omdat die laatste vaak niet op te halen zijn. Geef daarna je antwoord in het gevraagde JSON-formaat.`,
           }],
         }, searchRequestOptions));
         searches.push(search);
@@ -359,7 +370,10 @@ export async function collectClaude(
   ));
   const agendaTargets: string[] = [];
   const seenAgendaKeys = new Set<string>();
-  for (const url of foundAgendaUrls) {
+  const venueAgendas = discovered.flatMap((candidate) =>
+    candidate.officialUrl ? [parentPath(candidate.officialUrl)] : [],
+  ).filter((url): url is string => Boolean(url));
+  for (const url of [...venueAgendas, ...foundAgendaUrls]) {
     const key = comparableUrl(url);
     if (seenAgendaKeys.has(key) || officialKeys.has(key)) continue;
     seenAgendaKeys.add(key);
