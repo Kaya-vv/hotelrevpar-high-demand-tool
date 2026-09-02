@@ -365,17 +365,16 @@ export async function collectClaude(
   }
   if (!parsedSearches && firstFailure) throw firstFailure;
 
-  const officialKeys = new Set(discovered.flatMap((candidate) =>
-    candidate.officialUrl ? [comparableUrl(candidate.officialUrl)] : [],
-  ));
   const agendaTargets: string[] = [];
   const seenAgendaKeys = new Set<string>();
   const venueAgendas = discovered.flatMap((candidate) =>
     candidate.officialUrl ? [parentPath(candidate.officialUrl)] : [],
   ).filter((url): url is string => Boolean(url));
+  // A listing a candidate claims as its official page is still a listing:
+  // harvest it here rather than letting verification reject it as ownerType other.
   for (const url of [...venueAgendas, ...foundAgendaUrls]) {
     const key = comparableUrl(url);
-    if (seenAgendaKeys.has(key) || officialKeys.has(key)) continue;
+    if (seenAgendaKeys.has(key)) continue;
     seenAgendaKeys.add(key);
     agendaTargets.push(url);
     if (agendaTargets.length === 8) break;

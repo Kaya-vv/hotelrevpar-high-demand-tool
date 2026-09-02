@@ -675,6 +675,42 @@ describe("source adapters", () => {
   });
 
 
+  it("harvests a listing page even when a candidate claims it as its official page", async () => {
+    const agendaRoot = "https://www.klokgebouw.nl/agenda";
+    const harvested = "https://www.klokgebouw.nl/agenda/helldorado-2026";
+    const create = vi.fn();
+    queueClaudeSearches(
+      create,
+      [discoveredCandidate({ title: "Evenementen in het Klokgebouw", officialUrl: agendaRoot })],
+      [agendaRoot],
+    );
+    create.mockResolvedValueOnce(agendaResponse(agendaRoot, [
+      discoveredCandidate({
+        title: "Helldorado",
+        startDate: "2027-09-20",
+        endDate: "2027-09-20",
+        officialUrl: harvested,
+      }),
+    ]));
+    create.mockResolvedValue(verificationResponse(harvested, []));
+
+    const result = await collectClaude({
+      ...claudeWindow,
+      location: "Eindhoven",
+      radiusKm: 25,
+      model: "claude-test",
+      client: { messages: { create } } as unknown as Anthropic,
+    });
+
+    expect(create.mock.calls[12][0].messages[0].content).toContain(agendaRoot);
+    expect(result.funnel?.namesDiscovered).toBe(2);
+    const verificationTargets = create.mock.calls
+      .slice(13)
+      .map(([request]) => request.messages[0].content as string);
+    expect(verificationTargets.some((content) => content.includes(harvested))).toBe(true);
+  });
+
+
   it("keeps collecting when one discovery search fails", async () => {
     const official = "https://organizer.nl/event";
     const create = vi.fn();
