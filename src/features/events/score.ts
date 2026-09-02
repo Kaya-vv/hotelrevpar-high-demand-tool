@@ -30,6 +30,12 @@ export function impact(input: {
     input.category === "sports" && !marqueeSport
       ? Math.min(points, 45)
       : points;
+  if (input.aiImpactPoints !== undefined && input.aiImpactPoints !== null) {
+    return {
+      points: capSport(Math.max(0, Math.min(60, input.aiImpactPoints))),
+      basis: "ai_assessment",
+    };
+  }
   if (input.localRank !== null) {
     return {
       points: capSport(
@@ -53,12 +59,6 @@ export function impact(input: {
     );
     const basis = input.attendance !== null ? "attendance" : "venue_capacity";
     return { points, basis };
-  }
-  if (input.aiImpactPoints !== undefined && input.aiImpactPoints !== null) {
-    return {
-      points: capSport(Math.max(0, Math.min(60, input.aiImpactPoints))),
-      basis: "ai_assessment",
-    };
   }
   if (input.category === "school_holiday")
     return { points: 30, basis: "holiday_rule" };

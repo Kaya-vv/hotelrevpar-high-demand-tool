@@ -14,7 +14,6 @@ const events: CalendarEvent[] = [
     venue: "Klokgebouw",
     startAt: "2027-10-16T10:00:00+02:00",
     endAt: "2027-10-24T22:00:00+02:00",
-    certainty: "confirmed",
     sources: [
       {
         provider: "predicthq",
@@ -81,38 +80,6 @@ describe("CalendarView", () => {
     expect(
       screen.getByLabelText("Gebeurtenissen deze maand")
     ).toHaveTextContent("78");
-  });
-
-  it("keeps unverified events in a collapsed provisional section without an event link", () => {
-    const provisional = {
-      ...events[0],
-      id: "event-provisional",
-      title: "Potentiële Champions League wedstrijddag",
-      certainty: "provisional" as const,
-      sources: [
-        {
-          provider: "predicthq",
-          url: "https://api.predicthq.com/v1/events/1",
-          state: "predicted",
-          primarySourceConfirmed: false,
-        },
-      ],
-    };
-    render(
-      <CalendarView
-        month="2027-10"
-        events={[]}
-        provisionalEvents={[provisional]}
-      />
-    );
-
-    expect(screen.getByText("1 mogelijke vraagmomenten")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("link", { name: /bekijk evenement/i })
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByText(/niet standaard in de export/i)
-    ).toBeInTheDocument();
   });
 
   it("shows a hotel-friendly update status and refreshes an active collection", () => {

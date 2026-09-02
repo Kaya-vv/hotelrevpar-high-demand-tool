@@ -36,7 +36,6 @@ export type CalendarEvent = {
   venue: string | null;
   startAt: string;
   endAt: string;
-  certainty: "confirmed" | "provisional";
   sources: CalendarSource[];
   hotelScores: CalendarHotelScore[];
 };
@@ -119,9 +118,6 @@ function EventDetails({
           </span>
         </div>
       )}
-      {event.certainty === "provisional" && (
-        <span className="status provisional">Voorlopige datum</span>
-      )}
       {primarySource && (
         <a
           className="secondary link-button"
@@ -131,9 +127,6 @@ function EventDetails({
         >
           Bekijk evenement
         </a>
-      )}
-      {!primarySource && event.certainty === "provisional" && (
-        <p className="muted">Nog geen openbare bron bevestigd.</p>
       )}
       {score && (
         <details className="score-explanation">
@@ -194,11 +187,9 @@ function EventDetails({
 
 function EventOverview({
   events,
-  provisionalEvents,
   overrideImportanceAction,
 }: {
   events: CalendarEvent[];
-  provisionalEvents: CalendarEvent[];
   overrideImportanceAction?: (formData: FormData) => void | Promise<void>;
 }) {
   const counts = Object.fromEntries(
@@ -230,9 +221,6 @@ function EventOverview({
               <span className="event-overview-distance">
                 {score.distanceKm.toFixed(1)} km
               </span>
-            )}
-            {event.certainty === "provisional" && (
-              <span className="status provisional">Voorlopig</span>
             )}
             {score && (
               <span className={`importance ${score.importance.toLowerCase()}`}>
@@ -276,16 +264,6 @@ function EventOverview({
         </p>
       )}
       <div className="event-overview-list">{rows(events)}</div>
-      {provisionalEvents.length > 0 && (
-        <details className="provisional-events event-overview-provisional">
-          <summary>{provisionalEvents.length} mogelijke vraagmomenten</summary>
-          <p className="muted">
-            Deze datums zijn nog niet via een openbare bron bevestigd en staan
-            niet standaard in de export.
-          </p>
-          <div className="event-overview-list">{rows(provisionalEvents)}</div>
-        </details>
-      )}
     </section>
   );
 }
@@ -293,23 +271,20 @@ function EventOverview({
 export function CalendarView({
   month,
   events,
-  provisionalEvents = [],
   latestRun,
   view = "list",
   overrideImportanceAction,
 }: {
   month: string;
   events: CalendarEvent[];
-  provisionalEvents?: CalendarEvent[];
   latestRun?: LatestRun | null;
   view?: "list" | "calendar";
   overrideImportanceAction?: (formData: FormData) => void | Promise<void>;
 }) {
   const router = useRouter();
   const [selectedId, setSelectedId] = useState(events[0]?.id ?? null);
-  const allEvents = [...events, ...provisionalEvents];
   const selectedEvent =
-    allEvents.find((event) => event.id === selectedId) ?? events[0] ?? null;
+    events.find((event) => event.id === selectedId) ?? events[0] ?? null;
 
   useEffect(() => {
     if (!latestRun || latestRun.finishedAt) return;
@@ -323,7 +298,6 @@ export function CalendarView({
         {latestRun && <RunStatus latestRun={latestRun} />}
         <EventOverview
           events={events}
-          provisionalEvents={provisionalEvents}
           overrideImportanceAction={overrideImportanceAction}
         />
       </>

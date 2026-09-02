@@ -1,10 +1,10 @@
 # Automated 90-Day Event Discovery Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> Historical implementation plan. The approved design and pilot runbook contain the current behavior and acceptance gate; code examples below record the earlier implementation sequence.
 
 **Goal:** Build an automated rolling 90-day demand calendar that uses controlled Claude discovery, hides weak demand, and keeps PredictHQ as an admin-controlled enrichment source.
 
-**Architecture:** Keep the existing collector and per-hotel source controls. Replace the broad Claude query with three bounded open-web searches for the requested city, verify results through official event-owner pages, refresh a bounded set of stored successful URLs, and filter subscriber calendar and export output through one shared publishability rule. Store Low and weak events for provenance, but keep them out of subscriber output.
+**Architecture:** Keep the existing collector and per-hotel source controls. Search four demand categories across three 30-day slices, verify a bounded shortlist through official event-owner pages, refresh stored successful URLs, and exclude unconfirmed events from subscriber calendar and export output.
 
 **Tech Stack:** Next.js 16.3.3, TypeScript 6.0.3, Anthropic SDK 0.121.0, Supabase Postgres, Zod 4.4.3, Vitest 4.1.11
 

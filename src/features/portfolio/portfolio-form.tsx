@@ -14,7 +14,6 @@ const sources = [
   ["ticketmaster", "Ticketmaster"],
   ["predicthq", "PredictHQ"],
   ["claude", "Claude webaanvulling"],
-  ["uefa", "UEFA-wedstrijdvensters"],
 ] as const;
 
 function FieldError({ state, name }: { state: FormState; name: string }) {

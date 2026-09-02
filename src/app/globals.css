@@ -786,39 +786,6 @@ a {
   font-size: 0.75rem;
 }
 
-.status.provisional {
-  color: #765600;
-  background: #fff1bd;
-}
-
-.provisional-events {
-  padding: 12px;
-  border: 1px solid #ead89f;
-  border-radius: 8px;
-  background: #fffbec;
-}
-
-.provisional-events > summary {
-  cursor: pointer;
-  font-weight: 700;
-  color: #765600;
-}
-
-.provisional-events[open] > summary {
-  margin-bottom: 8px;
-}
-
-.checkbox-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 9px;
-}
-
-.checkbox-row input {
-  width: auto;
-  margin-top: 3px;
-}
-
 .notice.warning {
   border-color: #ead89f;
   color: #765600;

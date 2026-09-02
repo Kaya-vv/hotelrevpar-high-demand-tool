@@ -107,6 +107,7 @@ export async function getCalendarData(
   const mapped: CalendarEvent[] = scopedEvents
     .filter(
       (event) =>
+        event.certainty === "confirmed" &&
         event.start_at.slice(0, 10) <= bounds.end &&
         event.end_at.slice(0, 10) >= bounds.start
     )
@@ -136,7 +137,6 @@ export async function getCalendarData(
         venue: decision?.override_venue ?? event.venue,
         startAt: decision?.override_start_at ?? event.start_at,
         endAt: decision?.override_end_at ?? event.end_at,
-        certainty: event.certainty,
         sources: sources
           .filter((source) => source.event_id === event.id)
           .map((source) => ({
@@ -181,10 +181,7 @@ export async function getCalendarData(
     };
   }
   return {
-    events: mapped.filter((event) => event.certainty === "confirmed"),
-    provisionalEvents: mapped.filter(
-      (event) => event.certainty === "provisional"
-    ),
+    events: mapped,
     latestRun,
     hotels,
     selectedHotelId,

@@ -245,6 +245,18 @@ describe("event domain", () => {
     ).toEqual({ points: 45, basis: "ai_assessment" });
   });
 
+  it("uses Claude hotel-demand evidence ahead of provider popularity", () => {
+    expect(
+      impact({
+        localRank: 100,
+        attendance: 20_000,
+        venueCapacity: 35_000,
+        aiImpactPoints: 35,
+        category: "expos",
+      })
+    ).toEqual({ points: 35, basis: "ai_assessment" });
+  });
+
   it("returns zero distance points at the radius edge", () => {
     const hotel = { latitude: 51.44, longitude: 5.48 };
     const edgeLatitude = hotel.latitude + 25 / 111.195;

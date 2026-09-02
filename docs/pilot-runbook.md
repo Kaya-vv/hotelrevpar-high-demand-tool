@@ -9,7 +9,8 @@ Record the evidence for each gate before inviting a paying subscriber.
 | 3 | Add Eindhoven and Rotterdam areas and known hotels. |  |  |  |  |
 | 4 | Disable PredictHQ on the pilot hotels until written permission covers the intended use. |  |  |  |  |
 | 5 | Freeze a known-event benchmark for each pilot hotel from Robert's existing calendars, exports, and known high-demand dates. |  |  |  |  |
-| 6 | Run four collection cycles over rolling 90-day windows and record source failures and Claude cost. |  |  |  |  |
+| 6 | Run one rolling 90-day collection with Claude, government sources, and Ticketmaster enabled. Enable PredictHQ only when its trial terms permit the comparison. Record source failures and Claude cost. |  |  |  |  |
+| 6a | Confirm Claude searched four hotel-demand categories in each of three 30-day slices. Require all benchmark Peak events, at least 80% of benchmark High events, no unsupported High or Peak events, no generic competition windows or duplicates, and fewer than 238,421 Claude input tokens. |  |  |  |  |
 | 7 | Confirm displayed and exported events are Medium or higher and use a non-default impact basis. |  |  |  |  |
 | 8 | Confirm Low, default-basis, unsupported, and conflicted events stay out of subscriber output. |  |  |  |  |
 | 9 | Confirm one official cancellation leaves the subscriber calendar without a manager review task. |  |  |  |  |
@@ -21,7 +22,7 @@ Record the evidence for each gate before inviting a paying subscriber.
 
 ## Publishable events by source
 
-Run this read-only query after each comparison cycle:
+Run this read-only query after the comparison run:
 
 ```sql
 select
@@ -46,6 +47,35 @@ where decision.state = 'active'
   and event.end_at >= current_date
 group by area.name, source.provider
 order by area.name, source.provider;
+```
+
+## Event-by-event provenance
+
+Use this read-only query to inspect which source contributed each displayed event:
+
+```sql
+select
+  area.name as hotel,
+  event.title,
+  event.start_at,
+  coalesce(score.importance_override, score.suggested_importance) as importance,
+  string_agg(distinct source.provider, ', ' order by source.provider) as sources
+from account_event_areas as link
+join collection_areas as area on area.id = link.collection_area_id
+join events as event on event.id = link.event_id
+join event_sources as source on source.event_id = event.id
+join hotel_event_scores as score
+  on score.event_id = event.id
+  and score.hotel_id = area.hotel_id
+join account_events as decision
+  on decision.event_id = event.id
+  and decision.account_id = link.account_id
+where decision.state = 'active'
+  and event.certainty = 'confirmed'
+  and event.start_at < current_date + interval '91 days'
+  and event.end_at >= current_date
+group by area.name, event.id, score.importance_override, score.suggested_importance
+order by area.name, event.start_at, event.title;
 ```
 
 ## Pilot result

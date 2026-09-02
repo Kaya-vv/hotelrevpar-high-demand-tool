@@ -10,7 +10,7 @@ export function monthBounds(month: string) {
   return { start: `${month}-01`, end };
 }
 
-export async function loadExportEvents(accountId: string, month: string, selectedHotelIds: string[], includeProvisional = false) {
+export async function loadExportEvents(accountId: string, month: string, selectedHotelIds: string[]) {
   const supabase = await createServerClient();
   const { data: hotels, error: hotelError } = await supabase
     .from("hotels")
@@ -37,7 +37,7 @@ export async function loadExportEvents(accountId: string, month: string, selecte
 
   const decisionsByEvent = new Map(decisions.map((decision) => [decision.event_id, decision]));
   const hotelCodes = new Map(hotels.map((hotel) => [hotel.id, hotel.revcontrol_code]));
-  const events: ExportEvent[] = exportEvents.filter((event) => includeProvisional || event.certainty === "confirmed").map((event) => {
+  const events: ExportEvent[] = exportEvents.filter((event) => event.certainty === "confirmed").map((event) => {
     const decision = decisionsByEvent.get(event.id);
     return {
       id: event.id,

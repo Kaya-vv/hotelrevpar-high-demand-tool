@@ -56,7 +56,6 @@ export async function saveHotel(
           "ticketmaster",
           "predicthq",
           "claude",
-          "uefa",
         ];
   const parsed = hotelInput.safeParse({
     ...Object.fromEntries(formData),

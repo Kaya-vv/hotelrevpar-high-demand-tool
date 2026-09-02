@@ -16,7 +16,7 @@ The design must work without PredictHQ. PredictHQ may remain an enrichment sourc
 - Keep Low and weakly supported events out of subscriber views and exports.
 - Keep source conflicts in quarantine and report their count to platform health screens.
 - Use Claude for bounded open-web discovery and extraction from official event-owner pages.
-- Use Ticketmaster, government data, and UEFA data as category-specific supplements.
+- Use Ticketmaster and government data as category-specific supplements.
 - Reuse the existing per-hotel source controls. Do not build an old-version versus new-version mode.
 - Replace the existing shallow Claude search in place. Do not maintain two Claude collectors.
 
@@ -38,7 +38,7 @@ Fetch each candidate page and accept the event only when the page confirms its t
 
 - Rijksoverheid and OpenHolidays supply school and public holidays.
 - Ticketmaster supplies ticketed entertainment in locations covered by its API when its terms permit the intended commercial use.
-- UEFA supplies published competition windows and later confirmed fixtures.
+- Claude discovers confirmed professional fixtures from official club, league, federation, venue, or organiser pages. The app does not publish generic competition windows.
 - PredictHQ supplies enrichment after written permission and acceptable pricing.
 
 No single provider defines the calendar. Region-limited supplementary sources may be skipped outside their coverage; Claude discovery must not require them.
@@ -112,7 +112,7 @@ If PredictHQ approves the use case and the price fits the product, enable it as 
 
 Freeze a known-event benchmark before the first run using Robert's existing calendars, exports, and known high-demand dates. This creates a one-time pilot check and no subscriber workflow.
 
-Run four collection cycles over the same 90-day window. Prepare one aggregate report rather than adding review work to the product.
+Run one collection cycle over the same 90-day window with Claude, government sources, and Ticketmaster enabled. Enable PredictHQ for the paired comparison only when its trial terms permit it. This single run decides whether the build is ready for Robert's demo; later weekly runs measure production reliability.
 
 Compare:
 
@@ -124,6 +124,8 @@ Compare:
 - events contributed only by PredictHQ, when a permitted comparison exists.
 
 The report supports the later PredictHQ decision. Do not claim Claude matches PredictHQ recall before the comparison supplies evidence.
+
+The demo gate passes when the run finds every benchmark Peak event and at least 80% of benchmark High events, publishes no unsupported High or Peak events, publishes no generic competition windows or duplicates, and costs less than the previous 238,421-input-token Claude run.
 
 ## 9. Failure Handling
 

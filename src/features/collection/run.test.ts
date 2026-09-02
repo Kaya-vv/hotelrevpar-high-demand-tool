@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { EventCandidate } from "@/features/events/types";
-import { demandReviewFingerprint } from "@/features/events/hotel-demand";
+import {
+  applyDemandTriage,
+  demandReviewFingerprint,
+} from "@/features/events/hotel-demand";
 
 import {
   claudeDiscoveryDue,
@@ -226,8 +229,9 @@ describe("runCollection", () => {
         hotels: [{ id: "hotel-1", latitude: 51.44, longitude: 5.48, demandRadiusKm: 25, holidayRegion: "south" }],
       }),
     });
+    const triageReview = { providerEventId: "phq-major", decision: "verify" as const, confidence: "high" as const, demandLevel: "high" as const, evidenceText: "Landelijke vakbeurs." };
     const demandTriageReviewer = vi.fn().mockResolvedValue({
-      reviews: [{ providerEventId: "phq-major", decision: "verify", confidence: "high", demandLevel: "high", evidenceText: "Landelijke vakbeurs." }],
+      reviews: [triageReview],
       requests: 1,
       usage: { inputTokens: 100, outputTokens: 30, webSearchRequests: 0 },
     });
@@ -236,6 +240,7 @@ describe("runCollection", () => {
       requests: 1,
       usage: { inputTokens: 100, outputTokens: 30, webSearchRequests: 1 },
     });
+    const assessed = applyDemandTriage(plausible, triageReview);
 
     await runCollection(
       { accountId: "account-1", areaId: "area-1", trigger: "manual" },
@@ -243,18 +248,18 @@ describe("runCollection", () => {
     );
 
     expect(demandTriageReviewer).toHaveBeenCalledWith(expect.objectContaining({ candidates: [plausible], hotelName: "Testhotel" }));
-    expect(evidenceReviewer).toHaveBeenCalledWith(expect.objectContaining({ candidates: [plausible], hotelName: "Testhotel" }));
+    expect(evidenceReviewer).toHaveBeenCalledWith(expect.objectContaining({ candidates: [expect.objectContaining({ providerEventId: plausible.providerEventId, aiImpactPoints: 45, evidenceText: "Landelijke vakbeurs." })], hotelName: "Testhotel" }));
     expect(repo.persistCandidate).toHaveBeenCalledTimes(1);
-    expect(repo.persistCandidate).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ providerEventId: "phq-major", publicSourceUrl: "https://organizer.nl/major", primarySourceConfirmed: true }));
+    expect(repo.persistCandidate).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ providerEventId: "phq-major", publicSourceUrl: "https://organizer.nl/major", primarySourceConfirmed: true, aiImpactPoints: 45 }));
     expect(repo.hideCandidates).toHaveBeenCalledWith(expect.anything(), [amateur]);
     expect(repo.saveDemandTriages).toHaveBeenCalledWith(expect.anything(), [expect.objectContaining({ fingerprint: demandReviewFingerprint(plausible) })]);
-    expect(repo.saveEvidenceReviews).toHaveBeenCalledWith([expect.objectContaining({ fingerprint: demandReviewFingerprint(plausible) })]);
+    expect(repo.saveEvidenceReviews).toHaveBeenCalledWith([expect.objectContaining({ fingerprint: demandReviewFingerprint(assessed) })]);
   });
 
   it("reuses unchanged hotel triage and global evidence without calling Claude", async () => {
     const plausible = { ...candidate, provider: "predicthq" as const, providerEventId: "phq-major", category: "expos", localRank: 75, primarySourceConfirmed: false };
     const cachedTriage = { providerEventId: plausible.providerEventId, fingerprint: demandReviewFingerprint(plausible), decision: "verify" as const, confidence: "high" as const, demandLevel: "high" as const, evidenceText: "Landelijke vakbeurs." };
-    const cachedEvidence = { providerEventId: plausible.providerEventId, fingerprint: demandReviewFingerprint(plausible), decision: "verified" as const, confidence: "high" as const, sourceUrl: "https://organizer.nl/major", evidenceText: "Primaire bron bevestigd." };
+    const cachedEvidence = { providerEventId: plausible.providerEventId, fingerprint: demandReviewFingerprint(applyDemandTriage(plausible, cachedTriage)), decision: "verified" as const, confidence: "high" as const, sourceUrl: "https://organizer.nl/major", evidenceText: "Primaire bron bevestigd." };
     const repo = repository({
       loadContext: vi.fn().mockResolvedValue({
         area: { id: "area-1", accountId: "account-1", name: "Testhotel", searchLocation: "Eindhoven", latitude: 51.44, longitude: 5.48, radiusKm: 25, enabledSources: ["predicthq"] },
@@ -311,7 +316,7 @@ describe("runCollection", () => {
     candidates.slice(0, 5).forEach((event, index) => {
       expect(evidenceReviewer).toHaveBeenNthCalledWith(
         index + 1,
-        expect.objectContaining({ candidates: [event] }),
+        expect.objectContaining({ candidates: [expect.objectContaining({ providerEventId: event.providerEventId, aiImpactPoints: 45, evidenceText: "Groot evenement." })] }),
       );
     });
     expect(repo.saveEvidenceReviews).toHaveBeenCalledTimes(5);

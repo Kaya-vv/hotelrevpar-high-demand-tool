@@ -207,7 +207,6 @@ export default async function CalendarPage({
       <CalendarView
         month={month}
         events={data.events}
-        provisionalEvents={data.provisionalEvents}
         latestRun={data.latestRun}
         view={view}
         overrideImportanceAction={overrideImportance}

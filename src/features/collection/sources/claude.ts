@@ -40,7 +40,7 @@ const outputSchema = z.object({
       status: z.enum(["active", "cancelled", "postponed"]),
       ownerType: z.string(),
       evidenceText: z.string().nullable(),
-      impactPoints: z.union([z.literal(20), z.literal(35), z.literal(45), z.literal(60)]).nullable(),
+      impactPoints: z.number().int().nullable(),
       titleConfirmed: z.boolean(),
       dateConfirmed: z.boolean(),
       locationConfirmed: z.boolean(),
@@ -171,10 +171,43 @@ async function observeUsage(observer: UsageObserver | undefined, event: ClaudeUs
 }
 
 const searchGroups = [
-  "congressen, vakbeurzen, conferenties, universitaire introducties en open dagen",
-  "grote concerten, festivals, arena-evenementen en stadionevenementen",
-  "nationale of internationale sporttoernooien en Europese thuiswedstrijden",
+  "stadsbrede festivals, design weeks en marathons",
+  "congressen, tentoonstellingen, vakbeurzen en conferenties",
+  "grote concerten en meerdaagse entertainment-evenementen",
+  "bevestigde professionele sportwedstrijden en sporttoernooien",
 ] as const;
+
+function addDays(value: string, days: number) {
+  const date = new Date(`${value}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function searchWindows(start: string, end: string) {
+  const boundedEnd = [addDays(start, 90), end].sort()[0];
+  return [0, 30, 60].flatMap((offset, index) => {
+    const sliceStart = addDays(start, offset);
+    if (sliceStart > boundedEnd) return [];
+    return [{
+      start: sliceStart,
+      end: index === 2
+        ? boundedEnd
+        : [addDays(start, offset + 29), boundedEnd].sort()[0],
+    }];
+  });
+}
+
+function discoveryUrls(message: Anthropic.Message) {
+  const cited = message.content.flatMap((block) =>
+    block.type === "text"
+      ? block.citations?.flatMap((citation) =>
+          citation.type === "web_search_result_location" ? [citation.url] : []
+        ) ?? []
+      : []
+  );
+  return [...new Set([...cited, ...sourceUrls(message)].filter(isPublicEvidenceUrl))]
+    .slice(0, 2);
+}
 
 export async function collectClaude(
   input: CollectionWindow & {
@@ -191,29 +224,31 @@ export async function collectClaude(
   if (!model) throw new Error("ANTHROPIC_MODEL is required for the Claude source.");
   const client = input.client ?? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const searches: Anthropic.Message[] = [];
-  for (const focus of searchGroups) {
-    const search = await requestPhase("search", () => client.messages.create({
-      model,
-      max_tokens: 800,
-      tools: [{
-        type: "web_search_20260318",
-        name: "web_search",
-        allowed_callers: ["direct"],
-        max_uses: 1,
-        response_inclusion: "full",
-      }],
-      messages: [{
-        role: "user",
-        content: `Vind binnen ${input.radiusKm} km van ${input.location} tussen ${input.start} en ${input.end} alleen ${focus} met aannemelijke extra hotelvraag. Zoek op het open web en geef voorrang aan een specifieke evenementpagina van de organisator, locatie, club, universiteit, federatie of gemeente. Lokale agenda's en ticketlijsten zijn alleen ontdekking; geef waar mogelijk de pagina van de evenement-eigenaar terug.`,
-      }],
-    }, searchRequestOptions));
-    await observeUsage(input.onUsage, usageEvent(search, "discovery", model));
-    searches.push(search);
+  for (const window of searchWindows(input.start, input.end)) {
+    for (const focus of searchGroups) {
+      const search = await requestPhase("search", () => client.messages.create({
+        model,
+        max_tokens: 300,
+        tools: [{
+          type: "web_search_20260318",
+          name: "web_search",
+          allowed_callers: ["direct"],
+          max_uses: 1,
+          response_inclusion: "full",
+        }],
+        messages: [{
+          role: "user",
+          content: `Zoek binnen ${input.radiusKm} km van ${input.location} tussen ${window.start} en ${window.end} naar ${focus} die High- of Piek-hotelvraag kunnen veroorzaken. Kies maximaal twee sterke kandidaten. Geef alleen specifieke officiële evenementpagina's van de organisator, locatie, club, federatie, universiteit of gemeente. Gebruik agenda's en ticketlijsten alleen om die officiële pagina's te vinden. Geef geen voorspelde wedstrijdvensters of onbevestigde evenementen.`,
+        }],
+      }, searchRequestOptions));
+      await observeUsage(input.onUsage, usageEvent(search, "discovery", model));
+      searches.push(search);
+    }
   }
   const urls = [...new Set([
-    ...(input.knownUrls ?? []),
-    ...searches.flatMap(sourceUrls),
-  ])].slice(0, 16);
+    ...(input.knownUrls ?? []).slice(0, 8),
+    ...searches.flatMap(discoveryUrls),
+  ])].slice(0, 32);
   if (!urls.length) {
     return {
       source: "claude",
@@ -232,13 +267,13 @@ export async function collectClaude(
   }
 
   const batches = Array.from(
-    { length: Math.ceil(urls.length / 4) },
-    (_, index) => urls.slice(index * 4, index * 4 + 4),
+    { length: Math.ceil(urls.length / 2) },
+    (_, index) => urls.slice(index * 2, index * 2 + 2),
   );
   const verified = await Promise.all(batches.map(async (batch) => {
     const message = await requestPhase("verification", () => client.messages.create({
       model,
-      max_tokens: 4_000,
+      max_tokens: 1_500,
       ...(model.startsWith("claude-sonnet-5")
         ? { thinking: { type: "disabled" as const } }
         : {}),
@@ -246,13 +281,13 @@ export async function collectClaude(
         type: "web_fetch_20250910",
         name: "web_fetch",
         max_uses: batch.length,
-        max_content_tokens: 2_000,
+        max_content_tokens: 750,
         citations: { enabled: false },
       }],
       output_config: { format: zodOutputFormat(outputSchema) },
       messages: [{
         role: "user",
-        content: `Open deze pagina's en controleer per evenement titel, datum, locatie en status. Gebruik status active, cancelled of postponed. Neem alleen evenementen in het venster op. Geef impactPoints 20, 35, 45 of 60 op basis van gepubliceerde schaal, capaciteit of landelijke aantrekkingskracht; gebruik null als de bron dit niet ondersteunt. Geef een specifieke locatie zodat die gegeocodeerd kan worden. Pagina's:\n${batch.join("\n")}`,
+        content: `Open deze officiële pagina's en controleer per evenement titel, datum, locatie en status. Gebruik status active, cancelled of postponed. Neem alleen evenementen tussen ${input.start} en ${input.end} binnen ${input.radiusKm} km van ${input.location} op. Classificeer de extra overnachtingsvraag voor hotels: 35 Medium, 45 High of 60 Piek. Baseer dit op broninformatie over bezoekers van buiten de regio, meerdaagse duur, internationaal of nationaal bereik, capaciteit en een laat programma. Gebruik null als de pagina geen hotelspecifiek vraagsignaal ondersteunt. Neem actieve evenementen met null of Low impact niet op. Geef een specifieke locatie zodat die gegeocodeerd kan worden. Pagina's:\n${batch.join("\n")}`,
       }],
     }, verificationRequestOptions));
     await observeUsage(input.onUsage, usageEvent(message, "discovery_fetch", model));
@@ -264,7 +299,11 @@ export async function collectClaude(
     }
     const text = message.content.find((block) => block.type === "text")?.text;
     if (!text) throw new Error("Claude verification returned no structured output.");
-    return outputSchema.parse(JSON.parse(text)).events;
+    const observed = sourceUrls(message);
+    return outputSchema.parse(JSON.parse(text)).events.filter((event) =>
+      observedUrl(event.sourceUrl, observed) &&
+      (event.status !== "active" || [35, 45, 60].includes(event.impactPoints ?? 0))
+    );
   });
   const geocode = input.geocode ?? geocodeVenue;
   const candidates = await Promise.all(events.map(async (event) => {

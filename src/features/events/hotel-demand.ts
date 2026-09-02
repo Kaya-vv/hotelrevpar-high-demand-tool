@@ -26,11 +26,27 @@ export function demandReviewFingerprint(candidate: EventCandidate) {
     normalizeText(candidate.venue ?? ""),
     candidate.latitude ?? "",
     candidate.longitude ?? "",
+    candidate.localRank ?? "",
+    candidate.attendance ?? "",
+    candidate.venueCapacity ?? "",
     candidate.aiImpactPoints ?? "",
     candidate.sourceState,
     candidate.providerDeletedReason ?? "",
     candidate.providerDuplicateOfId ?? "",
   ].join("|");
+}
+
+export function applyDemandTriage(
+  candidate: EventCandidate,
+  review: DemandTriage
+): EventCandidate {
+  return {
+    ...candidate,
+    aiImpactPoints: { low: 20, medium: 35, high: 45, peak: 60 }[
+      review.demandLevel
+    ],
+    evidenceText: review.evidenceText,
+  };
 }
 
 export function prefilterHotelDemand(candidate: EventCandidate): {

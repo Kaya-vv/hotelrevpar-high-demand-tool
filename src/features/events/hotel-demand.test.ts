@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import type { EventCandidate } from "./types";
-import { demandReviewFingerprint, prefilterHotelDemand } from "./hotel-demand";
+import {
+  applyDemandTriage,
+  demandReviewFingerprint,
+  prefilterHotelDemand,
+} from "./hotel-demand";
 
 const candidate: EventCandidate = {
   provider: "predicthq",
@@ -124,5 +128,26 @@ describe("hotel demand prefilter", () => {
     expect(
       demandReviewFingerprint({ ...candidate, startAt: "2027-10-11T08:00:00Z" })
     ).not.toBe(original);
+    expect(
+      demandReviewFingerprint({ ...candidate, attendance: 9_000 })
+    ).not.toBe(original);
+    expect(
+      demandReviewFingerprint({ ...candidate, localRank: 90 })
+    ).not.toBe(original);
+  });
+
+  it("stores Claude demand levels as score evidence", () => {
+    expect(
+      applyDemandTriage(candidate, {
+        providerEventId: candidate.providerEventId,
+        decision: "verify",
+        confidence: "high",
+        demandLevel: "peak",
+        evidenceText: "Meerdaagse internationale beurs.",
+      })
+    ).toMatchObject({
+      aiImpactPoints: 60,
+      evidenceText: "Meerdaagse internationale beurs.",
+    });
   });
 });

@@ -16,18 +16,16 @@ export default async function ExportPage({ searchParams }: { searchParams: Promi
   const rawMonth = value(params, "month");
   const month = rawMonth && /^\d{4}-(0[1-9]|1[0-2])$/.test(rawMonth) ? rawMonth : new Date().toISOString().slice(0, 7);
   const requestedHotels = Array.isArray(params.hotel) ? params.hotel : typeof params.hotel === "string" ? [params.hotel] : [];
-  const includeProvisional = value(params, "includeProvisional") === "1";
   const ownedHotelIds = new Set(scope.hotels.map((hotel) => hotel.id));
   const selectedHotelIds = requestedHotels.length
     ? [...new Set(requestedHotels)].filter((hotelId) => ownedHotelIds.has(hotelId))
     : scope.selectedHotelId ? [scope.selectedHotelId] : [];
   const { hotels, events } = selectedHotelIds.length
-    ? await loadExportEvents(accountId, month, selectedHotelIds, includeProvisional)
+    ? await loadExportEvents(accountId, month, selectedHotelIds)
     : { hotels: [], events: [] };
   const rows = mapRevControlRows(events, selectedHotelIds);
   const query = new URLSearchParams({ month });
   selectedHotelIds.forEach((hotelId) => query.append("hotel", hotelId));
-  if (includeProvisional) query.set("includeProvisional", "1");
 
   return (
     <div>
@@ -39,8 +37,6 @@ export default async function ExportPage({ searchParams }: { searchParams: Promi
             <legend>Hotels</legend>
             {scope.hotels.map((hotel) => <label key={hotel.id}><input name="hotel" type="checkbox" value={hotel.id} defaultChecked={selectedHotelIds.includes(hotel.id)} />{hotel.name}</label>)}
           </fieldset>
-          <label className="checkbox-row"><input name="includeProvisional" type="checkbox" value="1" defaultChecked={includeProvisional} />Ook mogelijke, nog onbevestigde vraagmomenten opnemen</label>
-          {includeProvisional && <p className="notice warning">Je kiest er voor deze export bewust voor om voorlopige datums aan RevControl door te geven.</p>}
           {!scope.hotels.length && <p className="notice error">Voeg eerst een hotel toe.</p>}
           <button className="secondary" type="submit" disabled={!scope.hotels.length}>Voorbeeld vernieuwen</button>
         </form>

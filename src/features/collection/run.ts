@@ -1,5 +1,6 @@
 import { distanceKm } from "@/features/events/distance";
 import {
+  applyDemandTriage,
   applyEvidenceReview,
   asProvisional,
   demandReviewFingerprint,
@@ -19,7 +20,6 @@ import { collectOpenHolidays } from "./sources/openholidays";
 import { collectPredictHq } from "./sources/predicthq";
 import { collectRijksoverheid } from "./sources/rijksoverheid";
 import { collectTicketmaster } from "./sources/ticketmaster";
-import { collectUefaForecasts } from "./sources/uefa";
 import type { CollectionWindow, SourceResult } from "./types";
 
 export type CollectionAreaContext = {
@@ -234,7 +234,7 @@ function defaultCollectors(
         onUsage: (usage) => onUsage("claude", usage),
       });
     },
-    uefa: (context) => Promise.resolve(collectUefaForecasts(context.window)),
+    uefa: () => Promise.resolve({ source: "uefa", candidates: [], requests: 0, usage: {} }),
   };
 }
 
@@ -484,9 +484,10 @@ export async function runCollection(
         for (const event of toTriage) {
           const review = triages.get(event.providerEventId);
           if (!review || review.decision === "exclude") hidden.push(event);
+          const assessed = review ? applyDemandTriage(event, review) : event;
           if (review?.decision === "provisional")
-            provisional.push(asProvisional(event, review.evidenceText));
-          if (review?.decision === "verify") toVerify.push(event);
+            provisional.push(asProvisional(assessed, review.evidenceText));
+          if (review?.decision === "verify") toVerify.push(assessed);
         }
 
         const evidence = new Map<string, StoredEvidenceReview>();

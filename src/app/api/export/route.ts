@@ -9,7 +9,6 @@ export async function GET(request: Request) {
   const { accountId } = await requireAccount();
   const url = new URL(request.url);
   const selectedHotelIds = [...new Set(url.searchParams.getAll("hotel"))];
-  const includeProvisional = url.searchParams.get("includeProvisional") === "1";
   const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(url.searchParams.get("month") ?? "")
     ? url.searchParams.get("month")!
     : new Date().toISOString().slice(0, 7);
@@ -17,7 +16,7 @@ export async function GET(request: Request) {
 
   let events;
   try {
-    ({ events } = await loadExportEvents(accountId, month, selectedHotelIds, includeProvisional));
+    ({ events } = await loadExportEvents(accountId, month, selectedHotelIds));
   } catch (error) {
     if (error instanceof Error && error.message.includes("hoort niet bij dit account")) {
       return Response.json({ error: error.message }, { status: 403 });
