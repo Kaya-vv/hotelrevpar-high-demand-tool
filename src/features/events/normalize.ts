@@ -10,8 +10,36 @@ export function normalizeText(value: string) {
     .replace(/\s+/g, " ");
 }
 
+const localDateTime = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Europe/Amsterdam",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+export function localParts(value: string) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return { date: value.slice(0, 10), hour: 0, minute: 0 };
+  }
+  const parts = Object.fromEntries(
+    localDateTime
+      .formatToParts(parsed)
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    hour: Number(parts.hour),
+    minute: Number(parts.minute),
+  };
+}
+
 export function normalizeCandidate(candidate: EventCandidate): NormalizedCandidate {
-  const localStartDate = candidate.startAt.slice(0, 10);
+  const localStartDate = localParts(candidate.startAt).date;
   const place = candidate.venue ?? candidate.regionScope ?? "unknown";
   const normalizedTitle = normalizeText(candidate.title);
 

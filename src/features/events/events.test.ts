@@ -61,6 +61,21 @@ describe("event domain", () => {
     expect(normalizeText("  Café-déjà! ")).toBe("cafe deja");
   });
 
+  it("gives one event the same identity whether its start is Dutch local or UTC", () => {
+    const dutchLocal = normalizeCandidate({ ...candidate, startAt: "2027-10-17T00:00:00+02:00" });
+    const storedUtc = normalizeCandidate({
+      ...candidate,
+      providerEventId: "tm-2",
+      startAt: "2027-10-16T22:00:00Z",
+    });
+    expect(dutchLocal.localStartDate).toBe("2027-10-17");
+    expect(storedUtc.localStartDate).toBe("2027-10-17");
+    expect(classifyMatch(storedUtc, [{ ...dutchLocal, id: "event-1" }])).toEqual({
+      kind: "exact",
+      eventId: "event-1",
+    });
+  });
+
   it("matches provider IDs and normalized identities exactly", () => {
     const normalized = normalizeCandidate(candidate);
     expect(
@@ -83,6 +98,30 @@ describe("event domain", () => {
     });
     expect(
       classifyMatch(changed, [{ ...normalized, id: "event-1" }]).kind
+    ).toBe("uncertain");
+  });
+
+  it("merges a confirmed candidate into an unverified stub instead of asking for review", () => {
+    const stub = normalizeCandidate({
+      ...candidate,
+      provider: "predicthq",
+      providerEventId: "phq-stub",
+      title: "Dutch Design Festival",
+      venue: "Strijp-S",
+      primarySourceConfirmed: false,
+    });
+    const confirmed = normalizeCandidate({
+      ...candidate,
+      provider: "claude",
+      providerEventId: "claude-1",
+      primarySourceConfirmed: true,
+    });
+    expect(classifyMatch(confirmed, [{ ...stub, id: "stub-1" }])).toEqual({
+      kind: "exact",
+      eventId: "stub-1",
+    });
+    expect(
+      classifyMatch({ ...confirmed, primarySourceConfirmed: false }, [{ ...stub, id: "stub-1" }]).kind,
     ).toBe("uncertain");
   });
 

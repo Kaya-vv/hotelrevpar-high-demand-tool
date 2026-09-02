@@ -268,18 +268,36 @@ export function createCollectionRepository(): CollectionRepository {
         }
 
         if (!eventId) {
-          const dayStart = `${normalized.localStartDate}T00:00:00Z`;
-          const dayEnd = `${normalized.localStartDate}T23:59:59Z`;
+          const shiftDay = (days: number) => {
+            const date = new Date(`${normalized.localStartDate}T00:00:00Z`);
+            date.setUTCDate(date.getUTCDate() + days);
+            return date.toISOString().slice(0, 10);
+          };
+          const dayStart = `${shiftDay(-1)}T00:00:00Z`;
+          const dayEnd = `${shiftDay(1)}T23:59:59Z`;
           const { data: nearby, error: nearbyError } = await supabase
             .from("events")
             .select("*")
             .gte("start_at", dayStart)
             .lte("start_at", dayEnd);
           if (nearbyError) throw nearbyError;
+          const confirmedIds = new Set(
+            (nearby.length
+              ? await fetchInBatches(nearby.map((event) => event.id), (ids) =>
+                supabase
+                  .from("event_sources")
+                  .select("event_id")
+                  .eq("source_state", "active")
+                  .eq("primary_source_confirmed", true)
+                  .in("event_id", ids),
+              )
+              : []
+            ).map((row) => row.event_id),
+          );
           const match = classifyMatch(
             normalized,
-            nearby.map((event) =>
-              normalizeCandidate({
+            nearby.map((event) => ({
+              ...normalizeCandidate({
                 provider: candidate.provider,
                 providerEventId: "",
                 sourceUrl: candidate.sourceUrl,
@@ -298,9 +316,10 @@ export function createCollectionRepository(): CollectionRepository {
                 venueCapacity: null,
                 aiImpactPoints: null,
                 evidenceText: null,
-                primarySourceConfirmed: true,
+                primarySourceConfirmed: confirmedIds.has(event.id),
               }),
-            ).map((event, index) => ({ ...event, id: nearby[index].id })),
+              id: event.id,
+            })),
           );
           if (match.kind === "exact") {
             eventId = match.eventId;

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, type Mock } from "vitest";
 import {
   APIConnectionTimeoutError,
   type default as Anthropic,
@@ -24,13 +24,40 @@ const jsonResponse = (value: unknown) =>
 const window = { start: "2027-01-01", end: "2027-12-31" };
 const claudeWindow = { start: "2027-08-01", end: "2027-10-30" };
 
-const searchResponse = (url?: string) => ({
-  content: url
-    ? [{
-        type: "web_search_tool_result",
-        content: [{ type: "web_search_result", url }],
-      }]
-    : [],
+const fetchResult = (url: string) => ({
+  type: "web_fetch_tool_result",
+  content: { type: "web_fetch_result", url },
+});
+
+const discoveredCandidate = (overrides: Record<string, unknown> = {}) => ({
+  title: "Dutch Design Week",
+  startDate: "2027-09-15",
+  endDate: "2027-09-23",
+  city: "Eindhoven",
+  venue: "Klokgebouw",
+  category: "festival",
+  officialUrl: null,
+  ...overrides,
+});
+
+const discoveryResponse = (
+  candidates: Array<Record<string, unknown>> = [],
+  agendaUrls: string[] = [],
+) => ({
+  content: [
+    {
+      type: "web_search_tool_result",
+      content: [
+        ...candidates.flatMap((candidate) =>
+          candidate.officialUrl
+            ? [{ type: "web_search_result", url: candidate.officialUrl }]
+            : [],
+        ),
+        ...agendaUrls.map((url) => ({ type: "web_search_result", url })),
+      ],
+    },
+    { type: "text", text: JSON.stringify({ candidates, agendaUrls }) },
+  ],
   usage: {
     input_tokens: 100,
     output_tokens: 20,
@@ -38,17 +65,62 @@ const searchResponse = (url?: string) => ({
   },
 });
 
-function queueClaudeSearches(create: ReturnType<typeof vi.fn>, urls: string[] = []) {
-  for (let index = 0; index < 12; index += 1) {
-    create.mockResolvedValueOnce(
-      searchResponse(urls.length ? urls[index % urls.length] : undefined)
-    );
+function queueClaudeSearches(
+  create: Mock,
+  candidates: Array<Record<string, unknown>> = [],
+  agendaUrls: string[] = [],
+) {
+  create.mockResolvedValueOnce(discoveryResponse(candidates, agendaUrls));
+  for (let index = 1; index < 12; index += 1) {
+    create.mockResolvedValueOnce(discoveryResponse());
   }
 }
 
-const fetchResult = (url: string) => ({
-  type: "web_fetch_tool_result",
-  content: { type: "web_fetch_result", url },
+const agendaResponse = (url: string, candidates: Array<Record<string, unknown>>) => ({
+  content: [
+    fetchResult(url),
+    { type: "text", text: JSON.stringify({ candidates, agendaUrls: [] }) },
+  ],
+  usage: {
+    input_tokens: 400,
+    output_tokens: 120,
+    server_tool_use: { web_fetch_requests: 1 },
+  },
+});
+
+const verifiedEvent = (overrides: Record<string, unknown> = {}) => ({
+  sourceUrl: "https://organizer.example/event",
+  title: "Dutch Design Week",
+  category: "festival",
+  venue: "Klokgebouw",
+  latitude: 51.44,
+  longitude: 5.48,
+  regionScope: null,
+  startAt: "2027-09-15T10:00:00+02:00",
+  endAt: "2027-09-23T22:00:00+02:00",
+  status: "active",
+  ownerType: "organizer",
+  evidenceText: "Meerdaagse internationale editie.",
+  impactPoints: 60,
+  titleConfirmed: true,
+  dateConfirmed: true,
+  locationConfirmed: true,
+  ...overrides,
+});
+
+const verificationResponse = (
+  fetchedUrl: string | null,
+  events: Array<Record<string, unknown>>,
+) => ({
+  content: [
+    ...(fetchedUrl ? [fetchResult(fetchedUrl)] : []),
+    { type: "text", text: JSON.stringify({ events }) },
+  ],
+  usage: {
+    input_tokens: 200,
+    output_tokens: 80,
+    server_tool_use: { web_fetch_requests: 1 },
+  },
 });
 
 describe("source adapters", () => {
@@ -151,123 +223,58 @@ describe("source adapters", () => {
   });
 
   it("searches any requested city in twelve bounded month/category slices", async () => {
-    const urls = [
-      "https://www.jaarbeurs.nl/event",
-      "https://www.tivolivredenburg.nl/agenda/event",
-      "https://www.fcutrecht.nl/wedstrijd",
-    ];
+    const official = "https://www.jaarbeurs.nl/event";
+    const agendaUrl = "https://www.uitagendautrecht.nl/oktober";
+    const agendaOfficial = "https://www.tivolivredenburg.nl/agenda/event";
+    const nameOnlyUrl = "https://www.fcutrecht.nl/wedstrijd";
     const create = vi.fn();
-    queueClaudeSearches(create, urls);
-    create.mockResolvedValueOnce({
-        content: [
-          fetchResult(urls[0]),
-          {
-            type: "text",
-            text: JSON.stringify({
-              events: [
-                {
-                  sourceUrl: "https://invented.example/event",
-                  title: "Vakbeurs Utrecht",
-                  category: "expos",
-                  venue: "Jaarbeurs",
-                  latitude: 52.089,
-                  longitude: 5.107,
-                  regionScope: null,
-                  startAt: "2027-09-01T10:00:00+02:00",
-                  endAt: "2027-09-02T22:00:00+02:00",
-                  status: "active",
-                  ownerType: "organizer",
-                  evidenceText: "Meerdaagse vakbeurs met landelijke bezoekers.",
-                  impactPoints: 45,
-                  titleConfirmed: true,
-                  dateConfirmed: true,
-                  locationConfirmed: true,
-                },
-              ],
-            }),
-          },
-        ],
-        usage: {
-          input_tokens: 200,
-          output_tokens: 80,
-          server_tool_use: { web_fetch_requests: 1 },
-        },
-      }).mockResolvedValueOnce({
-        content: [
-          fetchResult(urls[1]),
-          {
-            type: "text",
-            text: JSON.stringify({
-              events: [{
-                sourceUrl: urls[1],
-                title: "Agenda-item",
-                category: "concert",
-                venue: "TivoliVredenburg",
-                latitude: 52.089,
-                longitude: 5.107,
-                regionScope: null,
-                startAt: "2027-09-01T20:00:00+02:00",
-                endAt: "2027-09-01T23:00:00+02:00",
-                status: "active",
-                ownerType: "other",
-                evidenceText: "Algemene agenda.",
-                impactPoints: 45,
-                titleConfirmed: true,
-                dateConfirmed: true,
-                locationConfirmed: true,
-              }],
-            }),
-          },
-        ],
-        usage: {
-          input_tokens: 100,
-          output_tokens: 20,
-          server_tool_use: { web_fetch_requests: 1 },
-        },
-      }).mockResolvedValueOnce({
-        content: [
-          fetchResult(urls[2]),
-          {
-            type: "text",
-            text: JSON.stringify({
-              events: [{
-                sourceUrl: urls[2],
-                title: "Lokale wedstrijd",
-                category: "sports",
-                venue: "Stadion Galgenwaard",
-                latitude: 52.089,
-                longitude: 5.107,
-                regionScope: null,
-                startAt: "2027-09-02T18:00:00+02:00",
-                endAt: "2027-09-02T20:00:00+02:00",
-                status: "active",
-                ownerType: "club",
-                evidenceText: "Geen hotelvraag onderbouwd.",
-                impactPoints: 20,
-                titleConfirmed: true,
-                dateConfirmed: true,
-                locationConfirmed: true,
-              }],
-            }),
-          },
-        ],
-        usage: {
-          input_tokens: 100,
-          output_tokens: 20,
-          server_tool_use: { web_fetch_requests: 1 },
-        },
-      });
+    queueClaudeSearches(
+      create,
+      [
+        discoveredCandidate({ title: "Vakbeurs Utrecht", city: "Utrecht", venue: "Jaarbeurs", officialUrl: official }),
+        discoveredCandidate({ title: "Naamloos concert", city: "Utrecht", venue: "TivoliVredenburg", officialUrl: null }),
+      ],
+      [agendaUrl],
+    );
+    create.mockResolvedValueOnce(
+      agendaResponse(agendaUrl, [
+        discoveredCandidate({ title: "Agenda-item", city: "Utrecht", officialUrl: agendaOfficial }),
+      ]),
+    );
+    create
+      .mockResolvedValueOnce(
+        verificationResponse(official, [
+          verifiedEvent({
+            sourceUrl: "https://invented.example/event",
+            title: "Vakbeurs Utrecht",
+            category: "expos",
+            venue: "Jaarbeurs",
+            impactPoints: 45,
+          }),
+        ]),
+      )
+      .mockResolvedValueOnce(
+        verificationResponse(agendaOfficial, [
+          verifiedEvent({ sourceUrl: agendaOfficial, title: "Agenda-item", ownerType: "other" }),
+        ]),
+      )
+      .mockResolvedValueOnce(
+        verificationResponse(nameOnlyUrl, [
+          verifiedEvent({ sourceUrl: nameOnlyUrl, title: "Naamloos concert", ownerType: "club", impactPoints: 20 }),
+        ]),
+      );
 
-    const client = { messages: { create } } as unknown as Anthropic;
     const result = await collectClaude({
       ...claudeWindow,
       location: "Utrecht",
       radiusKm: 25,
       model: "claude-sonnet-5",
-      client,
+      client: { messages: { create } } as unknown as Anthropic,
     });
-    expect(create).toHaveBeenCalledTimes(15);
+
+    expect(create).toHaveBeenCalledTimes(16);
     create.mock.calls.slice(0, 12).forEach(([request]) => {
+      expect(request.max_tokens).toBe(2_500);
       expect(request.tools[0]).toMatchObject({
         type: "web_search_20260318",
         allowed_callers: ["direct"],
@@ -281,94 +288,436 @@ describe("source adapters", () => {
         city: "Utrecht",
         timezone: "Europe/Amsterdam",
       });
-      expect(request.tool_choice).toEqual({
-        type: "tool",
-        name: "web_search",
-      });
+      expect(request.tool_choice).toBeUndefined();
       expect(request.thinking).toEqual({ type: "disabled" });
+      expect(request.output_config.format).toMatchObject({ type: "json_schema" });
     });
-    const firstVerificationRequest = create.mock.calls[12][0];
-    expect(create.mock.calls[0][1]).toEqual({
-      timeout: 180_000,
-      maxRetries: 1,
+    expect(create.mock.calls[0][1]).toEqual({ timeout: 180_000, maxRetries: 1 });
+    expect(create.mock.calls[0][0].messages[0].content).toContain("2027-08-01 en 2027-08-30");
+    expect(create.mock.calls[0][0].messages[0].content).toContain("augustus 2027");
+    expect(create.mock.calls[4][0].messages[0].content).toContain("2027-08-31 en 2027-09-29");
+    expect(create.mock.calls[8][0].messages[0].content).toContain("2027-09-30 en 2027-10-30");
+    expect(create.mock.calls[8][0].messages[0].content).toContain("september 2027");
+    expect(create.mock.calls[3][0].messages[0].content).toContain("bevestigde professionele sportwedstrijden");
+
+    const agendaRequest = create.mock.calls[12][0];
+    expect(agendaRequest.messages[0].content).toContain(agendaUrl);
+    expect(agendaRequest.tools[0]).toMatchObject({
+      type: "web_fetch_20260318",
+      max_uses: 1,
+      max_content_tokens: 6_000,
     });
-    expect(create.mock.calls[12][1]).toEqual({
-      timeout: 180_000,
-      maxRetries: 0,
-    });
-    expect(firstVerificationRequest.max_tokens).toBe(2_000);
-    expect(firstVerificationRequest.thinking).toEqual({ type: "disabled" });
-    expect(firstVerificationRequest.tools[0]).toEqual({
+
+    const urlVerification = create.mock.calls[13][0];
+    expect(create.mock.calls[13][1]).toEqual({ timeout: 180_000, maxRetries: 0 });
+    expect(urlVerification.max_tokens).toBe(2_000);
+    expect(urlVerification.thinking).toEqual({ type: "disabled" });
+    expect(urlVerification.tools).toEqual([{
       type: "web_fetch_20260318",
       name: "web_fetch",
       allowed_callers: ["direct"],
-      max_uses: 1,
-      max_content_tokens: 1_500,
+      max_uses: 2,
+      max_content_tokens: 6_000,
       citations: { enabled: false },
       response_inclusion: "full",
-    });
-    expect(firstVerificationRequest.tool_choice).toBeUndefined();
-    expect(create.mock.calls[13][0].messages[0].content).toContain(urls[1]);
-    expect(create.mock.calls[14][0].messages[0].content).toContain(urls[2]);
-    expect(create.mock.calls[0][0].messages[0].content).toContain("2027-08-01 en 2027-08-30");
-    expect(create.mock.calls[4][0].messages[0].content).toContain("2027-08-31 en 2027-09-29");
-    expect(create.mock.calls[8][0].messages[0].content).toContain("2027-09-30 en 2027-10-30");
-    expect(create.mock.calls[3][0].messages[0].content).toContain("bevestigde professionele sportwedstrijden");
+    }]);
+    expect(urlVerification.tool_choice).toBeUndefined();
+    expect(urlVerification.messages[0].content).toContain(official);
     expect(
-      JSON.stringify(firstVerificationRequest.output_config.format.schema),
+      JSON.stringify(urlVerification.output_config.format.schema),
     ).not.toContain('"enum":[20');
-    expect(result.requests).toBe(15);
+
+    const nameVerification = create.mock.calls[15][0];
+    expect(nameVerification.tools.map((tool: { name: string }) => tool.name)).toEqual([
+      "web_fetch",
+      "web_search",
+    ]);
+    expect(nameVerification.messages[0].content).toContain("Naamloos concert");
+
+    expect(result.requests).toBe(16);
     expect(result.usage.webSearchRequests).toBe(12);
-    expect(result.usage.webFetchRequests).toBe(3);
+    expect(result.usage.webFetchRequests).toBe(4);
     expect(result.candidates).toHaveLength(1);
     expect(result.candidates[0]).toMatchObject({
-      sourceUrl: urls[0],
+      sourceUrl: official,
       title: "Vakbeurs Utrecht",
       sourceState: "active",
       primarySourceConfirmed: true,
       aiImpactPoints: 45,
     });
+    expect(result.funnel).toMatchObject({
+      namesDiscovered: 3,
+      urlsResolved: 3,
+      pagesVerified: 2,
+      demandAccepted: 1,
+    });
+  });
+
+  it("rejects an official URL that Claude searched but never fetched", async () => {
+    const official = "https://official.example/event";
+    const create = vi.fn();
+    queueClaudeSearches(create, [discoveredCandidate({ officialUrl: official })]);
+    create.mockResolvedValueOnce({
+      content: [
+        {
+          type: "web_search_tool_result",
+          content: [{ type: "web_search_result", url: official }],
+        },
+        { type: "text", text: JSON.stringify({ events: [verifiedEvent({ sourceUrl: official })] }) },
+      ],
+      usage: {
+        input_tokens: 200,
+        output_tokens: 80,
+        server_tool_use: { web_fetch_requests: 1 },
+      },
+    });
+
+    const result = await collectClaude({
+      ...claudeWindow,
+      location: "Eindhoven",
+      radiusKm: 25,
+      model: "claude-test",
+      client: { messages: { create } } as unknown as Anthropic,
+    });
+
+    expect(result.candidates).toEqual([]);
+    expect(result.funnel?.urlsResolved).toBe(0);
+    expect(result.funnel?.drops).toEqual([
+      { title: "Dutch Design Week", stage: "verification", reason: "Geen gefetchte officiële URL." },
+    ]);
+  });
+
+  it("reads aggregator agenda pages for names that no search snippet returned", async () => {
+    const agendaUrl = "https://uitagenda.example/oktober";
+    const glow = "https://gloweindhoven.nl/en/practical/";
+    const create = vi.fn();
+    queueClaudeSearches(create, [], [agendaUrl]);
+    create.mockResolvedValueOnce(
+      agendaResponse(agendaUrl, [
+        discoveredCandidate({ title: "GLOW", startDate: "2027-10-10", endDate: "2027-10-17" }),
+      ]),
+    );
+    create.mockResolvedValueOnce(
+      verificationResponse(glow, [
+        verifiedEvent({
+          sourceUrl: glow,
+          title: "GLOW",
+          startAt: "2027-10-10T18:00:00+02:00",
+          endAt: "2027-10-17T23:00:00+02:00",
+        }),
+      ]),
+    );
+
+    const result = await collectClaude({
+      ...claudeWindow,
+      location: "Eindhoven",
+      radiusKm: 25,
+      model: "claude-test",
+      client: { messages: { create } } as unknown as Anthropic,
+    });
+
+    expect(create).toHaveBeenCalledTimes(14);
+    expect(create.mock.calls[12][0].messages[0].content).toContain(agendaUrl);
+    expect(create.mock.calls[13][0].tools.map((tool: { name: string }) => tool.name)).toEqual([
+      "web_fetch",
+      "web_search",
+    ]);
+    expect(create.mock.calls[13][0].messages[0].content).toContain("GLOW");
+    expect(result.candidates).toMatchObject([{ title: "GLOW", sourceUrl: glow }]);
+    expect(result.funnel).toMatchObject({
+      namesDiscovered: 1,
+      urlsResolved: 1,
+      pagesVerified: 1,
+      demandAccepted: 1,
+    });
+  });
+
+  it("records a drop reason for every rejected candidate", async () => {
+    const urls = [
+      "https://a.example/event",
+      "https://b.example/event",
+      "https://c.example/event",
+    ];
+    const create = vi.fn();
+    queueClaudeSearches(
+      create,
+      urls.map((url, index) => discoveredCandidate({ title: `Kandidaat ${index}`, officialUrl: url })),
+    );
+    create
+      .mockResolvedValueOnce(
+        verificationResponse(urls[0], [verifiedEvent({ sourceUrl: urls[0], ownerType: "other" })]),
+      )
+      .mockResolvedValueOnce(
+        verificationResponse(urls[1], [verifiedEvent({ sourceUrl: urls[1], impactPoints: 20 })]),
+      )
+      .mockRejectedValueOnce(new Error("403 Forbidden"));
+
+    const result = await collectClaude({
+      ...claudeWindow,
+      location: "Eindhoven",
+      radiusKm: 25,
+      model: "claude-test",
+      client: { messages: { create } } as unknown as Anthropic,
+    });
+
+    expect(result.candidates).toEqual([]);
+    expect(result.funnel?.drops).toEqual([
+      { title: "Kandidaat 2", stage: "verification", reason: "Fetch mislukt: 403 Forbidden" },
+      { title: "Kandidaat 0", stage: "verification", reason: "Pagina is geen eigenaarspagina (ownerType other)." },
+      { title: "Kandidaat 1", stage: "verification", reason: "Geen aantoonbare hotelvraag (impactPoints 20)." },
+    ]);
+    expect(result.funnel?.demandAccepted).toBe(0);
+  });
+
+  it("stops giving the search tool to name-only candidates past the search budget", async () => {
+    const names = Array.from({ length: 22 }, (_, index) =>
+      discoveredCandidate({ title: `Evenement ${index}`, startDate: "2027-09-01", endDate: null }),
+    );
+    const create = vi.fn();
+    for (let index = 0; index < 12; index += 1) {
+      create.mockResolvedValueOnce(discoveryResponse(names.slice(index * 6, index * 6 + 6)));
+    }
+    create.mockResolvedValue(verificationResponse("https://organizer.example/event", []));
+
+    const result = await collectClaude({
+      ...claudeWindow,
+      location: "Eindhoven",
+      radiusKm: 25,
+      model: "claude-test",
+      client: { messages: { create } } as unknown as Anthropic,
+    });
+
+    expect(create).toHaveBeenCalledTimes(32);
+    const verificationCalls = create.mock.calls.slice(12);
+    expect(
+      verificationCalls.filter(([request]) =>
+        request.tools.some((tool: { name: string }) => tool.name === "web_search"),
+      ),
+    ).toHaveLength(20);
+    expect(result.funnel?.drops).toEqual([
+      { title: "Evenement 20", stage: "resolution", reason: "Zoekbudget voor officiële pagina's bereikt." },
+      { title: "Evenement 21", stage: "resolution", reason: "Zoekbudget voor officiële pagina's bereikt." },
+    ]);
+  });
+
+  it("merges title variants of one event into a single candidate", async () => {
+    const official = "https://ddw.nl/en";
+    const create = vi.fn();
+    queueClaudeSearches(create, [
+      discoveredCandidate({ title: "Dutch Design Week 2026", startDate: "2027-09-15", endDate: "2027-09-23" }),
+      discoveredCandidate({ title: "Dutch Design Week (DDW26) - R.A.W.", startDate: "2027-09-17", endDate: "2027-09-23", officialUrl: official }),
+      discoveredCandidate({ title: "Dutch Design Week", startDate: "2027-09-15", endDate: null }),
+    ]);
+    create.mockResolvedValue(verificationResponse(official, []));
+
+    const result = await collectClaude({
+      ...claudeWindow,
+      location: "Eindhoven",
+      radiusKm: 25,
+      model: "claude-test",
+      client: { messages: { create } } as unknown as Anthropic,
+    });
+
+    expect(result.funnel?.namesDiscovered).toBe(1);
+    expect(create).toHaveBeenCalledTimes(13);
+    const verification = create.mock.calls[12][0];
+    expect(verification.messages[0].content).toContain(official);
+    expect(verification.tools.map((tool: { name: string }) => tool.name)).toEqual(["web_fetch"]);
+  });
+
+  it("verifies freshly discovered candidates before refreshing known pages", async () => {
+    const official = "https://organizer.nl/festival";
+    const knownUrl = "https://venue.nl/known-event";
+    const create = vi.fn();
+    queueClaudeSearches(create, [discoveredCandidate({ officialUrl: official })]);
+    create.mockResolvedValue(verificationResponse(official, []));
+
+    await collectClaude({
+      ...claudeWindow,
+      location: "Eindhoven",
+      radiusKm: 25,
+      model: "claude-test",
+      knownUrls: [knownUrl],
+      client: { messages: { create } } as unknown as Anthropic,
+    });
+
+    expect(create.mock.calls[12][0].messages[0].content).toContain(official);
+    expect(create.mock.calls[13][0].messages[0].content).toContain(knownUrl);
+  });
+
+  it("confirms current-edition dates from a second official owner page", async () => {
+    const organizer = "https://asmlmarathoneindhoven.nl/";
+    const municipality = "https://www.eindhoven.nl/evenementen/marathon";
+    const create = vi.fn();
+    queueClaudeSearches(create, [
+      discoveredCandidate({
+        title: "ASML Marathon Eindhoven",
+        startDate: "2027-09-18",
+        endDate: "2027-09-19",
+        officialUrl: organizer,
+      }),
+    ]);
+    create.mockResolvedValueOnce({
+      content: [
+        fetchResult(organizer),
+        fetchResult(municipality),
+        {
+          type: "text",
+          text: JSON.stringify({
+            events: [verifiedEvent({
+              sourceUrl: organizer,
+              title: "ASML Marathon Eindhoven",
+              startAt: "2027-09-18T09:00:00+02:00",
+              endAt: "2027-09-19T18:00:00+02:00",
+              evidenceText: "De gemeentepagina bevestigt de data van de huidige editie.",
+            })],
+          }),
+        },
+      ],
+      usage: { input_tokens: 300, output_tokens: 100, server_tool_use: { web_fetch_requests: 2 } },
+    });
+
+    const result = await collectClaude({
+      ...claudeWindow,
+      location: "Eindhoven",
+      radiusKm: 25,
+      model: "claude-test",
+      client: { messages: { create } } as unknown as Anthropic,
+    });
+
+    const verification = create.mock.calls[12][0];
+    expect(verification.tools[0]).toMatchObject({ name: "web_fetch", max_uses: 2 });
+    expect(verification.messages[0].content).toContain("tweede web_fetch");
+    expect(result.candidates).toMatchObject([{
+      sourceUrl: organizer,
+      title: "ASML Marathon Eindhoven",
+      primarySourceConfirmed: true,
+      aiImpactPoints: 60,
+    }]);
+    expect(result.funnel).toMatchObject({ pagesVerified: 1, demandAccepted: 1 });
+  });
+
+  it("names the missing confirmation and strips the URL fragment", async () => {
+    const plain = "https://asmlmarathoneindhoven.nl/";
+    const fragment = `${plain}#:~:text=Zaterdag%2011%20oktober%202025`;
+    const create = vi.fn();
+    queueClaudeSearches(create, [
+      discoveredCandidate({ title: "ASML Marathon Eindhoven", officialUrl: plain }),
+    ]);
+    create.mockResolvedValueOnce({
+      content: [
+        fetchResult(fragment),
+        {
+          type: "text",
+          text: JSON.stringify({
+            events: [verifiedEvent({
+              sourceUrl: fragment,
+              title: "ASML Marathon Eindhoven",
+              ownerType: "organizer",
+              dateConfirmed: false,
+            })],
+          }),
+        },
+      ],
+      usage: { input_tokens: 200, output_tokens: 80, server_tool_use: { web_fetch_requests: 1 } },
+    });
+
+    const result = await collectClaude({
+      ...claudeWindow,
+      location: "Eindhoven",
+      radiusKm: 25,
+      model: "claude-test",
+      client: { messages: { create } } as unknown as Anthropic,
+    });
+
+    expect(result.candidates).toMatchObject([{ sourceUrl: plain, primarySourceConfirmed: false }]);
+    expect(result.funnel?.pagesVerified).toBe(0);
+    expect(result.funnel?.drops).toEqual([{
+      title: "ASML Marathon Eindhoven",
+      stage: "verification",
+      reason: `Niet bevestigd op ${plain} (ontbreekt: datum, ownerType organizer).`,
+    }]);
+  });
+
+
+  it("keeps collecting when one discovery search fails", async () => {
+    const official = "https://organizer.nl/event";
+    const create = vi.fn();
+    create.mockRejectedValueOnce(new Error("Claude search returned 500."));
+    create.mockResolvedValueOnce(
+      discoveryResponse([discoveredCandidate({ officialUrl: official })]),
+    );
+    for (let index = 2; index < 12; index += 1) {
+      create.mockResolvedValueOnce(discoveryResponse());
+    }
+    create.mockResolvedValueOnce(
+      verificationResponse(official, [verifiedEvent({ sourceUrl: official })]),
+    );
+
+    const result = await collectClaude({
+      ...claudeWindow,
+      location: "Eindhoven",
+      radiusKm: 25,
+      model: "claude-test",
+      client: { messages: { create } } as unknown as Anthropic,
+    });
+
+    expect(result.requests).toBe(12);
+    expect(result.candidates).toHaveLength(1);
+    expect(result.funnel?.drops).toEqual([
+      {
+        title: "<stadsbrede festivals, design weeks en marathons 2027-08-01>",
+        stage: "discovery",
+        reason: "Claude search returned 500.",
+      },
+    ]);
+  });
+
+  it("runs discovery on the configured discovery model and verification on the main model", async () => {
+    const agendaUrl = "https://uitagenda.example/september";
+    const official = "https://organizer.nl/event";
+    const create = vi.fn();
+    queueClaudeSearches(create, [], [agendaUrl]);
+    create.mockResolvedValueOnce(
+      agendaResponse(agendaUrl, [discoveredCandidate({ officialUrl: official })]),
+    );
+    create.mockResolvedValueOnce(
+      verificationResponse(official, [verifiedEvent({ sourceUrl: official })]),
+    );
+
+    await collectClaude({
+      ...claudeWindow,
+      location: "Eindhoven",
+      radiusKm: 25,
+      model: "claude-test",
+      discoveryModel: "claude-haiku-test",
+      client: { messages: { create } } as unknown as Anthropic,
+    });
+
+    create.mock.calls.slice(0, 13).forEach(([request]) => {
+      expect(request.model).toBe("claude-haiku-test");
+    });
+    expect(create.mock.calls[13][0].model).toBe("claude-test");
   });
 
   it("refreshes a known owner page and preserves its cancelled status", async () => {
     const knownUrl = "https://venue.nl/known-event";
     const create = vi.fn();
     queueClaudeSearches(create);
-    create.mockResolvedValueOnce({
-        content: [
-          fetchResult(knownUrl),
-          {
-            type: "text",
-            text: JSON.stringify({
-              events: [
-                {
-                  sourceUrl: knownUrl,
-                  title: "Cancelled conference",
-                  category: "conferences",
-                  venue: "Venue",
-                  latitude: 51.44,
-                  longitude: 5.48,
-                  regionScope: null,
-                  startAt: "2027-09-01T10:00:00+02:00",
-                  endAt: "2027-09-02T22:00:00+02:00",
-                  status: "cancelled",
-                  ownerType: "venue",
-                  evidenceText: "Official cancellation notice.",
-                  impactPoints: 45,
-                  titleConfirmed: true,
-                  dateConfirmed: true,
-                  locationConfirmed: true,
-                },
-              ],
-            }),
-          },
-        ],
-        usage: {
-          input_tokens: 200,
-          output_tokens: 80,
-          server_tool_use: { web_fetch_requests: 1 },
-        },
-      });
+    create.mockResolvedValueOnce(
+      verificationResponse(knownUrl, [
+        verifiedEvent({
+          sourceUrl: knownUrl,
+          title: "Cancelled conference",
+          category: "conferences",
+          venue: "Venue",
+          status: "cancelled",
+          ownerType: "venue",
+          evidenceText: "Official cancellation notice.",
+          impactPoints: 45,
+        }),
+      ]),
+    );
 
     const result = await collectClaude({
       ...claudeWindow,
@@ -386,55 +735,13 @@ describe("source adapters", () => {
     });
   });
 
-  it("verifies Claude's chosen URL before raw search-result URLs", async () => {
-    const official = "https://official.example/event";
-    const rawResult = "https://aggregator.example/list";
-    const create = vi.fn();
-    for (let index = 0; index < 12; index += 1) {
-      create.mockResolvedValueOnce({
-        content: [
-          {
-            type: "web_search_tool_result",
-            content: [{ type: "web_search_result", url: rawResult }],
-          },
-          { type: "text", text: `Gekozen pagina:\n${official}` },
-        ],
-        usage: {
-          input_tokens: 100,
-          output_tokens: 20,
-          server_tool_use: { web_search_requests: 1 },
-        },
-      });
-    }
-    create.mockResolvedValueOnce({
-      content: [
-        fetchResult(official),
-        { type: "text", text: JSON.stringify({ events: [] }) },
-      ],
-      usage: {
-        input_tokens: 100,
-        output_tokens: 20,
-        server_tool_use: { web_fetch_requests: 1 },
-      },
-    });
-
-    await collectClaude({
-      ...claudeWindow,
-      location: "Utrecht",
-      radiusKm: 25,
-      model: "claude-sonnet-5",
-      client: { messages: { create } } as unknown as Anthropic,
-    });
-
-    expect(create).toHaveBeenCalledTimes(13);
-    expect(create.mock.calls[12][0].messages[0].content).toContain(official);
-    expect(create.mock.calls[12][0].messages[0].content).not.toContain(rawResult);
-  });
-
   it("keeps successful page evidence when another Claude fetch fails", async () => {
     const urls = ["https://venue.nl/broken", "https://organizer.nl/event"];
     const create = vi.fn();
-    queueClaudeSearches(create, urls);
+    queueClaudeSearches(create, [
+      discoveredCandidate({ title: "Kapotte pagina", officialUrl: urls[0] }),
+      discoveredCandidate({ title: "International conference", officialUrl: urls[1] }),
+    ]);
     create.mockResolvedValueOnce({
       stop_reason: "max_tokens",
       content: [{ type: "thinking", thinking: "" }],
@@ -444,39 +751,17 @@ describe("source adapters", () => {
         server_tool_use: { web_fetch_requests: 1 },
       },
     });
-    create.mockResolvedValueOnce({
-      content: [
-        fetchResult(urls[1]),
-        {
-          type: "text",
-          text: JSON.stringify({
-            events: [{
-              sourceUrl: urls[1],
-              title: "International conference",
-              category: "conferences",
-              venue: "Conference Centre",
-              latitude: 51.44,
-              longitude: 5.48,
-              regionScope: null,
-              startAt: "2027-09-01T10:00:00+02:00",
-              endAt: "2027-09-03T17:00:00+02:00",
-              status: "active",
-              ownerType: "organizer",
-              evidenceText: "Three-day international conference.",
-              impactPoints: 45,
-              titleConfirmed: true,
-              dateConfirmed: true,
-              locationConfirmed: true,
-            }],
-          }),
-        },
-      ],
-      usage: {
-        input_tokens: 200,
-        output_tokens: 80,
-        server_tool_use: { web_fetch_requests: 1 },
-      },
-    });
+    create.mockResolvedValueOnce(
+      verificationResponse(urls[1], [
+        verifiedEvent({
+          sourceUrl: urls[1],
+          title: "International conference",
+          category: "conferences",
+          venue: "Conference Centre",
+          impactPoints: 45,
+        }),
+      ]),
+    );
 
     const result = await collectClaude({
       ...claudeWindow,
@@ -489,6 +774,9 @@ describe("source adapters", () => {
     expect(result.requests).toBe(14);
     expect(result.candidates).toHaveLength(1);
     expect(result.usage.failedFetches).toBe(1);
+    expect(result.funnel?.drops).toEqual([
+      { title: "Kapotte pagina", stage: "verification", reason: "Tokenlimiet bereikt." },
+    ]);
   });
 
   it("identifies a Claude search timeout", async () => {
@@ -508,7 +796,9 @@ describe("source adapters", () => {
 
   it("identifies a Claude verification timeout", async () => {
     const create = vi.fn();
-    queueClaudeSearches(create, ["https://venue.nl/event"]);
+    queueClaudeSearches(create, [
+      discoveredCandidate({ officialUrl: "https://venue.nl/event" }),
+    ]);
     create.mockRejectedValueOnce(new APIConnectionTimeoutError());
     const client = { messages: { create } } as unknown as Anthropic;
 
@@ -525,16 +815,18 @@ describe("source adapters", () => {
 
   it("identifies a Claude verification token limit", async () => {
     const create = vi.fn();
-    queueClaudeSearches(create, ["https://venue.nl/event"]);
+    queueClaudeSearches(create, [
+      discoveredCandidate({ officialUrl: "https://venue.nl/event" }),
+    ]);
     create.mockResolvedValueOnce({
-        stop_reason: "max_tokens",
-        content: [{ type: "thinking", thinking: "" }],
-        usage: {
-          input_tokens: 1000,
-          output_tokens: 12_000,
-          server_tool_use: { web_fetch_requests: 1 },
-        },
-      });
+      stop_reason: "max_tokens",
+      content: [{ type: "thinking", thinking: "" }],
+      usage: {
+        input_tokens: 1000,
+        output_tokens: 12_000,
+        server_tool_use: { web_fetch_requests: 1 },
+      },
+    });
     const client = { messages: { create } } as unknown as Anthropic;
 
     await expect(

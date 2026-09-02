@@ -20,6 +20,11 @@ describe("SourceHealthTable", () => {
         found: 12,
         unique: 10,
         duplicates: 2,
+        namesDiscovered: 24,
+        urlsResolved: 14,
+        pagesVerified: 11,
+        demandAccepted: 9,
+        drops: [{ title: "Weekmarkt", stage: "verification", reason: "Geen aantoonbare hotelvraag (impactPoints 20)." }],
         reviews: 1,
         requests: 2,
         inputTokens: 300,
@@ -32,7 +37,9 @@ describe("SourceHealthTable", () => {
     expect(screen.getByText("Robert")).toBeInTheDocument();
     expect(screen.getByText("Eindhoven")).toBeInTheDocument();
     expect(screen.getAllByText(/27-8-2027/)).toHaveLength(2);
-    ["12", "10", "2", "1", "300", "80"].forEach((value) => expect(screen.getAllByText(value).length).toBeGreaterThan(0));
+    ["12", "10", "2", "1", "300", "80", "24", "14", "11", "9"].forEach((value) => expect(screen.getAllByText(value).length).toBeGreaterThan(0));
+    expect(screen.getByText(/1 afgewezen kandidaten/)).toBeInTheDocument();
+    expect(screen.getByText(/Weekmarkt — verification/)).toBeInTheDocument();
     expect(screen.queryByText(/Run stopte voordat deze bron verwerkt kon worden/i)).not.toBeInTheDocument();
   });
 
@@ -44,7 +51,7 @@ describe("SourceHealthTable", () => {
       startedAt: "2027-08-27T05:00:00Z",
       finishedAt: null,
       errorSummary: null,
-      sources: [{ name: "predicthq", state: "not_run", lastSuccess: null, currentError: null, found: 0, unique: 0, duplicates: 0, reviews: 0, requests: 0, inputTokens: 0, outputTokens: 0, webSearchRequests: 0, webFetchRequests: 0, usageCalls: 0 }],
+      sources: [{ name: "predicthq", state: "not_run", lastSuccess: null, currentError: null, found: 0, unique: 0, duplicates: 0, namesDiscovered: 0, urlsResolved: 0, pagesVerified: 0, demandAccepted: 0, drops: [], reviews: 0, requests: 0, inputTokens: 0, outputTokens: 0, webSearchRequests: 0, webFetchRequests: 0, usageCalls: 0 }],
     }]} />);
 
     expect(within(container).getByText("Bezig")).toBeInTheDocument();
@@ -60,7 +67,7 @@ describe("SourceHealthTable", () => {
       startedAt: "2027-08-27T05:00:00Z",
       finishedAt: "2027-08-27T05:01:00Z",
       errorSummary: null,
-      sources: [{ name: "predicthq", state: "partial", lastSuccess: null, currentError: "Een controle mislukte.", found: 20, unique: 18, duplicates: 2, reviews: 0, requests: 6, inputTokens: 300, outputTokens: 80, webSearchRequests: 5, webFetchRequests: 0, usageCalls: 6 }],
+      sources: [{ name: "predicthq", state: "partial", lastSuccess: null, currentError: "Een controle mislukte.", found: 20, unique: 18, duplicates: 2, namesDiscovered: 0, urlsResolved: 0, pagesVerified: 0, demandAccepted: 0, drops: [], reviews: 0, requests: 6, inputTokens: 300, outputTokens: 80, webSearchRequests: 5, webFetchRequests: 0, usageCalls: 6 }],
     }]} />);
 
     expect(within(container).getByText("Deels voltooid")).toBeInTheDocument();

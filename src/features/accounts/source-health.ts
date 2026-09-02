@@ -1,3 +1,4 @@
+import type { DiscoveryDrop, DiscoveryFunnel } from "@/features/collection/types";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 import { currentSourceError } from "./source-health-state";
@@ -10,6 +11,11 @@ export type SourceHealth = {
   found: number;
   unique: number;
   duplicates: number;
+  namesDiscovered: number;
+  urlsResolved: number;
+  pagesVerified: number;
+  demandAccepted: number;
+  drops: DiscoveryDrop[];
   reviews: number;
   requests: number;
   inputTokens: number;
@@ -39,6 +45,7 @@ type RawSource = {
   reviews?: number;
   requests?: number;
   usage?: Record<string, number>;
+  funnel?: DiscoveryFunnel;
 };
 
 function sourceEntries(value: unknown) {
@@ -108,6 +115,11 @@ export async function getSourceHealthRuns(): Promise<SourceHealthRun[]> {
           found: source?.found ?? source?.candidates ?? 0,
           unique: source?.unique ?? source?.candidates ?? 0,
           duplicates: source?.duplicates ?? 0,
+          namesDiscovered: source?.funnel?.namesDiscovered ?? 0,
+          urlsResolved: source?.funnel?.urlsResolved ?? 0,
+          pagesVerified: source?.funnel?.pagesVerified ?? 0,
+          demandAccepted: source?.funnel?.demandAccepted ?? 0,
+          drops: source?.funnel?.drops ?? [],
           reviews: source?.reviews ?? 0,
           requests: source?.requests ?? 0,
           inputTokens: recordedUsage?.inputTokens ?? source?.usage?.inputTokens ?? 0,

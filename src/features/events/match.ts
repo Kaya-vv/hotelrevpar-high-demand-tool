@@ -90,7 +90,9 @@ export function classifyMatch(
       samePlace(event, candidate) &&
       similarity(event.normalizedTitle, candidate.normalizedTitle) >= 0.6
   );
-  return uncertain
-    ? { kind: "uncertain", eventId: uncertain.id }
-    : { kind: "new", eventId: null };
+  if (!uncertain) return { kind: "new", eventId: null };
+  if (candidate.primarySourceConfirmed && !uncertain.primarySourceConfirmed) {
+    return { kind: "exact", eventId: uncertain.id };
+  }
+  return { kind: "uncertain", eventId: uncertain.id };
 }

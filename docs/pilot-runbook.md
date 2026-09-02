@@ -8,13 +8,13 @@ Record the evidence for each gate before calling the data-quality demo ready. De
 | 2 | Keep Testhotel unchanged. Add `Demo Eindhoven` at Vestdijk 5 with a 25 km radius and South holiday region, plus `Demo Rotterdam` at Weena 10 with a 25 km radius and Middle holiday region. |  |  |  |  |
 | 3 | Enable Claude, Ticketmaster, Rijksoverheid, and OpenHolidays. Disable PredictHQ on both demo hotels. |  |  |  |  |
 | 4 | Freeze the event benchmark below, then run one manual 90-day collection per demo hotel. |  |  |  |  |
-| 5 | Confirm Claude made twelve real web searches: four categories in each of three 30-day slices. |  |  |  |  |
+| 5 | Confirm Claude made twelve real web searches: four categories in each of three 30-day slices. Record the four funnel counts from `/admin/source-health`: Namen, Officiële URL's, Geverifieerd, High/Piek. |  |  |  |  |
 | 6 | Require every in-window Peak benchmark and at least 80% of High benchmarks for each city. |  |  |  |  |
 | 7 | Confirm every displayed event is confirmed High/Peak, has a current official page, and has defensible hotel-demand evidence. |  |  |  |  |
 | 8 | Confirm Medium, Low, default-basis, provisional, unsupported, disabled-source-only, conflicted, and duplicate events stay out of subscriber output. |  |  |  |  |
 | 9 | Confirm routine league fixtures remain below High and all-day placeholders receive no duration or late bonus. |  |  |  |  |
 | 10 | Confirm PredictHQ contributes no score, source link, visible event, or export row. |  |  |  |  |
-| 11 | Record the billed Anthropic cost for each hotel run and require no more than €2 per run. |  |  |  |  |
+| 11 | Record the billed Anthropic cost for each hotel run. Steady-state target is no more than €2 per area run; the first aggregator-discovery run has a €4 hard stop, and a result above €2 is a pass with a cost action (set `ANTHROPIC_DISCOVERY_MODEL` to a Haiku-class model and re-measure). |  |  |  |  |
 | 12 | Confirm RLS isolation tests, full tests, lint, typecheck, production build, and diff check pass. |  |  |  |  |
 | 13 | Deferred: deploy the app and configure invites and Cron. |  |  |  |  |
 | 14 | Deferred: import the generated workbook into RevControl without repairing headers or dates. |  |  |  |  |
@@ -105,5 +105,7 @@ order by area.name, event.start_at, event.title;
 - Known-event recall by category:
 - False-positive rate:
 - Claude searches (expected 12 per hotel):
+- Discovery funnel (names / official URLs / verified / High-Peak):
+- Dropped candidates and their reasons:
 - Anthropic cost per hotel collection run:
 - Sources to keep, change, or remove:

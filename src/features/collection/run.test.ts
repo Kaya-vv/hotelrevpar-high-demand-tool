@@ -126,6 +126,33 @@ describe("runCollection", () => {
     expect(repo.persistCandidate).toHaveBeenCalledWith(expect.anything(), candidate);
   });
 
+  it("carries the Claude discovery funnel into the run result", async () => {
+    const funnel = {
+      namesDiscovered: 24,
+      urlsResolved: 14,
+      pagesVerified: 11,
+      demandAccepted: 9,
+      drops: [{
+        title: "Weekmarkt",
+        stage: "verification",
+        reason: "Geen aantoonbare hotelvraag (impactPoints 20).",
+      }],
+    };
+    const repo = repository();
+    const result = await runCollection(
+      { accountId: "account-1", areaId: "area-1", trigger: "manual" },
+      {
+        repository: repo,
+        collectors: {
+          ticketmaster: vi.fn().mockResolvedValue({ source: "ticketmaster", candidates: [], requests: 1, usage: {} }),
+          claude: vi.fn().mockResolvedValue({ source: "claude", candidates: [], requests: 12, usage: {}, funnel }),
+        },
+      },
+    );
+    expect(result.sourceResults.claude).toMatchObject({ funnel });
+    expect(result.sourceResults.ticketmaster).not.toHaveProperty("funnel");
+  });
+
   it("returns already_running for the native unique lock", async () => {
     const error = Object.assign(new Error("duplicate"), { code: "23505" });
     const result = await runCollection(

@@ -628,6 +628,7 @@ export async function runCollection(
         missingLocation: missingLocationCount,
         duplicates: duplicateCount,
         usage: sourceUsage,
+        ...(result.value.funnel ? { funnel: result.value.funnel } : {}),
       };
     }
     await repository.recalculateScores(context);

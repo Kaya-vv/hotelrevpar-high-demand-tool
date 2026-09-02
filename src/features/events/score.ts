@@ -1,29 +1,6 @@
 import { distanceKm } from "./distance";
+import { localParts } from "./normalize";
 import type { DemandScore, EventCandidate } from "./types";
-
-const localDateTime = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "Europe/Amsterdam",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  hourCycle: "h23",
-});
-
-function localParts(value: string) {
-  const parts = Object.fromEntries(
-    localDateTime
-      .formatToParts(new Date(value))
-      .filter((part) => part.type !== "literal")
-      .map((part) => [part.type, part.value]),
-  );
-  return {
-    date: `${parts.year}-${parts.month}-${parts.day}`,
-    hour: Number(parts.hour),
-    minute: Number(parts.minute),
-  };
-}
 
 function marqueeSport(category: string, title = "", regionScope = "") {
   if (category !== "sports") return false;

@@ -8,7 +8,7 @@ import { normalizeText } from "@/features/events/normalize";
 import type { EventCandidate } from "@/features/events/types";
 import { getAddressById, searchAddresses } from "@/features/portfolio/geocode";
 
-import type { CollectionWindow, SourceResult } from "../types";
+import type { CollectionWindow, DiscoveryDrop, SourceResult } from "../types";
 
 const ownerTypes = ["organizer", "venue", "club", "federation", "ticket_provider", "university", "municipality", "event_owner"] as const;
 const searchRequestOptions = { timeout: 180_000, maxRetries: 1 } as const;
@@ -47,6 +47,38 @@ const outputSchema = z.object({
     }),
   ).max(1),
 });
+
+const discoverySchema = z.object({
+  candidates: z.array(z.object({
+    title: z.string(),
+    startDate: z.string(),
+    endDate: z.string().nullable(),
+    city: z.string(),
+    venue: z.string().nullable(),
+    category: z.string(),
+    officialUrl: z.url().nullable(),
+  })).max(10),
+  agendaUrls: z.array(z.url()).max(2),
+});
+
+type DiscoveredCandidate = {
+  title: string;
+  startDate: string;
+  endDate: string | null;
+  city: string;
+  venue: string | null;
+  category: string;
+  officialUrl: string | null;
+};
+
+type VerificationEntry = {
+  title: string | null;
+  startDate: string | null;
+  venue: string | null;
+  city: string | null;
+  officialUrl: string | null;
+  search: boolean;
+};
 
 const demandTriageSchema = z.object({
   reviews: z.array(z.object({
@@ -88,6 +120,20 @@ function sourceUrls(message: Anthropic.Message) {
   return [...urls];
 }
 
+function fetchedUrls(message: Anthropic.Message) {
+  return message.content.flatMap((block) =>
+    block.type === "web_fetch_tool_result" && block.content.type === "web_fetch_result"
+      ? [block.content.url]
+      : [],
+  );
+}
+
+const dutchMonthFormat = new Intl.DateTimeFormat("nl-NL", { month: "long", year: "numeric", timeZone: "UTC" });
+
+function dropReason(reason: unknown) {
+  return reason instanceof Error ? reason.message : String(reason);
+}
+
 function comparableUrl(value: string) {
   const url = new URL(value);
   return `${url.hostname.replace(/^www\./, "")}${url.pathname.replace(/\/$/, "")}`.toLowerCase();
@@ -106,13 +152,20 @@ function observedUrl(value: string | null, observed: string[]) {
 }
 
 function isPublicEvidenceUrl(value: string) {
-  if (/[\s'"{}\[\]]/.test(value)) return false;
+  if (/[\s'"{}\[\],]/.test(value)) return false;
+  if ((value.match(/https?:\/\//gi) ?? []).length > 1) return false;
   try {
     const url = new URL(value);
     return ["http:", "https:"].includes(url.protocol) && url.hostname !== "api.predicthq.com";
   } catch {
     return false;
   }
+}
+
+function stripFragment(value: string | null) {
+  if (!value) return value;
+  const hash = value.indexOf("#");
+  return hash === -1 ? value : value.slice(0, hash);
 }
 
 function supportedObservedUrl(value: string | null, evidenceText: string, observed: string[]) {
@@ -146,7 +199,7 @@ async function geocodeVenue(query: string) {
   }
 }
 
-async function requestPhase<T>(phase: "search" | "verification", request: () => Promise<T>) {
+async function requestPhase<T>(phase: "search" | "agenda" | "verification", request: () => Promise<T>) {
   try {
     return await request();
   } catch (error) {
@@ -197,22 +250,24 @@ function searchWindows(start: string, end: string) {
   });
 }
 
-function discoveryUrls(message: Anthropic.Message) {
-  const cited = message.content.flatMap((block) =>
-    block.type === "text"
-      ? block.citations?.flatMap((citation) =>
-          citation.type === "web_search_result_location" ? [citation.url] : []
-        ) ?? []
-      : []
-  );
-  const written = message.content.flatMap((block) =>
-    block.type === "text"
-      ? block.text.match(/https?:\/\/[^\s)\]}>,]+/g) ?? []
-      : [],
-  );
-  const selected = written.length ? written : [...cited, ...sourceUrls(message)];
-  return [...new Set(selected.filter(isPublicEvidenceUrl))]
-    .slice(0, 2);
+function verificationInstructions(input: { start: string; end: string; location: string; radiusKm: number }) {
+  return `Controleer titel, datum, locatie en status. Gebruik status active, cancelled of postponed. Neem maximaal één evenement op, alleen tussen ${input.start} en ${input.end} en binnen ${input.radiusKm} km van ${input.location}. Baseer je uitsluitend op de tekst van de pagina's die je met web_fetch hebt opgehaald; een zoekfragment kan verouderd zijn, dus als een fragment een eerdere editie noemt en de opgehaalde pagina de huidige data toont, gelden de data van de opgehaalde pagina. Geef als sourceUrl altijd de gewone pagina-URL zonder #-fragment en zonder #:~:text=. Als de opgehaalde pagina het evenement bevestigt maar de data van de huidige editie niet noemt, gebruik dan je tweede web_fetch op een andere officiële eigenaarspagina (gemeente, sportbond, locatie of ticketverkoper) die die data wel noemt. Een uitagenda, blog, wiki of zoekpagina telt daarvoor niet. Leid data nooit af uit een terugkerend patroon zoals "het tweede weekend van oktober"; zet dateConfirmed dan op false. Neem bij een meerdaagse huidige editie de eerste en laatste bevestigde datum over; maak van een bevestigde meerdaagse editie geen eendaagse 00:00-23:59-vermelding. Classificeer aantoonbare extra overnachtingsvraag voor hotels: 35 Medium, 45 High of 60 Piek. Gebruik alleen feiten over de huidige editie. Negeer cumulatieve bezoekersaantallen van eerdere edities en algemene marketingclaims. Gebruik null als de pagina geen geloofwaardig signaal bevat over regionaal, nationaal of internationaal bereik, bezoekersaantallen, meerdaagse duur, een laat programma of hotelvraag. Reserveer 60 Piek voor stadsbrede, meerdaagse, internationale of uitzonderlijk grote evenementen. Neem actieve evenementen met null of Low impact niet op. Geef een specifieke locatie zodat die gegeocodeerd kan worden. Gebruik ownerType other voor een agenda, blog, wiki, zoekpagina of andere pagina die de evenementinformatie niet bezit.`;
+}
+
+function usageTotals(messages: Anthropic.Message[], failedFetches: number) {
+  return {
+    inputTokens: messages.reduce((total, message) => total + message.usage.input_tokens, 0),
+    outputTokens: messages.reduce((total, message) => total + message.usage.output_tokens, 0),
+    webSearchRequests: messages.reduce(
+      (total, message) => total + (message.usage.server_tool_use?.web_search_requests ?? 0),
+      0,
+    ),
+    webFetchRequests: messages.reduce(
+      (total, message) => total + (message.usage.server_tool_use?.web_fetch_requests ?? 0),
+      0,
+    ),
+    failedFetches,
+  };
 }
 
 export async function collectClaude(
@@ -220,6 +275,7 @@ export async function collectClaude(
     location: string;
     radiusKm: number;
     model?: string;
+    discoveryModel?: string;
     client?: Anthropic;
     onUsage?: UsageObserver;
     geocode?: (query: string) => Promise<{ latitude: number; longitude: number } | null>;
@@ -228,146 +284,355 @@ export async function collectClaude(
 ): Promise<SourceResult> {
   const model = input.model ?? process.env.ANTHROPIC_MODEL;
   if (!model) throw new Error("ANTHROPIC_MODEL is required for the Claude source.");
+  const discoveryModel = input.discoveryModel ?? (process.env.ANTHROPIC_DISCOVERY_MODEL || model);
   const client = input.client ?? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const userLocation = {
+    type: "approximate" as const,
+    country: "NL",
+    city: input.location,
+    timezone: "Europe/Amsterdam",
+  };
+  const drops: DiscoveryDrop[] = [];
+  const recordDrop = (title: string, stage: DiscoveryDrop["stage"], reason: string) => {
+    if (drops.length < 50) drops.push({ title, stage, reason });
+  };
+
   const searches: Anthropic.Message[] = [];
+  const discovered: DiscoveredCandidate[] = [];
+  const foundAgendaUrls: string[] = [];
+  let parsedSearches = 0;
+  let firstFailure: unknown;
   for (const window of searchWindows(input.start, input.end)) {
+    const monthLabel = dutchMonthFormat.format(new Date(`${window.start}T00:00:00Z`));
     for (const focus of searchGroups) {
-      const search = await requestPhase("search", () => client.messages.create({
-        model,
-        max_tokens: 800,
-        ...(model.startsWith("claude-sonnet-5")
+      try {
+        const search = await requestPhase("search", () => client.messages.create({
+          model: discoveryModel,
+          max_tokens: 2_500,
+          ...(discoveryModel.startsWith("claude-sonnet-5")
+            ? { thinking: { type: "disabled" as const } }
+            : {}),
+          tools: [{
+            type: "web_search_20260318",
+            name: "web_search",
+            allowed_callers: ["direct"],
+            max_uses: 1,
+            response_inclusion: "full",
+            user_location: userLocation,
+          }],
+          // No tool_choice: forcing web_search leaves the model unable to emit the
+          // output_config text block, so the request returns tool blocks only.
+          output_config: { format: zodOutputFormat(discoverySchema) },
+          messages: [{
+            role: "user",
+            content: `Voer eerst precies één web_search uit en antwoord nooit zonder zoekresultaten. Zoek evenementen binnen ${input.radiusKm} km van ${input.location} tussen ${window.start} en ${window.end}: ${focus}. Formuleer je zoekopdracht in het Nederlands met de stad en de maand, bijvoorbeeld "evenementen ${input.location} ${monthLabel}". Gebruik uitagenda's, toeristische kalenders, ticketlijsten en overzichtspagina's om namen van evenementen te leren; dat mag in deze stap. Geef per evenement de naam, begindatum en einddatum als YYYY-MM-DD, de plaats, de locatie en de officiële pagina van de organisator, locatie, club, federatie, universiteit of gemeente als die in de zoekresultaten staat. Verzin geen URL's en neem alleen URL's over die letterlijk in de zoekresultaten voorkomen; gebruik null als je de officiële pagina niet ziet. Geef maximaal zes evenementen die aannemelijk extra hotelovernachtingen veroorzaken en sla markten, wekelijkse activiteiten en kleine lokale programmering over. Geef daarnaast maximaal twee agenda- of overzichtspagina's die het volledigste programma voor deze periode lijken te bevatten. Geef daarna je antwoord in het gevraagde JSON-formaat.`,
+          }],
+        }, searchRequestOptions));
+        searches.push(search);
+        await observeUsage(input.onUsage, usageEvent(search, "discovery", discoveryModel));
+        if (search.usage.server_tool_use?.web_search_requests !== 1) {
+          throw new Error("Claude discovery did not execute its required web search.");
+        }
+        if (search.stop_reason === "max_tokens") {
+          throw new Error("Claude discovery reached its token limit.");
+        }
+        const text = search.content.find((block) => block.type === "text")?.text;
+        if (!text) throw new Error(`Claude discovery returned no structured output (stop_reason: ${search.stop_reason}).`);
+        const parsed = discoverySchema.parse(JSON.parse(text));
+        parsedSearches += 1;
+        const observed = sourceUrls(search);
+        parsed.candidates.slice(0, 6).forEach((candidate) => discovered.push({
+          ...candidate,
+          officialUrl: observedUrl(candidate.officialUrl, observed) ? candidate.officialUrl : null,
+        }));
+        foundAgendaUrls.push(...parsed.agendaUrls.filter((url) => observedUrl(url, observed)));
+      } catch (error) {
+        firstFailure ??= error;
+        recordDrop(`<${focus} ${window.start}>`, "discovery", dropReason(error));
+      }
+    }
+  }
+  if (!parsedSearches && firstFailure) throw firstFailure;
+
+  const officialKeys = new Set(discovered.flatMap((candidate) =>
+    candidate.officialUrl ? [comparableUrl(candidate.officialUrl)] : [],
+  ));
+  const agendaTargets: string[] = [];
+  const seenAgendaKeys = new Set<string>();
+  for (const url of foundAgendaUrls) {
+    const key = comparableUrl(url);
+    if (seenAgendaKeys.has(key) || officialKeys.has(key)) continue;
+    seenAgendaKeys.add(key);
+    agendaTargets.push(url);
+    if (agendaTargets.length === 8) break;
+  }
+
+  const agendaMessages: Anthropic.Message[] = [];
+  let failedFetches = 0;
+  for (let index = 0; index < agendaTargets.length; index += 8) {
+    const batch = agendaTargets.slice(index, index + 8);
+    const settled = await Promise.allSettled(batch.map(async (url) => {
+      const message = await requestPhase("agenda", () => client.messages.create({
+        model: discoveryModel,
+        max_tokens: 2_500,
+        ...(discoveryModel.startsWith("claude-sonnet-5")
           ? { thinking: { type: "disabled" as const } }
           : {}),
         tools: [{
+          type: "web_fetch_20260318",
+          name: "web_fetch",
+          allowed_callers: ["direct"],
+          max_uses: 1,
+          max_content_tokens: 6_000,
+          citations: { enabled: false },
+          response_inclusion: "full",
+        }],
+        output_config: { format: zodOutputFormat(discoverySchema) },
+        messages: [{
+          role: "user",
+          content: `Open deze agendapagina en noteer welke evenementen tussen ${input.start} en ${input.end} binnen ${input.radiusKm} km van ${input.location} plaatsvinden. Geef per evenement de naam, begindatum en einddatum als YYYY-MM-DD, de plaats, de locatie en de officiële pagina waarnaar de agenda linkt als die op de pagina staat; gebruik anders null. Verzin geen URL's. Geef maximaal tien evenementen die aannemelijk extra hotelovernachtingen veroorzaken en sla markten, wekelijkse activiteiten en kleine lokale programmering over. Geef een lege lijst agendaUrls. Pagina:\n${url}`,
+        }],
+      }, verificationRequestOptions));
+      agendaMessages.push(message);
+      await observeUsage(input.onUsage, usageEvent(message, "discovery_fetch", discoveryModel));
+      if (message.usage.server_tool_use?.web_fetch_requests !== 1) {
+        throw new Error("Claude agenda fetch did not execute its required web fetch.");
+      }
+      if (message.stop_reason === "max_tokens") {
+        throw new Error("Claude agenda fetch reached its token limit.");
+      }
+      const text = message.content.find((block) => block.type === "text")?.text;
+      if (!text) throw new Error("Claude agenda fetch returned no structured output.");
+      return discoverySchema.parse(JSON.parse(text)).candidates.slice(0, 10);
+    }));
+    settled.forEach((result, offset) => {
+      if (result.status === "fulfilled") {
+        discovered.push(...result.value);
+      } else {
+        failedFetches += 1;
+        recordDrop(batch[offset], "discovery", dropReason(result.reason));
+      }
+    });
+  }
+
+  const identityTokens = (title: string) =>
+    normalizeText(title).split(" ").filter((token) => token && !/^20\d{2}$/.test(token));
+  const sameIdentity = (left: DiscoveredCandidate, right: DiscoveredCandidate) => {
+    const leftTokens = identityTokens(left.title);
+    const rightTokens = identityTokens(right.title);
+    if (!leftTokens.length || !rightTokens.length) return false;
+    if (leftTokens[0] !== rightTokens[0]) return false;
+    const [shorter, longer] = leftTokens.length <= rightTokens.length
+      ? [leftTokens, rightTokens]
+      : [rightTokens, leftTokens];
+    if (!shorter.every((token) => longer.includes(token))) return false;
+    return left.startDate <= (right.endDate ?? right.startDate)
+      && right.startDate <= (left.endDate ?? left.startDate);
+  };
+  const pool: DiscoveredCandidate[] = [];
+  for (const candidate of discovered) {
+    const existing = pool.find((entry) => sameIdentity(entry, candidate));
+    if (!existing) {
+      pool.push({ ...candidate });
+      continue;
+    }
+    if (!existing.officialUrl && candidate.officialUrl) existing.officialUrl = candidate.officialUrl;
+    if (identityTokens(candidate.title).length < identityTokens(existing.title).length) {
+      existing.title = candidate.title;
+    }
+    if (candidate.startDate < existing.startDate) existing.startDate = candidate.startDate;
+    const candidateEnd = candidate.endDate ?? candidate.startDate;
+    if (candidateEnd > (existing.endDate ?? existing.startDate)) existing.endDate = candidateEnd;
+  }
+  const namesDiscovered = pool.length;
+  const urlEntries: VerificationEntry[] = [];
+  const nameEntries: VerificationEntry[] = [];
+  for (const candidate of pool) {
+    if (candidate.startDate > input.end || (candidate.endDate ?? candidate.startDate) < input.start) {
+      recordDrop(candidate.title, "discovery", "Buiten het verzamelvenster.");
+      continue;
+    }
+    const entry: VerificationEntry = {
+      title: candidate.title,
+      startDate: candidate.startDate,
+      venue: candidate.venue,
+      city: candidate.city,
+      officialUrl: candidate.officialUrl,
+      search: false,
+    };
+    (candidate.officialUrl ? urlEntries : nameEntries).push(entry);
+  }
+
+  const pending: VerificationEntry[] = [
+    ...urlEntries,
+    ...nameEntries,
+    ...(input.knownUrls ?? []).slice(0, 8).map((url) => ({
+      title: null,
+      startDate: null,
+      venue: null,
+      city: null,
+      officialUrl: url,
+      search: false,
+    })),
+  ];
+  const queue: VerificationEntry[] = [];
+  const queuedUrlKeys = new Set<string>();
+  let searchBudget = 20;
+  for (const entry of pending) {
+    if (entry.officialUrl) {
+      const key = comparableUrl(entry.officialUrl);
+      if (queuedUrlKeys.has(key)) continue;
+      queuedUrlKeys.add(key);
+    }
+    if (queue.length === 40) {
+      recordDrop(entry.title ?? entry.officialUrl ?? "", "resolution", "Verificatiebudget van 40 kandidaten bereikt.");
+      continue;
+    }
+    if (!entry.officialUrl) {
+      if (!searchBudget) {
+        recordDrop(entry.title ?? "", "resolution", "Zoekbudget voor officiële pagina's bereikt.");
+        continue;
+      }
+      searchBudget -= 1;
+      entry.search = true;
+    }
+    queue.push(entry);
+  }
+  if (!queue.length) {
+    return {
+      source: "claude",
+      candidates: [],
+      requests: searches.length + agendaTargets.length,
+      usage: usageTotals([...searches, ...agendaMessages], failedFetches),
+      funnel: { namesDiscovered, urlsResolved: 0, pagesVerified: 0, demandAccepted: 0, drops },
+    };
+  }
+
+  const verified: { entry: VerificationEntry; message: Anthropic.Message }[] = [];
+  for (let index = 0; index < queue.length; index += 8) {
+    const batch = queue.slice(index, index + 8);
+    const settled = await Promise.allSettled(batch.map(async (entry) => {
+      const tools: NonNullable<Anthropic.MessageCreateParams["tools"]> = [{
+        type: "web_fetch_20260318",
+        name: "web_fetch",
+        allowed_callers: ["direct"],
+        max_uses: 2,
+        max_content_tokens: 6_000,
+        citations: { enabled: false },
+        response_inclusion: "full",
+      }];
+      if (entry.search) {
+        tools.push({
           type: "web_search_20260318",
           name: "web_search",
           allowed_callers: ["direct"],
           max_uses: 1,
           response_inclusion: "full",
-          user_location: {
-            type: "approximate",
-            country: "NL",
-            city: input.location,
-            timezone: "Europe/Amsterdam",
-          },
-        }],
-        tool_choice: { type: "tool", name: "web_search" },
-        messages: [{
-          role: "user",
-          content: `Zoek binnen ${input.radiusKm} km van ${input.location} tussen ${window.start} en ${window.end} naar ${focus} die High- of Piek-hotelvraag kunnen veroorzaken. Kies maximaal twee sterke kandidaten. Geef alleen specifieke officiële evenementpagina's van de organisator, locatie, club, federatie, universiteit of gemeente. Gebruik agenda's en ticketlijsten alleen om die officiële pagina's te vinden. Geef geen voorspelde wedstrijdvensters of onbevestigde evenementen. Sluit af met alleen de maximaal twee gekozen volledige URL's, elk op een eigen regel, en noem geen andere URL's.`,
-        }],
-      }, searchRequestOptions));
-      await observeUsage(input.onUsage, usageEvent(search, "discovery", model));
-      if (search.usage.server_tool_use?.web_search_requests !== 1) {
-        throw new Error("Claude discovery did not execute its required web search.");
+          user_location: userLocation,
+        });
       }
-      searches.push(search);
-    }
-  }
-  const urls = [...new Set([
-    ...(input.knownUrls ?? []).slice(0, 8),
-    ...searches.flatMap(discoveryUrls),
-  ])].slice(0, 20);
-  if (!urls.length) {
-    return {
-      source: "claude",
-      candidates: [],
-      requests: searches.length,
-      usage: {
-        inputTokens: searches.reduce((total, message) => total + message.usage.input_tokens, 0),
-        outputTokens: searches.reduce((total, message) => total + message.usage.output_tokens, 0),
-        webSearchRequests: searches.reduce(
-          (total, message) => total + (message.usage.server_tool_use?.web_search_requests ?? 0),
-          0,
+      const message = await requestPhase("verification", () =>
+        client.messages.create(
+          {
+            model,
+            max_tokens: 2_000,
+            ...(model.startsWith("claude-sonnet-5")
+              ? { thinking: { type: "disabled" as const } }
+              : {}),
+            tools,
+            output_config: { format: zodOutputFormat(outputSchema) },
+            messages: [
+              {
+                role: "user",
+                content: entry.officialUrl
+                  ? `Open deze specifieke officiële evenementpagina. ${verificationInstructions(input)} Pagina:\n${entry.officialUrl}`
+                  : `Zoek met één zoekopdracht de officiële pagina van dit evenement en open die pagina: ${entry.title}, ${entry.startDate}${entry.venue ? `, ${entry.venue}` : ""}, ${entry.city}. Een uitagenda, blog, ticketaggregator of zoekpagina is geen officiële pagina. ${verificationInstructions(input)}`,
+              },
+            ],
+          },
+          verificationRequestOptions,
         ),
-        webFetchRequests: 0,
-      },
-    };
-  }
-
-  const verified: Anthropic.Message[] = [];
-  let failedFetches = 0;
-  let firstFailure: unknown;
-  for (let index = 0; index < urls.length; index += 8) {
-    const settled = await Promise.allSettled(
-      urls.slice(index, index + 8).map(async (url) => {
-        const message = await requestPhase("verification", () =>
-          client.messages.create(
-            {
-              model,
-              max_tokens: 2_000,
-              ...(model.startsWith("claude-sonnet-5")
-                ? { thinking: { type: "disabled" as const } }
-                : {}),
-              tools: [
-                {
-                  type: "web_fetch_20260318",
-                  name: "web_fetch",
-                  allowed_callers: ["direct"],
-                  max_uses: 1,
-                  max_content_tokens: 1_500,
-                  citations: { enabled: false },
-                  response_inclusion: "full",
-                },
-              ],
-              output_config: { format: zodOutputFormat(outputSchema) },
-              messages: [
-                {
-                  role: "user",
-                  content: `Open deze specifieke officiële evenementpagina en controleer titel, datum, locatie en status. Gebruik status active, cancelled of postponed. Neem maximaal één evenement op, alleen tussen ${input.start} en ${input.end} en binnen ${input.radiusKm} km van ${input.location}. Neem bij een meerdaagse huidige editie de eerste en laatste bevestigde datum over; maak van een bevestigde meerdaagse editie geen eendaagse 00:00-23:59-vermelding. Classificeer aantoonbare extra overnachtingsvraag voor hotels: 35 Medium, 45 High of 60 Piek. Gebruik alleen feiten over de huidige editie. Negeer cumulatieve bezoekersaantallen van eerdere edities en algemene marketingclaims. Gebruik null als de pagina geen geloofwaardig signaal bevat over regionaal, nationaal of internationaal bereik, bezoekersaantallen, meerdaagse duur, een laat programma of hotelvraag. Reserveer 60 Piek voor stadsbrede, meerdaagse, internationale of uitzonderlijk grote evenementen. Neem actieve evenementen met null of Low impact niet op. Geef een specifieke locatie zodat die gegeocodeerd kan worden. Gebruik ownerType other voor een agenda, blog, zoekpagina of andere pagina die de evenementinformatie niet bezit. Pagina:\n${url}`,
-                },
-              ],
-            },
-            verificationRequestOptions,
-          ),
-        );
-        await observeUsage(
-          input.onUsage,
-          usageEvent(message, "discovery_fetch", model),
-        );
-        if (message.usage.server_tool_use?.web_fetch_requests !== 1) {
-          throw new Error("Claude verification did not execute its required web fetch.");
-        }
-        return message;
-      }),
-    );
-    settled.forEach((result) => {
+      );
+      await observeUsage(input.onUsage, usageEvent(message, "discovery_fetch", model));
+      if ((message.usage.server_tool_use?.web_fetch_requests ?? 0) < 1) {
+        throw new Error("Claude verification did not execute its required web fetch.");
+      }
+      return message;
+    }));
+    settled.forEach((result, offset) => {
+      const entry = batch[offset];
       if (result.status === "fulfilled") {
-        verified.push(result.value);
+        verified.push({ entry, message: result.value });
       } else {
         failedFetches += 1;
         firstFailure ??= result.reason;
+        recordDrop(entry.title ?? entry.officialUrl ?? "", "verification", `Fetch mislukt: ${dropReason(result.reason)}`);
       }
     });
   }
   if (!verified.length && firstFailure) throw firstFailure;
+
   let parsedFetches = 0;
-  const events = verified.flatMap((message) => {
+  let urlsResolved = 0;
+  let pagesVerified = 0;
+  const events = verified.flatMap(({ entry, message }) => {
+    const label = entry.title ?? entry.officialUrl ?? "";
     try {
       if (message.stop_reason === "max_tokens") {
         throw new Error("Claude verification reached its token limit.");
       }
       const text = message.content.find((block) => block.type === "text")?.text;
       if (!text) throw new Error("Claude verification returned no structured output.");
-      const observed = sourceUrls(message);
+      const observed = fetchedUrls(message);
       const parsed = outputSchema.parse(JSON.parse(text));
       parsedFetches += 1;
       return parsed.events.flatMap((event) => {
-        const sourceUrl = supportedObservedUrl(
+        const sourceUrl = stripFragment(supportedObservedUrl(
           event.sourceUrl,
           event.evidenceText ?? "",
           observed,
-        );
-        return sourceUrl &&
-          event.ownerType !== "other" &&
-          (event.status !== "active" ||
-            [35, 45, 60].includes(event.impactPoints ?? 0))
-          ? [{ ...event, sourceUrl }]
-          : [];
+        ));
+        if (!sourceUrl) {
+          recordDrop(label, "verification", "Geen gefetchte officiële URL.");
+          return [];
+        }
+        urlsResolved += 1;
+        const primarySourceConfirmed =
+          ownerTypes.includes(event.ownerType as (typeof ownerTypes)[number]) &&
+          event.titleConfirmed &&
+          event.dateConfirmed &&
+          event.locationConfirmed;
+        if (primarySourceConfirmed) pagesVerified += 1;
+        else if (event.ownerType !== "other") {
+          const missing = [
+            !event.titleConfirmed && "titel",
+            !event.dateConfirmed && "datum",
+            !event.locationConfirmed && "locatie",
+          ].filter(Boolean).join(", ");
+          recordDrop(
+            label,
+            "verification",
+            `Niet bevestigd op ${sourceUrl} (ontbreekt: ${missing || "onbekend"}, ownerType ${event.ownerType}).`,
+          );
+        }
+        if (event.ownerType === "other") {
+          recordDrop(label, "verification", "Pagina is geen eigenaarspagina (ownerType other).");
+          return [];
+        }
+        if (event.status === "active" && ![35, 45, 60].includes(event.impactPoints ?? 0)) {
+          recordDrop(label, "verification", `Geen aantoonbare hotelvraag (impactPoints ${event.impactPoints}).`);
+          return [];
+        }
+        return [{ ...event, sourceUrl, primarySourceConfirmed }];
       });
     } catch (error) {
       failedFetches += 1;
       firstFailure ??= error;
+      recordDrop(
+        label,
+        "verification",
+        message.stop_reason === "max_tokens" ? "Tokenlimiet bereikt." : "Ongeldige structured output.",
+      );
       return [];
     }
   });
@@ -396,33 +661,26 @@ export async function collectClaude(
       venueCapacity: null,
       aiImpactPoints: event.impactPoints,
       evidenceText: event.evidenceText,
-      primarySourceConfirmed:
-        ownerTypes.includes(event.ownerType as (typeof ownerTypes)[number]) &&
-        event.titleConfirmed &&
-        event.dateConfirmed &&
-        event.locationConfirmed,
+      primarySourceConfirmed: event.primarySourceConfirmed,
     } satisfies EventCandidate;
     candidate.providerEventId = claudeProviderEventId(candidate);
     return candidate;
   }));
 
-  const messages = [...searches, ...verified];
   return {
     source: "claude",
     candidates,
-    requests: searches.length + urls.length,
-    usage: {
-      inputTokens: messages.reduce((total, message) => total + message.usage.input_tokens, 0),
-      outputTokens: messages.reduce((total, message) => total + message.usage.output_tokens, 0),
-      webSearchRequests: messages.reduce(
-        (total, message) => total + (message.usage.server_tool_use?.web_search_requests ?? 0),
-        0,
-      ),
-      webFetchRequests: messages.reduce(
-        (total, message) => total + (message.usage.server_tool_use?.web_fetch_requests ?? 0),
-        0,
-      ),
+    requests: searches.length + agendaTargets.length + queue.length,
+    usage: usageTotals(
+      [...searches, ...agendaMessages, ...verified.map(({ message }) => message)],
       failedFetches,
+    ),
+    funnel: {
+      namesDiscovered,
+      urlsResolved,
+      pagesVerified,
+      demandAccepted: candidates.filter((candidate) => (candidate.aiImpactPoints ?? 0) >= 45).length,
+      drops,
     },
   };
 }
