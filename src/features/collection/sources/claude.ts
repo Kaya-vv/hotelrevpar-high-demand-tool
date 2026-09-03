@@ -625,30 +625,43 @@ export async function collectClaude(
           user_location: userLocation,
         });
       }
-      const message = await requestPhase("verification", () =>
-        client.messages.create(
-          {
-            model,
-            max_tokens: 2_000,
-            ...(model.startsWith("claude-sonnet-5")
-              ? { thinking: { type: "disabled" as const } }
-              : {}),
-            tools,
-            output_config: { format: zodOutputFormat(outputSchema) },
-            messages: [
-              {
-                role: "user",
-                content: entry.officialUrl
-                  ? `Open deze specifieke officiële evenementpagina. ${verificationInstructions(input)} Pagina:\n${entry.officialUrl}`
-                  : `Zoek met één zoekopdracht de officiële pagina van dit evenement en open die pagina: ${entry.title}, ${entry.startDate}${entry.venue ? `, ${entry.venue}` : ""}, ${entry.city}. Een uitagenda, blog, ticketaggregator of zoekpagina is geen officiële pagina. ${verificationInstructions(input)}`,
-              },
-            ],
-          },
-          verificationRequestOptions,
-        ),
-      );
+      const prompt = entry.officialUrl
+        ? `Open deze specifieke officiële evenementpagina. ${verificationInstructions(input)} Pagina:\n${entry.officialUrl}`
+        : `Zoek met één zoekopdracht de officiële pagina van dit evenement en open die pagina: ${entry.title}, ${entry.startDate}${entry.venue ? `, ${entry.venue}` : ""}, ${entry.city}. Een uitagenda, blog, ticketaggregator of zoekpagina is geen officiële pagina. ${verificationInstructions(input)}`;
+      const fetched = (message: Anthropic.Message) =>
+        (message.usage.server_tool_use?.web_fetch_requests ?? 0) >= 1;
+      const requestVerification = (retry: boolean) =>
+        requestPhase("verification", () =>
+          client.messages.create(
+            {
+              model,
+              max_tokens: 2_000,
+              ...(model.startsWith("claude-sonnet-5")
+                ? { thinking: { type: "disabled" as const } }
+                : {}),
+              tools,
+              output_config: { format: zodOutputFormat(outputSchema) },
+              messages: [
+                {
+                  role: "user",
+                  content: retry
+                    ? `Je vorige antwoord gebruikte geen web_fetch en is daarom verworpen. Haal de pagina eerst op met web_fetch en antwoord pas daarna. ${prompt}`
+                    : prompt,
+                },
+              ],
+            },
+            verificationRequestOptions,
+          ),
+        );
+      // The model sometimes answers straight from a search snippet. One retry that names the
+      // omission recovers it; a second miss is a genuine drop.
+      let message = await requestVerification(false);
       await observeUsage(input.onUsage, usageEvent(message, "discovery_fetch", model));
-      if ((message.usage.server_tool_use?.web_fetch_requests ?? 0) < 1) {
+      if (!fetched(message)) {
+        message = await requestVerification(true);
+        await observeUsage(input.onUsage, usageEvent(message, "discovery_fetch", model));
+      }
+      if (!fetched(message)) {
         throw new Error("Claude verification did not execute its required web fetch.");
       }
       return message;

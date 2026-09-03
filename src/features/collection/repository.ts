@@ -1,7 +1,12 @@
 import { normalizeCandidate } from "@/features/events/normalize";
 import { fetchInBatches } from "@/lib/supabase/fetch-in-batches";
 import { classifyMatch } from "@/features/events/match";
-import { resolvedReviewState, reviewFingerprint } from "@/features/events/review-fingerprint";
+import {
+  automatedExclusionReason,
+  providerStatusReasons,
+  resolvedReviewState,
+  reviewFingerprint,
+} from "@/features/events/review-fingerprint";
 import { scoreHotelEvent } from "@/features/events/score";
 import { selectScoreEvidence } from "@/features/events/source-evidence";
 import type { EventCandidate, ValidationReason } from "@/features/events/types";
@@ -23,7 +28,6 @@ import { shouldRefreshCanonical, sourceChange } from "./source-change";
 
 const structuredUpdateProviders = new Set(["rijksoverheid", "openholidays", "ticketmaster", "predicthq"]);
 const automatedSourceStates = new Set<EventCandidate["sourceState"]>(["cancelled", "postponed", "removed"]);
-const automatedStatusReasons = new Set<ValidationReason>(["cancelled", "postponed", "removed"]);
 
 function publicSourceUrl(candidate: EventCandidate) {
   const value = candidate.publicSourceUrl ?? (candidate.primarySourceConfirmed ? candidate.sourceUrl : null);
@@ -415,7 +419,7 @@ export function createCollectionRepository(): CollectionRepository {
         : null;
       let validationState = validation.state;
       let validationReason = validation.reason;
-      if (validation.state === "excluded" && validation.reason && automatedStatusReasons.has(validation.reason)) {
+      if (validation.state === "excluded" && validation.reason && providerStatusReasons.has(validation.reason)) {
         const { data: activeEvidence, error: activeEvidenceError } = await supabase
           .from("event_sources")
           .select("id")
@@ -439,9 +443,7 @@ export function createCollectionRepository(): CollectionRepository {
         automatedExclusion: Boolean(existingDecision?.automation_reason),
       });
       const existingManualExclusion = existingDecision?.state === "excluded" && !existingDecision.automation_reason;
-      const automationReason = !existingManualExclusion && state === "excluded" && validationReason && automatedStatusReasons.has(validationReason)
-        ? `provider_${validationReason}`
-        : null;
+      const automationReason = automatedExclusionReason(state, validationReason, existingManualExclusion);
       const decision = {
         account_id: context.area.accountId,
         event_id: eventId,

@@ -782,6 +782,36 @@ describe("source adapters", () => {
       .toBe(false);
   });
 
+  it("retries a verification that answered without opening the page", async () => {
+    const official = "https://asmlmarathoneindhoven.nl/";
+    const create = vi.fn();
+    queueClaudeSearches(create, [discoveredCandidate({ title: "ASML Marathon Eindhoven", officialUrl: official })]);
+    const skipped = verificationResponse(null, [verifiedEvent({ sourceUrl: official })]);
+    create.mockResolvedValueOnce({
+      ...skipped,
+      usage: { ...skipped.usage, server_tool_use: { web_fetch_requests: 0 } },
+    });
+    create.mockResolvedValue(verificationResponse(official, [verifiedEvent({ sourceUrl: official })]));
+
+    const result = await collectClaude({
+      ...claudeWindow,
+      location: "Eindhoven",
+      radiusKm: 25,
+      model: "claude-test",
+      client: { messages: { create } } as unknown as Anthropic,
+      triage: async () => new Map<number, string>(),
+    });
+
+    expect(result.candidates).toHaveLength(1);
+    expect(result.funnel?.drops).not.toContainEqual(
+      expect.objectContaining({ stage: "verification" }),
+    );
+    const retry = create.mock.calls
+      .map(([request]) => request.messages[0].content as string)
+      .find((content) => content.includes("geen web_fetch"));
+    expect(retry).toContain(official);
+  });
+
 
 
   it("keeps collecting when one discovery search fails", async () => {
