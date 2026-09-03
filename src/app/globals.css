@@ -478,6 +478,23 @@ a {
   height: 1em;
 }
 
+.skeleton-eyebrow {
+  width: 120px;
+  height: 0.72rem;
+}
+
+.skeleton-line {
+  width: 420px;
+  max-width: 100%;
+  height: 0.9rem;
+}
+
+.skeleton-panel {
+  height: 180px;
+  margin-bottom: 16px;
+  border-radius: 8px;
+}
+
 .skeleton-toolbar {
   width: 190px;
   height: 34px;
