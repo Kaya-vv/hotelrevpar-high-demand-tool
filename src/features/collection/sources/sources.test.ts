@@ -105,6 +105,7 @@ const verifiedEvent = (overrides: Record<string, unknown> = {}) => ({
   ownerType: "organizer",
   evidenceText: "Meerdaagse internationale editie.",
   impactPoints: 60,
+  overnightAudience: "international",
   titleConfirmed: true,
   dateConfirmed: true,
   locationConfirmed: true,
@@ -637,6 +638,7 @@ describe("source adapters", () => {
       title: "ASML Marathon Eindhoven",
       primarySourceConfirmed: true,
       aiImpactPoints: 60,
+      overnightAudience: "international",
     }]);
     expect(result.funnel).toMatchObject({ pagesVerified: 1, demandAccepted: 1 });
   });

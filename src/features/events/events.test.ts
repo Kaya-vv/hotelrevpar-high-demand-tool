@@ -507,6 +507,68 @@ describe("event domain", () => {
     expect(late.stayPressurePoints).toBe(4);
   });
 
+  it("lets a stated overnight audience overrule the multi-day proxy", () => {
+    const hotel = {
+      latitude: 51.44,
+      longitude: 5.48,
+      demandRadiusKm: 25,
+      holidayRegion: "south" as const,
+    };
+    // A two-day daytime market draws the same day-trippers twice.
+    const dayMarket = {
+      ...candidate,
+      title: "Maker Days",
+      aiImpactPoints: 45,
+      latitude: 51.44,
+      longitude: 5.48,
+      regionScope: "national",
+      startAt: "2026-09-12T09:00:00+02:00",
+      endAt: "2026-09-13T16:00:00+02:00",
+    };
+
+    expect(
+      scoreHotelEvent({ candidate: dayMarket, hotel, overlaps: [] })
+        .suggestedImportance
+    ).toBe("High");
+    expect(
+      scoreHotelEvent({
+        candidate: { ...dayMarket, overnightAudience: "regional" },
+        hotel,
+        overlaps: [],
+      }).suggestedImportance
+    ).toBe("Medium");
+    expect(
+      scoreHotelEvent({
+        candidate: { ...dayMarket, overnightAudience: "national" },
+        hotel,
+        overlaps: [],
+      }).suggestedImportance
+    ).toBe("High");
+  });
+
+  it("rewards a programme that runs past midnight", () => {
+    const hotel = {
+      latitude: 51.44,
+      longitude: 5.48,
+      demandRadiusKm: 25,
+      holidayRegion: "south" as const,
+    };
+    const lateNight = {
+      ...candidate,
+      title: "URBN indoor festival",
+      aiImpactPoints: 45,
+      latitude: 51.44,
+      longitude: 5.48,
+      overnightAudience: "national" as const,
+      startAt: "2026-09-26T20:00:00+02:00",
+      endAt: "2026-09-27T02:00:00+02:00",
+    };
+    const score = scoreHotelEvent({ candidate: lateNight, hotel, overlaps: [] });
+
+    expect(score.stayPressurePoints).toBe(4);
+    expect(score.suggestedImportance).toBe("High");
+  });
+
   it("uses Claude impact evidence when structured metrics are absent", () => {
     expect(
       impact({

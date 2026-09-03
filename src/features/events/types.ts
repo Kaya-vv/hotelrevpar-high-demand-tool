@@ -7,6 +7,15 @@ export type SourceName =
   | "footballdata"
   | "uefa";
 
+export const overnightAudiences = [
+  "none",
+  "regional",
+  "national",
+  "international",
+] as const;
+
+export type OvernightAudience = (typeof overnightAudiences)[number];
+
 export type EventCandidate = {
   provider: SourceName;
   providerEventId: string;
@@ -30,6 +39,7 @@ export type EventCandidate = {
   attendance: number | null;
   venueCapacity: number | null;
   aiImpactPoints?: number | null;
+  overnightAudience?: OvernightAudience | null;
   evidenceText: string | null;
   primarySourceConfirmed: boolean;
 };

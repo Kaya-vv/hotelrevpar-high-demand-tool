@@ -529,6 +529,7 @@ export type Database = {
           extracted_title: string;
           id: string;
           local_rank: number | null;
+          overnight_audience: string | null;
           primary_source_confirmed: boolean;
           provider_cancelled_at: string | null;
           provider_deleted_reason: string | null;
@@ -554,6 +555,7 @@ export type Database = {
           extracted_title: string;
           id?: string;
           local_rank?: number | null;
+          overnight_audience?: string | null;
           primary_source_confirmed?: boolean;
           provider_cancelled_at?: string | null;
           provider_deleted_reason?: string | null;
@@ -579,6 +581,7 @@ export type Database = {
           extracted_title?: string;
           id?: string;
           local_rank?: number | null;
+          overnight_audience?: string | null;
           primary_source_confirmed?: boolean;
           provider_cancelled_at?: string | null;
           provider_deleted_reason?: string | null;

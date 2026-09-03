@@ -137,7 +137,9 @@ export function scoreHotelEvent({
   const programmeEndDate = end.hour < 6 ? previousDate(end.date) : end.date;
   const multiDay = !allDayPlaceholder && programmeEndDate > start.date;
   let stayPressurePoints = multiDay ? 6 : 0;
-  if (hasDuration && !allDayPlaceholder && end.hour >= 20) {
+  // A programme ending after midnight is a stronger overnight signal than one
+  // ending at 20:00, so both earn the evening-finish bonus.
+  if (hasDuration && !allDayPlaceholder && (end.hour >= 20 || end.hour < 6)) {
     stayPressurePoints += 4;
   }
   if (
@@ -164,13 +166,22 @@ export function scoreHotelEvent({
     candidate.category === "sports" &&
     !marqueeSport(candidate.category, candidate.title, candidate.regionScope ?? "");
   const people = candidate.attendance ?? candidate.venueCapacity;
+  // An explicit assessment from the source beats every proxy below it: a
+  // two-day daytime market is multi-day without generating a single booking.
   const overnightSignal =
-    programmeEndDate > start.date ||
-    (people !== null && people >= 5_000) ||
-    /internationaal|international|nationaal|national|europees|european|wereld|world/i.test(
-      candidate.regionScope ?? "",
-    ) ||
-    marqueeSport(candidate.category, candidate.title, candidate.regionScope ?? "");
+    candidate.overnightAudience != null
+      ? candidate.overnightAudience === "national" ||
+        candidate.overnightAudience === "international"
+      : programmeEndDate > start.date ||
+        (people !== null && people >= 5_000) ||
+        /internationaal|international|nationaal|national|europees|european|wereld|world/i.test(
+          candidate.regionScope ?? "",
+        ) ||
+        marqueeSport(
+          candidate.category,
+          candidate.title,
+          candidate.regionScope ?? "",
+        );
   const total = routineSport || !overnightSignal ? Math.min(69, rawTotal) : rawTotal;
 
   return {
