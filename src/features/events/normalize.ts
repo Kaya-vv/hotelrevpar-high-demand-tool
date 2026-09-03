@@ -52,13 +52,18 @@ function placeKey(candidate: EventCandidate) {
 export function normalizeCandidate(candidate: EventCandidate): NormalizedCandidate {
   const localStartDate = localParts(candidate.startAt).date;
   const normalizedTitle = normalizeText(candidate.title);
+  // "Dutch Design Week" and "Dutch Design Week 2026" are one event on one date. similarity()
+  // already discards year tokens; identity has to agree or the two never collapse.
+  const identityTitle =
+    normalizedTitle.split(" ").filter((token) => token && !/^20\d{2}$/.test(token)).join(" ")
+    || normalizedTitle;
 
   return {
     ...candidate,
     localStartDate,
     localEndDate: candidate.endAt ? localParts(candidate.endAt).date : localStartDate,
     normalizedTitle,
-    normalizedIdentity: [normalizedTitle, localStartDate, placeKey(candidate)].join("|"),
+    normalizedIdentity: [identityTitle, localStartDate, placeKey(candidate)].join("|"),
   };
 }
 

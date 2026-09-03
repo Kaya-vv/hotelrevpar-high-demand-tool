@@ -170,6 +170,17 @@ describe("event domain", () => {
     );
 
     expect(new Set(phrasings.map((p) => p.normalizedIdentity)).size).toBe(1);
+
+    // The surviving cold-start duplicate differed only by the year in the title.
+    const withoutYear = normalizeCandidate({
+      ...candidate,
+      providerEventId: "ddw-noyear",
+      title: "Dutch Design Week",
+      venue: "Klokgebouw",
+      latitude: 51.4487,
+      longitude: 5.4578,
+    });
+    expect(withoutYear.normalizedIdentity).toBe(phrasings[0].normalizedIdentity);
     expect(classifyMatch(phrasings[3], [{ ...phrasings[0], id: "ddw-1" }])).toEqual({
       kind: "exact",
       eventId: "ddw-1",
