@@ -12,6 +12,7 @@ import {
   claudeProviderEventId,
   collectClaude,
   triagePredictHqCandidates,
+  triageExclusionAllowed,
   verifyPredictHqCandidates,
 } from "./claude";
 import { collectOpenHolidays } from "./openholidays";
@@ -756,38 +757,29 @@ describe("source adapters", () => {
       reason: "Eenmalige clubavond zonder bovenregionale toestroom.",
     });
   });
-  it("never puts a multi-day candidate through metadata triage", async () => {
-    const create = vi.fn();
-    queueClaudeSearches(create, [
-      discoveredCandidate({
-        title: "Revolution Calling",
-        startDate: "2027-09-20",
-        endDate: "2027-09-21",
-        officialUrl: "https://venue.nl/revolution-calling",
-      }),
-      discoveredCandidate({
-        title: "Marillion",
-        startDate: "2027-09-16",
-        endDate: null,
-        officialUrl: "https://venue.nl/marillion",
-      }),
-    ]);
-    create.mockResolvedValue(verificationResponse("https://venue.nl/revolution-calling", []));
+  it("honours a metadata exclusion only when it names what it rejects", () => {
+    const named = { decision: "exclude", excludeAs: "artist_show", act: "Marillion" };
+    expect(triageExclusionAllowed(named, false)).toBe(true);
 
-    await collectClaude({
-      ...claudeWindow,
-      location: "Eindhoven",
-      radiusKm: 25,
-      model: "claude-test",
-      client: { messages: { create } } as unknown as Anthropic,
-    });
+    // Production: "Rock event (Helldorado) zonder verdere context, waarschijnlijk clubavond".
+    expect(triageExclusionAllowed({ decision: "exclude", excludeAs: "artist_show", act: null }, false))
+      .toBe(false);
+    expect(triageExclusionAllowed({ decision: "exclude", excludeAs: "artist_show", act: "  " }, false))
+      .toBe(false);
 
-    const triageRequest = create.mock.calls
-      .map(([request]) => request.messages[0].content as string)
-      .find((content) => content.includes("welke kandidaten een webcontrole waard zijn"));
-    expect(triageRequest).toBeDefined();
-    expect(triageRequest).toContain("Marillion");
-    expect(triageRequest).not.toContain("Revolution Calling");
+    // Production: Revolution Calling dropped as a "tweedaagse rock concert".
+    expect(triageExclusionAllowed(named, true)).toBe(false);
+
+    // A two-day vintage market is still a market.
+    expect(triageExclusionAllowed({ decision: "exclude", excludeAs: "market", act: null }, true))
+      .toBe(true);
+    expect(triageExclusionAllowed({ decision: "exclude", excludeAs: "theatre_run", act: null }, true))
+      .toBe(true);
+
+    expect(triageExclusionAllowed({ decision: "exclude", excludeAs: null, act: null }, false))
+      .toBe(false);
+    expect(triageExclusionAllowed({ decision: "verify", excludeAs: "market", act: null }, false))
+      .toBe(false);
   });
 
 

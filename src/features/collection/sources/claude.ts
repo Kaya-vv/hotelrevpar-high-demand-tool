@@ -75,9 +75,22 @@ const discoveryTriageSchema = z.object({
   reviews: z.array(z.object({
     index: z.number().int(),
     decision: z.enum(["verify", "exclude"]),
+    excludeAs: z.enum(["artist_show", "theatre_run", "market", "course", "weekly"]).nullable(),
+    act: z.string().nullable(),
     reason: z.string(),
   })),
 });
+
+// A metadata-only exclusion has to name what it is rejecting. Two guesses are void: an unnamed
+// "probably a club night", and calling a multi-day programme a one-off show.
+export function triageExclusionAllowed(
+  review: { decision: string; excludeAs: string | null; act: string | null },
+  multiDay: boolean,
+) {
+  if (review.decision !== "exclude" || !review.excludeAs) return false;
+  if (review.excludeAs !== "artist_show") return true;
+  return !multiDay && Boolean(review.act?.trim());
+}
 
 type VerificationEntry = {
   title: string | null;
@@ -280,13 +293,8 @@ async function triageDiscoveries(input: {
   const excluded = new Map<number, string>();
   let requests = 0;
   const messages: Anthropic.Message[] = [];
-  // A programme spanning two or more calendar days can create an overnight stay by itself,
-  // so it is never dropped on metadata alone.
-  const eligible = input.candidates
-    .map((candidate, index) => ({ candidate, index }))
-    .filter(({ candidate }) => (candidate.endDate ?? candidate.startDate) === candidate.startDate);
-  for (let offset = 0; offset < eligible.length; offset += 40) {
-    const batch = eligible.slice(offset, offset + 40);
+  for (let offset = 0; offset < input.candidates.length; offset += 40) {
+    const batch = input.candidates.slice(offset, offset + 40);
     try {
       const message = await requestPhase("triage", () => input.client.messages.create({
         model,
@@ -294,7 +302,7 @@ async function triageDiscoveries(input: {
         output_config: { format: zodOutputFormat(discoveryTriageSchema) },
         messages: [{
           role: "user",
-          content: `Beoordeel op basis van alleen deze metadata welke kandidaten een webcontrole waard zijn voor een hotel in ${input.location} met een straal van ${input.radiusKm} km. Elke kandidaat duurt één dag. Kies exclude alleen als de titel een optredende artiest, band, dj, comedian of tournee noemt, of als het duidelijk gaat om een doorlopende theater- of bioscoopvoorstelling, een warenmarkt, een cursus of een wekelijkse activiteit. Dat zijn gewone zaalavonden waarvoor bezoekers niet blijven overnachten. Kies verify voor elke naam die een evenement, festival, beurs, congres, wedstrijd of stadsbreed programma aanduidt, ook als het maar één dag duurt en ook als je de naam niet kent; een eigen merknaam zonder artiestennaam is vrijwel altijd een evenement. Kies bij twijfel verify. Geef voor elke index precies één beslissing met een korte reden. Kandidaten:\n${JSON.stringify(batch.map(({ candidate, index }) => ({ index, title: candidate.title, startDate: candidate.startDate, endDate: candidate.endDate, venue: candidate.venue, city: candidate.city, category: candidate.category })))}`,
+          content: `Beoordeel op basis van alleen deze metadata welke kandidaten een webcontrole waard zijn voor een hotel in ${input.location} met een straal van ${input.radiusKm} km. Kies verify voor alles wat aannemelijk extra hotelovernachtingen veroorzaakt, en kies bij twijfel altijd verify. Kies exclude alleen met een categorie in excludeAs: artist_show voor een avond met een optredende artiest, band, dj of comedian; theatre_run voor een doorlopende theater- of bioscoopvoorstelling; market voor een waren-, rommel- of vintagemarkt; course voor een cursus of workshop; weekly voor een wekelijks terugkerende activiteit. Vul bij artist_show in act de naam van de artiest precies zoals die in de titel staat; staat er geen artiestennaam in de titel, kies dan verify. Een eigen merknaam zonder artiestennaam is een evenement en geen artist_show, ook als je de naam niet kent. Geef voor elke index precies één beslissing met een korte reden. Kandidaten:\n${JSON.stringify(batch.map((candidate, index) => ({ index: offset + index, title: candidate.title, startDate: candidate.startDate, endDate: candidate.endDate, venue: candidate.venue, city: candidate.city, category: candidate.category })))}`,
         }],
       }, triageRequestOptions));
       requests += 1;
@@ -303,11 +311,11 @@ async function triageDiscoveries(input: {
       if (message.stop_reason === "max_tokens") continue;
       const text = message.content.find((block) => block.type === "text")?.text;
       if (!text) continue;
-      const batchIds = new Set(batch.map(({ index }) => index));
       discoveryTriageSchema.parse(JSON.parse(text)).reviews.forEach((review) => {
-        if (review.decision === "exclude" && batchIds.has(review.index)) {
-          excluded.set(review.index, review.reason);
-        }
+        const candidate = input.candidates[review.index];
+        if (!candidate || review.index < offset || review.index >= offset + batch.length) return;
+        const multiDay = (candidate.endDate ?? candidate.startDate) !== candidate.startDate;
+        if (triageExclusionAllowed(review, multiDay)) excluded.set(review.index, review.reason);
       });
     } catch {
       requests += 1;
