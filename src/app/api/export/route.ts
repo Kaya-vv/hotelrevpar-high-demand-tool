@@ -1,6 +1,6 @@
 import { buildRevControlWorkbook } from "@/features/export/build-workbook";
 import { mapRevControlRows } from "@/features/export/map-rows";
-import { loadExportEvents } from "@/features/export/query";
+import { exportRange, loadExportEvents } from "@/features/export/query";
 import { requireAccount } from "@/lib/auth/require-account";
 
 export const runtime = "nodejs";
@@ -9,14 +9,12 @@ export async function GET(request: Request) {
   const { accountId } = await requireAccount();
   const url = new URL(request.url);
   const selectedHotelIds = [...new Set(url.searchParams.getAll("hotel"))];
-  const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(url.searchParams.get("month") ?? "")
-    ? url.searchParams.get("month")!
-    : new Date().toISOString().slice(0, 7);
+  const range = exportRange(url.searchParams.get("from"), url.searchParams.get("to"));
   if (!selectedHotelIds.length) return Response.json({ error: "Kies minstens één hotel." }, { status: 400 });
 
   let events;
   try {
-    ({ events } = await loadExportEvents(accountId, month, selectedHotelIds));
+    ({ events } = await loadExportEvents(accountId, range, selectedHotelIds));
   } catch (error) {
     if (error instanceof Error && error.message.includes("hoort niet bij dit account")) {
       return Response.json({ error: error.message }, { status: 403 });
@@ -27,7 +25,7 @@ export async function GET(request: Request) {
   return new Response(new Uint8Array(buffer), {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename="events-${month}.xlsx"`,
+      "Content-Disposition": `attachment; filename="events-${range.start}_${range.end}.xlsx"`,
     },
   });
 }

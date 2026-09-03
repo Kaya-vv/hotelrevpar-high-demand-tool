@@ -1,6 +1,6 @@
 import { demandLabels, type DemandLevel } from "@/features/events/importance";
 import { mapRevControlRows } from "@/features/export/map-rows";
-import { loadExportEvents } from "@/features/export/query";
+import { exportRange, loadExportEvents } from "@/features/export/query";
 import { getHotelScope } from "@/features/workspace/hotel-context";
 import { requireAccount } from "@/lib/auth/require-account";
 
@@ -13,26 +13,28 @@ export default async function ExportPage({ searchParams }: { searchParams: Promi
   const { accountId } = await requireAccount();
   const params = await searchParams;
   const scope = await getHotelScope(accountId);
-  const rawMonth = value(params, "month");
-  const month = rawMonth && /^\d{4}-(0[1-9]|1[0-2])$/.test(rawMonth) ? rawMonth : new Date().toISOString().slice(0, 7);
+  const range = exportRange(value(params, "from"), value(params, "to"));
   const requestedHotels = Array.isArray(params.hotel) ? params.hotel : typeof params.hotel === "string" ? [params.hotel] : [];
   const ownedHotelIds = new Set(scope.hotels.map((hotel) => hotel.id));
   const selectedHotelIds = requestedHotels.length
     ? [...new Set(requestedHotels)].filter((hotelId) => ownedHotelIds.has(hotelId))
     : scope.selectedHotelId ? [scope.selectedHotelId] : [];
   const { hotels, events } = selectedHotelIds.length
-    ? await loadExportEvents(accountId, month, selectedHotelIds)
+    ? await loadExportEvents(accountId, range, selectedHotelIds)
     : { hotels: [], events: [] };
   const rows = mapRevControlRows(events, selectedHotelIds);
-  const query = new URLSearchParams({ month });
+  const query = new URLSearchParams({ from: range.start, to: range.end });
   selectedHotelIds.forEach((hotelId) => query.append("hotel", hotelId));
 
   return (
     <div>
-      <header className="page-title"><span className="eyebrow">RevControl</span><h1>Exporteren</h1><p>Controleer de maand en hotels voordat je het Excel-bestand downloadt.</p></header>
+      <header className="page-title"><span className="eyebrow">RevControl</span><h1>Exporteren</h1><p>Kies de periode en hotels voordat je het Excel-bestand downloadt.</p></header>
       <section className="panel export-panel">
         <form method="get" className="form-stack">
-          <label>Maand<input name="month" type="month" defaultValue={month} required /></label>
+          <div className="date-range">
+            <label>Van<input name="from" type="date" defaultValue={range.start} required /></label>
+            <label>Tot en met<input name="to" type="date" defaultValue={range.end} required /></label>
+          </div>
           <fieldset className="checkbox-grid">
             <legend>Hotels</legend>
             {scope.hotels.map((hotel) => <label key={hotel.id}><input name="hotel" type="checkbox" value={hotel.id} defaultChecked={selectedHotelIds.includes(hotel.id)} />{hotel.name}</label>)}

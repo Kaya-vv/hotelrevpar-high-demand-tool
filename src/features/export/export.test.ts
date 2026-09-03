@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { buildRevControlWorkbook, REVCONTROL_HEADERS } from "./build-workbook";
 import { mapRevControlRows } from "./map-rows";
+import { exportRange } from "./query";
 
 describe("RevControl export", () => {
   it("groups one event by final hotel importance and keeps approved fields blank", async () => {
@@ -35,6 +36,29 @@ describe("RevControl export", () => {
     expect(sheet.getCell("D2").value).toBeInstanceOf(Date);
     expect(sheet.getCell("C2").numFmt).toBe("dd-mm-yyyy");
     expect(sheet.getCell("D2").numFmt).toBe("dd-mm-yyyy");
-    ["F2", "G2", "H2", "I2", "K2", "L2", "M2"].forEach((cell) => expect(sheet.getCell(cell).value).toBeNull());
+    expect(sheet.getCell("I2").value).toBe("Both");
+    ["F2", "G2", "H2", "K2", "L2", "M2"].forEach((cell) => expect(sheet.getCell(cell).value).toBeNull());
+  });
+
+  it("defaults the export range to the 90-day collection window", () => {
+    const today = new Date("2026-09-03T12:00:00Z");
+
+    expect(exportRange(null, null, today)).toEqual({
+      start: "2026-09-03",
+      end: "2026-12-02",
+    });
+    expect(exportRange("2026-10-01", "2027-01-31", today)).toEqual({
+      start: "2026-10-01",
+      end: "2027-01-31",
+    });
+    // A reversed range is a slip of the mouse, not an empty export.
+    expect(exportRange("2027-01-31", "2026-10-01", today)).toEqual({
+      start: "2026-10-01",
+      end: "2027-01-31",
+    });
+    expect(exportRange("not-a-date", "2026-09-30", today)).toEqual({
+      start: "2026-09-03",
+      end: "2026-09-30",
+    });
   });
 });

@@ -22,7 +22,7 @@ export type RevControlRow = {
   supplementPercentage: null;
   supplement: null;
   mls: null;
-  addSupplementFor: null;
+  addSupplementFor: "Both";
   hotels: string;
   splitPerHotel: null;
   note: null;

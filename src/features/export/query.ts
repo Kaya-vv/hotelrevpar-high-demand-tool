@@ -5,13 +5,30 @@ import { isEnabledPrimarySource } from "@/features/events/source-evidence";
 
 import type { ExportEvent } from "./types";
 
-export function monthBounds(month: string) {
-  const [year, monthNumber] = month.split("-").map(Number);
-  const end = new Date(Date.UTC(year, monthNumber, 0)).toISOString().slice(0, 10);
-  return { start: `${month}-01`, end };
+const DAY = 24 * 60 * 60 * 1000;
+const isDate = (value: string | null | undefined): value is string =>
+  /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(value ?? "");
+
+export type ExportRange = { start: string; end: string };
+
+/**
+ * Defaults to the 90-day window the collectors fill, so one export covers
+ * everything the app knows rather than a single month.
+ */
+export function exportRange(
+  from: string | null | undefined,
+  to: string | null | undefined,
+  today = new Date(),
+): ExportRange {
+  const start = isDate(from) ? from : today.toISOString().slice(0, 10);
+  const fallbackEnd = new Date(new Date(`${start}T00:00:00Z`).getTime() + 90 * DAY)
+    .toISOString()
+    .slice(0, 10);
+  const end = isDate(to) ? to : fallbackEnd;
+  return end < start ? { start: end, end: start } : { start, end };
 }
 
-export async function loadExportEvents(accountId: string, month: string, selectedHotelIds: string[]) {
+export async function loadExportEvents(accountId: string, range: ExportRange, selectedHotelIds: string[]) {
   const supabase = await createServerClient();
   const { data: hotels, error: hotelError } = await supabase
     .from("hotels")
@@ -34,11 +51,10 @@ export async function loadExportEvents(accountId: string, month: string, selecte
     .eq("state", "active");
   if (decisionError) throw decisionError;
   const eventIds = decisions.map((decision) => decision.event_id);
-  const bounds = monthBounds(month);
   const areaIds = areas.map((area) => area.id);
   const [exportEvents, scores, links, sources] = eventIds.length
     ? await Promise.all([
-        fetchInBatches(eventIds, (ids) => supabase.from("events").select("id, title, start_at, end_at, certainty").in("id", ids).lte("start_at", `${bounds.end}T23:59:59Z`).gte("end_at", `${bounds.start}T00:00:00Z`)),
+        fetchInBatches(eventIds, (ids) => supabase.from("events").select("id, title, start_at, end_at, certainty").in("id", ids).lte("start_at", `${range.end}T23:59:59Z`).gte("end_at", `${range.start}T00:00:00Z`)),
         fetchInBatches(eventIds, (ids) => supabase.from("hotel_event_scores").select("event_id, hotel_id, suggested_importance, importance_override, impact_basis").in("event_id", ids).in("hotel_id", selectedHotelIds)),
         areaIds.length
           ? fetchInBatches(areaIds, (ids) => supabase.from("account_event_areas").select("event_id, collection_area_id").eq("account_id", accountId).in("collection_area_id", ids))

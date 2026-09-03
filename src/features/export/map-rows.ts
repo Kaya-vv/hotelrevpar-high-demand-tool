@@ -29,7 +29,7 @@ export function mapRevControlRows(events: ExportEvent[], selectedHotelIds: strin
         supplementPercentage: null,
         supplement: null,
         mls: null,
-        addSupplementFor: null,
+        addSupplementFor: "Both" as const,
         hotels: hotels.join(", "),
         splitPerHotel: null,
         note: null,
