@@ -321,8 +321,8 @@ describe("event domain", () => {
     });
 
     expect(score.stayPressurePoints).toBe(0);
-    expect(score.total).toBe(70);
-    expect(score.suggestedImportance).toBe("High");
+    expect(score.total).toBe(69);
+    expect(score.suggestedImportance).toBe("Medium");
 
     const utcPlaceholder = scoreHotelEvent({
       candidate: {
@@ -361,6 +361,40 @@ describe("event domain", () => {
       overlaps: [],
     });
     expect(multiDayPlaceholder.stayPressurePoints).toBe(0);
+  });
+
+  it("keeps a single-evening local event below High without an overnight signal", () => {
+    const hotel = {
+      latitude: 51.44,
+      longitude: 5.48,
+      demandRadiusKm: 25,
+      holidayRegion: "south" as const,
+    };
+    const clubNight = {
+      ...candidate,
+      title: "Fuego",
+      category: "Muziekevenement / Nightlife",
+      aiImpactPoints: 45,
+      latitude: 51.44,
+      longitude: 5.48,
+      regionScope: null,
+      startAt: "2027-09-19T22:00:00+02:00",
+      endAt: "2027-09-20T04:00:00+02:00",
+    };
+    expect(scoreHotelEvent({ candidate: clubNight, hotel, overlaps: [] }).suggestedImportance)
+      .toBe("Medium");
+
+    expect(scoreHotelEvent({
+      candidate: { ...clubNight, attendance: 8_000 },
+      hotel,
+      overlaps: [],
+    }).suggestedImportance).toBe("High");
+
+    expect(scoreHotelEvent({
+      candidate: { ...clubNight, regionScope: "internationaal" },
+      hotel,
+      overlaps: [],
+    }).suggestedImportance).toBe("High");
   });
 
   it("keeps real multi-day and stated late-end bonuses", () => {

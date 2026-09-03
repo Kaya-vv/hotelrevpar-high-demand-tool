@@ -15,6 +15,12 @@ function marqueeSport(category: string, title = "", regionScope = "") {
   );
 }
 
+function previousDate(value: string) {
+  const date = new Date(`${value}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() - 1);
+  return date.toISOString().slice(0, 10);
+}
+
 export function importance(total: number): DemandScore["suggestedImportance"] {
   return total >= 85
     ? "Peak"
@@ -125,7 +131,10 @@ export function scoreHotelEvent({
       end.minute >= 59) ||
     (candidate.startAt.slice(11, 16) === "00:00" &&
       candidate.endAt.slice(11, 16) === "23:59");
-  let stayPressurePoints = !allDayPlaceholder && start.date !== end.date ? 6 : 0;
+  // A programme finishing before dawn is still the same evening, not a second day.
+  const programmeEndDate = end.hour < 6 ? previousDate(end.date) : end.date;
+  const multiDay = !allDayPlaceholder && programmeEndDate > start.date;
+  let stayPressurePoints = multiDay ? 6 : 0;
   if (hasDuration && !allDayPlaceholder && end.hour >= 20) {
     stayPressurePoints += 4;
   }
@@ -152,7 +161,15 @@ export function scoreHotelEvent({
   const routineSport =
     candidate.category === "sports" &&
     !marqueeSport(candidate.category, candidate.title, candidate.regionScope ?? "");
-  const total = routineSport ? Math.min(69, rawTotal) : rawTotal;
+  const people = candidate.attendance ?? candidate.venueCapacity;
+  const overnightSignal =
+    programmeEndDate > start.date ||
+    (people !== null && people >= 5_000) ||
+    /internationaal|international|nationaal|national|europees|european|wereld|world/i.test(
+      candidate.regionScope ?? "",
+    ) ||
+    marqueeSport(candidate.category, candidate.title, candidate.regionScope ?? "");
+  const total = routineSport || !overnightSignal ? Math.min(69, rawTotal) : rawTotal;
 
   return {
     impactPoints: impactScore.points,

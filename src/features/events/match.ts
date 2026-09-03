@@ -9,17 +9,23 @@ export type Match =
 function similarity(left: string, right: string) {
   const meaningful = (value: string) =>
     value.split(" ").filter((token) => token && !/^20\d{2}$/.test(token));
-  const leftTokens = new Set(meaningful(left));
-  const rightTokens = new Set(meaningful(right));
-  const union = new Set([...leftTokens, ...rightTokens]);
+  const leftTokens = meaningful(left);
+  const rightTokens = meaningful(right);
+  const leftSet = new Set(leftTokens);
+  const rightSet = new Set(rightTokens);
+  const union = new Set([...leftSet, ...rightSet]);
   if (!union.size) return 0;
   let shared = 0;
-  leftTokens.forEach((token) => {
-    if (rightTokens.has(token)) shared += 1;
+  leftSet.forEach((token) => {
+    if (rightSet.has(token)) shared += 1;
   });
   const jaccard = shared / union.size;
-  const smallest = Math.min(leftTokens.size, rightTokens.size);
-  const containment = smallest >= 3 ? shared / smallest : 0;
+  const smallest = Math.min(leftSet.size, rightSet.size);
+  const [shorter, longer] = leftTokens.length <= rightTokens.length
+    ? [leftTokens, rightTokens]
+    : [rightTokens, leftTokens];
+  const prefix = shorter.length > 0 && shorter.every((token, index) => longer[index] === token);
+  const containment = smallest >= 3 || prefix ? shared / smallest : 0;
   return Math.max(jaccard, containment);
 }
 

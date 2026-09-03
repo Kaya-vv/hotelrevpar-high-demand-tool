@@ -71,6 +71,14 @@ type DiscoveredCandidate = {
   officialUrl: string | null;
 };
 
+const discoveryTriageSchema = z.object({
+  reviews: z.array(z.object({
+    index: z.number().int(),
+    decision: z.enum(["verify", "exclude"]),
+    reason: z.string(),
+  })),
+});
+
 type VerificationEntry = {
   title: string | null;
   startDate: string | null;
@@ -210,7 +218,7 @@ async function geocodeVenue(query: string) {
   }
 }
 
-async function requestPhase<T>(phase: "search" | "agenda" | "verification", request: () => Promise<T>) {
+async function requestPhase<T>(phase: "search" | "agenda" | "triage" | "verification", request: () => Promise<T>) {
   try {
     return await request();
   } catch (error) {
@@ -261,8 +269,49 @@ function searchWindows(start: string, end: string) {
   });
 }
 
+async function triageDiscoveries(input: {
+  candidates: DiscoveredCandidate[];
+  location: string;
+  radiusKm: number;
+  client: Anthropic;
+  onUsage?: UsageObserver;
+}) {
+  const model = process.env.ANTHROPIC_TRIAGE_MODEL ?? "claude-haiku-4-5";
+  const excluded = new Map<number, string>();
+  let requests = 0;
+  const messages: Anthropic.Message[] = [];
+  for (let offset = 0; offset < input.candidates.length; offset += 40) {
+    const batch = input.candidates.slice(offset, offset + 40);
+    try {
+      const message = await requestPhase("triage", () => input.client.messages.create({
+        model,
+        max_tokens: 4_000,
+        output_config: { format: zodOutputFormat(discoveryTriageSchema) },
+        messages: [{
+          role: "user",
+          content: `Beoordeel op basis van alleen deze metadata welke kandidaten een webcontrole waard zijn voor een hotel in ${input.location} met een straal van ${input.radiusKm} km. Kies verify voor meerdaagse evenementen, congressen, vakbeurzen, festivals of sportevenementen met bovenregionale, landelijke of internationale toestroom, en voor alles wat aannemelijk extra hotelovernachtingen veroorzaakt. Kies exclude alleen als de metadata duidelijk wijst op eenmalige avondprogrammering in een club of zaal, een markt, een buurtfestival, een bioscoop- of theatervoorstelling, een cursus of een wekelijkse activiteit zonder bovenregionale toestroom. Kies bij twijfel altijd verify. Geef voor elke index precies één beslissing met een korte reden. Kandidaten:\n${JSON.stringify(batch.map((candidate, index) => ({ index: offset + index, title: candidate.title, startDate: candidate.startDate, endDate: candidate.endDate, venue: candidate.venue, city: candidate.city, category: candidate.category })))}`,
+        }],
+      }, triageRequestOptions));
+      requests += 1;
+      messages.push(message);
+      await observeUsage(input.onUsage, usageEvent(message, "demand_triage", model));
+      if (message.stop_reason === "max_tokens") continue;
+      const text = message.content.find((block) => block.type === "text")?.text;
+      if (!text) continue;
+      discoveryTriageSchema.parse(JSON.parse(text)).reviews.forEach((review) => {
+        if (review.decision === "exclude" && review.index >= offset && review.index < offset + batch.length) {
+          excluded.set(review.index, review.reason);
+        }
+      });
+    } catch {
+      requests += 1;
+    }
+  }
+  return { excluded, requests, messages };
+}
+
 function verificationInstructions(input: { start: string; end: string; location: string; radiusKm: number }) {
-  return `Controleer titel, datum, locatie en status. Gebruik status active, cancelled of postponed. Neem maximaal één evenement op, alleen tussen ${input.start} en ${input.end} en binnen ${input.radiusKm} km van ${input.location}. Baseer je uitsluitend op de tekst van de pagina's die je met web_fetch hebt opgehaald; een zoekfragment kan verouderd zijn, dus als een fragment een eerdere editie noemt en de opgehaalde pagina de huidige data toont, gelden de data van de opgehaalde pagina. Geef als sourceUrl altijd de gewone pagina-URL zonder #-fragment en zonder #:~:text=. Als de opgehaalde pagina het evenement bevestigt maar de data van de huidige editie niet noemt, gebruik dan je tweede web_fetch op een andere officiële eigenaarspagina (gemeente, sportbond, locatie of ticketverkoper) die die data wel noemt. Een uitagenda, blog, wiki of zoekpagina telt daarvoor niet. Leid data nooit af uit een terugkerend patroon zoals "het tweede weekend van oktober"; zet dateConfirmed dan op false. Neem bij een meerdaagse huidige editie de eerste en laatste bevestigde datum over; maak van een bevestigde meerdaagse editie geen eendaagse 00:00-23:59-vermelding. Classificeer aantoonbare extra overnachtingsvraag voor hotels: 35 Medium, 45 High of 60 Piek. Gebruik alleen feiten over de huidige editie. Negeer cumulatieve bezoekersaantallen van eerdere edities en algemene marketingclaims. Gebruik null als de pagina geen geloofwaardig signaal bevat over regionaal, nationaal of internationaal bereik, bezoekersaantallen, meerdaagse duur, een laat programma of hotelvraag. Reserveer 60 Piek voor stadsbrede, meerdaagse, internationale of uitzonderlijk grote evenementen. Neem actieve evenementen met null of Low impact niet op. Geef een specifieke locatie zodat die gegeocodeerd kan worden. Gebruik ownerType other voor een agenda, blog, wiki, zoekpagina of andere pagina die de evenementinformatie niet bezit.`;
+  return `Controleer titel, datum, locatie en status. Gebruik status active, cancelled of postponed. Neem maximaal één evenement op, alleen tussen ${input.start} en ${input.end} en binnen ${input.radiusKm} km van ${input.location}. Baseer je uitsluitend op de tekst van de pagina's die je met web_fetch hebt opgehaald; een zoekfragment kan verouderd zijn, dus als een fragment een eerdere editie noemt en de opgehaalde pagina de huidige data toont, gelden de data van de opgehaalde pagina. Geef als sourceUrl altijd de gewone pagina-URL zonder #-fragment en zonder #:~:text=. Als de opgehaalde pagina het evenement bevestigt maar de data van de huidige editie niet noemt, gebruik dan je tweede web_fetch op een andere officiële eigenaarspagina (gemeente, sportbond, locatie of ticketverkoper) die die data wel noemt. Een uitagenda, blog, wiki of zoekpagina telt daarvoor niet. Leid data nooit af uit een terugkerend patroon zoals "het tweede weekend van oktober"; zet dateConfirmed dan op false. Neem bij een meerdaagse huidige editie de eerste en laatste bevestigde datum over; maak van een bevestigde meerdaagse editie geen eendaagse 00:00-23:59-vermelding. Classificeer aantoonbare extra overnachtingsvraag voor hotels: 35 Medium, 45 High of 60 Piek. Geef alleen 45 High als de pagina meerdaagse duur, landelijke of internationale toestroom, of aantoonbaar grote bezoekersaantallen noemt; eenmalige avondprogrammering in een club, zaal of poppodium voor een lokaal of regionaal publiek is hooguit 35 Medium, ook als het woord festival in de naam staat. Gebruik alleen feiten over de huidige editie. Negeer cumulatieve bezoekersaantallen van eerdere edities en algemene marketingclaims. Gebruik null als de pagina geen geloofwaardig signaal bevat over regionaal, nationaal of internationaal bereik, bezoekersaantallen, meerdaagse duur, een laat programma of hotelvraag. Reserveer 60 Piek voor stadsbrede, meerdaagse, internationale of uitzonderlijk grote evenementen. Neem actieve evenementen met null of Low impact niet op. Geef een specifieke locatie zodat die gegeocodeerd kan worden. Gebruik ownerType other voor een agenda, blog, wiki, zoekpagina of andere pagina die de evenementinformatie niet bezit.`;
 }
 
 function usageTotals(messages: Anthropic.Message[], failedFetches: number) {
@@ -290,6 +339,7 @@ export async function collectClaude(
     client?: Anthropic;
     onUsage?: UsageObserver;
     geocode?: (query: string) => Promise<{ latitude: number; longitude: number } | null>;
+    triage?: (candidates: DiscoveredCandidate[]) => Promise<Map<number, string>>;
     knownUrls?: string[];
   },
 ): Promise<SourceResult> {
@@ -458,12 +508,29 @@ export async function collectClaude(
     if (candidateEnd > (existing.endDate ?? existing.startDate)) existing.endDate = candidateEnd;
   }
   const namesDiscovered = pool.length;
-  const urlEntries: VerificationEntry[] = [];
-  const nameEntries: VerificationEntry[] = [];
-  for (const candidate of pool) {
+  const inWindow = pool.filter((candidate) => {
     if (candidate.startDate > input.end || (candidate.endDate ?? candidate.startDate) < input.start) {
       recordDrop(candidate.title, "discovery", "Buiten het verzamelvenster.");
-      continue;
+      return false;
+    }
+    return true;
+  });
+  const triage = input.triage
+    ? { excluded: await input.triage(inWindow), requests: 0, messages: [] as Anthropic.Message[] }
+    : await triageDiscoveries({
+      candidates: inWindow,
+      location: input.location,
+      radiusKm: input.radiusKm,
+      client,
+      onUsage: input.onUsage,
+    });
+  const urlEntries: VerificationEntry[] = [];
+  const nameEntries: VerificationEntry[] = [];
+  inWindow.forEach((candidate, index) => {
+    const rejected = triage.excluded.get(index);
+    if (rejected !== undefined) {
+      recordDrop(candidate.title, "triage", rejected || "Geen aannemelijke hotelvraag op basis van de metadata.");
+      return;
     }
     const entry: VerificationEntry = {
       title: candidate.title,
@@ -474,7 +541,7 @@ export async function collectClaude(
       search: false,
     };
     (candidate.officialUrl ? urlEntries : nameEntries).push(entry);
-  }
+  });
 
   const pending: VerificationEntry[] = [
     ...urlEntries,
@@ -515,8 +582,8 @@ export async function collectClaude(
     return {
       source: "claude",
       candidates: [],
-      requests: searches.length + agendaTargets.length,
-      usage: usageTotals([...searches, ...agendaMessages], failedFetches),
+      requests: searches.length + agendaTargets.length + triage.requests,
+      usage: usageTotals([...searches, ...agendaMessages, ...triage.messages], failedFetches),
       funnel: { namesDiscovered, urlsResolved: 0, pagesVerified: 0, demandAccepted: 0, drops },
     };
   }
@@ -683,9 +750,9 @@ export async function collectClaude(
   return {
     source: "claude",
     candidates,
-    requests: searches.length + agendaTargets.length + queue.length,
+    requests: searches.length + agendaTargets.length + triage.requests + queue.length,
     usage: usageTotals(
-      [...searches, ...agendaMessages, ...verified.map(({ message }) => message)],
+      [...searches, ...agendaMessages, ...triage.messages, ...verified.map(({ message }) => message)],
       failedFetches,
     ),
     funnel: {

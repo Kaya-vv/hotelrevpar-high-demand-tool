@@ -270,6 +270,7 @@ describe("source adapters", () => {
       radiusKm: 25,
       model: "claude-sonnet-5",
       client: { messages: { create } } as unknown as Anthropic,
+      triage: async () => new Map<number, string>(),
     });
 
     expect(create).toHaveBeenCalledTimes(16);
@@ -378,6 +379,7 @@ describe("source adapters", () => {
       radiusKm: 25,
       model: "claude-test",
       client: { messages: { create } } as unknown as Anthropic,
+      triage: async () => new Map<number, string>(),
     });
 
     expect(result.candidates).toEqual([]);
@@ -414,6 +416,7 @@ describe("source adapters", () => {
       radiusKm: 25,
       model: "claude-test",
       client: { messages: { create } } as unknown as Anthropic,
+      triage: async () => new Map<number, string>(),
     });
 
     expect(create).toHaveBeenCalledTimes(14);
@@ -458,6 +461,7 @@ describe("source adapters", () => {
       radiusKm: 25,
       model: "claude-test",
       client: { messages: { create } } as unknown as Anthropic,
+      triage: async () => new Map<number, string>(),
     });
 
     expect(result.candidates).toEqual([]);
@@ -485,6 +489,7 @@ describe("source adapters", () => {
       radiusKm: 25,
       model: "claude-test",
       client: { messages: { create } } as unknown as Anthropic,
+      triage: async () => new Map<number, string>(),
     });
 
     expect(create).toHaveBeenCalledTimes(32);
@@ -516,6 +521,7 @@ describe("source adapters", () => {
       radiusKm: 25,
       model: "claude-test",
       client: { messages: { create } } as unknown as Anthropic,
+      triage: async () => new Map<number, string>(),
     });
 
     expect(result.funnel?.namesDiscovered).toBe(1);
@@ -539,6 +545,7 @@ describe("source adapters", () => {
       model: "claude-test",
       knownUrls: [knownUrl],
       client: { messages: { create } } as unknown as Anthropic,
+      triage: async () => new Map<number, string>(),
     });
 
     expect(create.mock.calls[12][0].messages[0].content).toContain(official);
@@ -583,6 +590,7 @@ describe("source adapters", () => {
       radiusKm: 25,
       model: "claude-test",
       client: { messages: { create } } as unknown as Anthropic,
+      triage: async () => new Map<number, string>(),
     });
 
     const verification = create.mock.calls[12][0];
@@ -628,6 +636,7 @@ describe("source adapters", () => {
       radiusKm: 25,
       model: "claude-test",
       client: { messages: { create } } as unknown as Anthropic,
+      triage: async () => new Map<number, string>(),
     });
 
     expect(result.candidates).toMatchObject([{ sourceUrl: plain, primarySourceConfirmed: false }]);
@@ -664,6 +673,7 @@ describe("source adapters", () => {
       radiusKm: 25,
       model: "claude-test",
       client: { messages: { create } } as unknown as Anthropic,
+      triage: async () => new Map<number, string>(),
     });
 
     expect(create.mock.calls[12][0].messages[0].content).toContain(agendaRoot);
@@ -700,6 +710,7 @@ describe("source adapters", () => {
       radiusKm: 25,
       model: "claude-test",
       client: { messages: { create } } as unknown as Anthropic,
+      triage: async () => new Map<number, string>(),
     });
 
     expect(create.mock.calls[12][0].messages[0].content).toContain(agendaRoot);
@@ -708,6 +719,42 @@ describe("source adapters", () => {
       .slice(13)
       .map(([request]) => request.messages[0].content as string);
     expect(verificationTargets.some((content) => content.includes(harvested))).toBe(true);
+  });
+
+  it("verifies only the candidates that survive metadata triage", async () => {
+    const festival = "https://organizer.nl/festival";
+    const clubNight = "https://venue.nl/club-night";
+    const create = vi.fn();
+    queueClaudeSearches(create, [
+      discoveredCandidate({ title: "Meerdaags Festival", officialUrl: festival }),
+      discoveredCandidate({ title: "Clubavond", startDate: "2027-09-16", endDate: null, officialUrl: clubNight }),
+    ]);
+    create.mockResolvedValue(verificationResponse(festival, []));
+
+    const triage = vi.fn().mockResolvedValue(
+      new Map([[1, "Eenmalige clubavond zonder bovenregionale toestroom."]]),
+    );
+    const result = await collectClaude({
+      ...claudeWindow,
+      location: "Eindhoven",
+      radiusKm: 25,
+      model: "claude-test",
+      client: { messages: { create } } as unknown as Anthropic,
+      triage,
+    });
+
+    expect(triage).toHaveBeenCalledWith([
+      expect.objectContaining({ title: "Meerdaags Festival" }),
+      expect.objectContaining({ title: "Clubavond" }),
+    ]);
+    expect(create).toHaveBeenCalledTimes(13);
+    expect(create.mock.calls[12][0].messages[0].content).toContain(festival);
+    expect(result.funnel?.namesDiscovered).toBe(2);
+    expect(result.funnel?.drops).toContainEqual({
+      title: "Clubavond",
+      stage: "triage",
+      reason: "Eenmalige clubavond zonder bovenregionale toestroom.",
+    });
   });
 
 
@@ -731,6 +778,7 @@ describe("source adapters", () => {
       radiusKm: 25,
       model: "claude-test",
       client: { messages: { create } } as unknown as Anthropic,
+      triage: async () => new Map<number, string>(),
     });
 
     expect(result.requests).toBe(12);
@@ -763,6 +811,7 @@ describe("source adapters", () => {
       model: "claude-test",
       discoveryModel: "claude-haiku-test",
       client: { messages: { create } } as unknown as Anthropic,
+      triage: async () => new Map<number, string>(),
     });
 
     create.mock.calls.slice(0, 13).forEach(([request]) => {
@@ -797,6 +846,7 @@ describe("source adapters", () => {
       knownUrls: [knownUrl],
       model: "claude-test",
       client: { messages: { create } } as unknown as Anthropic,
+      triage: async () => new Map<number, string>(),
     });
 
     expect(create.mock.calls[12][0].messages[0].content).toContain(knownUrl);
@@ -840,6 +890,7 @@ describe("source adapters", () => {
       radiusKm: 25,
       model: "claude-test",
       client: { messages: { create } } as unknown as Anthropic,
+      triage: async () => new Map<number, string>(),
     });
 
     expect(result.requests).toBe(14);
@@ -861,6 +912,7 @@ describe("source adapters", () => {
         radiusKm: 25,
         model: "claude-test",
         client,
+        triage: async () => new Map<number, string>(),
       })
     ).rejects.toThrow("Claude search timed out.");
   });
@@ -880,6 +932,7 @@ describe("source adapters", () => {
         radiusKm: 25,
         model: "claude-test",
         client,
+        triage: async () => new Map<number, string>(),
       })
     ).rejects.toThrow("Claude verification timed out.");
   });
@@ -907,6 +960,7 @@ describe("source adapters", () => {
         radiusKm: 25,
         model: "claude-test",
         client,
+        triage: async () => new Map<number, string>(),
       })
     ).rejects.toThrow("Claude verification reached its token limit.");
   });
