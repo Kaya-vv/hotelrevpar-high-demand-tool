@@ -38,9 +38,19 @@ export function localParts(value: string) {
   };
 }
 
+// Venue is free text and the model rephrases it every run - "Diverse locaties, Eindhoven centrum"
+// one day, "Strijp-S en 100+ locaties in Eindhoven" the next - which gave one festival a fresh
+// identity each time. A coarse coordinate bucket keeps different cities apart without depending
+// on how the venue happens to be worded.
+function placeKey(candidate: EventCandidate) {
+  if (candidate.latitude !== null && candidate.longitude !== null) {
+    return `${candidate.latitude.toFixed(1)},${candidate.longitude.toFixed(1)}`;
+  }
+  return normalizeText(candidate.venue ?? candidate.regionScope ?? "unknown");
+}
+
 export function normalizeCandidate(candidate: EventCandidate): NormalizedCandidate {
   const localStartDate = localParts(candidate.startAt).date;
-  const place = candidate.venue ?? candidate.regionScope ?? "unknown";
   const normalizedTitle = normalizeText(candidate.title);
 
   return {
@@ -48,7 +58,7 @@ export function normalizeCandidate(candidate: EventCandidate): NormalizedCandida
     localStartDate,
     localEndDate: candidate.endAt ? localParts(candidate.endAt).date : localStartDate,
     normalizedTitle,
-    normalizedIdentity: [normalizedTitle, localStartDate, normalizeText(place)].join("|"),
+    normalizedIdentity: [normalizedTitle, localStartDate, placeKey(candidate)].join("|"),
   };
 }
 

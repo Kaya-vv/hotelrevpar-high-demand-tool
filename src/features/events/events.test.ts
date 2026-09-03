@@ -158,6 +158,36 @@ describe("event domain", () => {
     expect(classifyMatch(nextMonth, [{ ...dayOne, id: "rc-1" }]).kind).toBe("new");
   });
 
+  it("gives one festival the same identity however the venue is worded", () => {
+    // The four stored Dutch Design Week rows, all created by one run on 28 August.
+    const phrasings = [
+      { venue: "Diverse locaties, Eindhoven centrum", latitude: 51.4416, longitude: 5.4697 },
+      { venue: "Diverse locaties in Eindhoven (o.a. Strijp-S)", latitude: 51.4416, longitude: 5.4697 },
+      { venue: "Strijp-S en 100+ locaties in Eindhoven", latitude: 51.4362, longitude: 5.4589 },
+      { venue: "Klokgebouw / Eindhoven", latitude: 51.4485, longitude: 5.4623 },
+    ].map((place, index) =>
+      normalizeCandidate({ ...candidate, providerEventId: `ddw-${index}`, title: "Dutch Design Week 2026", ...place }),
+    );
+
+    expect(new Set(phrasings.map((p) => p.normalizedIdentity)).size).toBe(1);
+    expect(classifyMatch(phrasings[3], [{ ...phrasings[0], id: "ddw-1" }])).toEqual({
+      kind: "exact",
+      eventId: "ddw-1",
+    });
+
+    // A touring show with the same name in another city stays its own event.
+    const amsterdam = normalizeCandidate({
+      ...candidate,
+      providerEventId: "ddw-ams",
+      title: "Dutch Design Week 2026",
+      venue: "Westergas",
+      latitude: 52.3861,
+      longitude: 4.8721,
+    });
+    expect(amsterdam.normalizedIdentity).not.toBe(phrasings[0].normalizedIdentity);
+    expect(classifyMatch(amsterdam, [{ ...phrasings[0], id: "ddw-1" }]).kind).toBe("new");
+  });
+
   it("automatically merges reordered titles and harmless year suffixes", () => {
     const normalized = normalizeCandidate(candidate);
     const sameEvent = normalizeCandidate({
