@@ -434,9 +434,15 @@ export async function collectClaude(
   const venueAgendas = discovered.flatMap((candidate) =>
     candidate.officialUrl ? [parentPath(candidate.officialUrl)] : [],
   ).filter((url): url is string => Boolean(url));
+  // A venue whose agenda paid off once keeps paying off - its listing carries next month's
+  // programme. Derive roots from already-confirmed URLs too, so the channel survives a week
+  // where no search happens to surface that venue.
+  const knownAgendas = (input.knownUrls ?? [])
+    .map((url) => parentPath(url))
+    .filter((url): url is string => Boolean(url));
   // A listing a candidate claims as its official page is still a listing:
   // harvest it here rather than letting verification reject it as ownerType other.
-  for (const url of [...venueAgendas, ...foundAgendaUrls]) {
+  for (const url of [...venueAgendas, ...foundAgendaUrls, ...knownAgendas]) {
     const key = comparableUrl(url);
     if (seenAgendaKeys.has(key)) continue;
     seenAgendaKeys.add(key);

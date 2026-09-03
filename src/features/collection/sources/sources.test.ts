@@ -812,6 +812,28 @@ describe("source adapters", () => {
     expect(retry).toContain(official);
   });
 
+  it("keeps harvesting a venue agenda learned in an earlier run", async () => {
+    // Helldorado and Revolution Calling only ever surfaced via klokgebouw.nl/agenda.
+    const create = vi.fn();
+    queueClaudeSearches(create, [discoveredCandidate({ officialUrl: "https://organizer.nl/event" })]);
+    create.mockResolvedValue(verificationResponse("https://organizer.nl/event", []));
+
+    await collectClaude({
+      ...claudeWindow,
+      location: "Eindhoven",
+      radiusKm: 25,
+      model: "claude-test",
+      knownUrls: ["https://www.klokgebouw.nl/agenda/helldorado-2026"],
+      client: { messages: { create } } as unknown as Anthropic,
+      triage: async () => new Map<number, string>(),
+    });
+
+    const harvested = create.mock.calls
+      .map(([request]) => request.messages[0].content as string)
+      .some((content) => content.includes("https://www.klokgebouw.nl/agenda"));
+    expect(harvested).toBe(true);
+  });
+
 
 
   it("keeps collecting when one discovery search fails", async () => {
