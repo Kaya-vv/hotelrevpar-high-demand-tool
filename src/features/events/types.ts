@@ -37,6 +37,7 @@ export type NormalizedCandidate = EventCandidate & {
   normalizedTitle: string;
   normalizedIdentity: string;
   localStartDate: string;
+  localEndDate: string;
 };
 
 export type ValidationReason =

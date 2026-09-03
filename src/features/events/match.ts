@@ -3,7 +3,8 @@ import { distanceKm } from "./distance";
 
 type ExistingEvent = NormalizedCandidate & { id: string };
 export type Match =
-  | { kind: "exact" | "uncertain"; eventId: string }
+  | { kind: "exact"; eventId: string; extend?: boolean }
+  | { kind: "uncertain"; eventId: string }
   | { kind: "new"; eventId: null };
 
 function similarity(left: string, right: string) {
@@ -27,6 +28,12 @@ function similarity(left: string, right: string) {
   const prefix = shorter.length > 0 && shorter.every((token, index) => longer[index] === token);
   const containment = smallest >= 3 || prefix ? shared / smallest : 0;
   return Math.max(jaccard, containment);
+}
+
+function nextDay(value: string) {
+  const date = new Date(`${value}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
 }
 
 function samePlace(left: NormalizedCandidate, right: NormalizedCandidate) {
@@ -89,6 +96,17 @@ export function classifyMatch(
           similarity(event.normalizedTitle, candidate.normalizedTitle) >= 0.8))
   );
   if (strong) return { kind: "exact", eventId: strong.id };
+
+  // A venue agenda lists each day of a multi-day programme as its own entry. An identical title
+  // at the same place on a touching or overlapping date range is one event, not two.
+  const consecutive = existing.find(
+    (event) =>
+      event.normalizedTitle === candidate.normalizedTitle &&
+      samePlace(event, candidate) &&
+      event.localStartDate <= nextDay(candidate.localEndDate) &&
+      candidate.localStartDate <= nextDay(event.localEndDate)
+  );
+  if (consecutive) return { kind: "exact", eventId: consecutive.id, extend: true };
 
   const uncertain = existing.find(
     (event) =>

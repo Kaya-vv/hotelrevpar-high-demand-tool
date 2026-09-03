@@ -46,6 +46,7 @@ export function normalizeCandidate(candidate: EventCandidate): NormalizedCandida
   return {
     ...candidate,
     localStartDate,
+    localEndDate: candidate.endAt ? localParts(candidate.endAt).date : localStartDate,
     normalizedTitle,
     normalizedIdentity: [normalizedTitle, localStartDate, normalizeText(place)].join("|"),
   };

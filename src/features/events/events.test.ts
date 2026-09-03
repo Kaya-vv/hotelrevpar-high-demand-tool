@@ -125,6 +125,39 @@ describe("event domain", () => {
     ).toBe("uncertain");
   });
 
+  it("merges the second day of a programme a venue agenda lists per day", () => {
+    // Klokgebouw lists Revolution Calling as /revolution-calling-20-11 and /-21-11.
+    const dayOne = normalizeCandidate({
+      ...candidate,
+      providerEventId: "rc-20",
+      title: "Revolution Calling",
+      venue: "Klokgebouw",
+      startAt: "2026-11-20T19:00:00+01:00",
+      endAt: "2026-11-20T23:59:00+01:00",
+    });
+    const dayTwo = normalizeCandidate({
+      ...candidate,
+      providerEventId: "rc-21",
+      title: "Revolution Calling",
+      venue: "Klokgebouw",
+      startAt: "2026-11-21T19:00:00+01:00",
+      endAt: "2026-11-21T23:59:00+01:00",
+    });
+    expect(classifyMatch(dayTwo, [{ ...dayOne, id: "rc-1" }])).toEqual({
+      kind: "exact",
+      eventId: "rc-1",
+      extend: true,
+    });
+
+    const nextMonth = normalizeCandidate({
+      ...dayTwo,
+      providerEventId: "rc-dec",
+      startAt: "2026-12-20T19:00:00+01:00",
+      endAt: "2026-12-20T23:59:00+01:00",
+    });
+    expect(classifyMatch(nextMonth, [{ ...dayOne, id: "rc-1" }]).kind).toBe("new");
+  });
+
   it("automatically merges reordered titles and harmless year suffixes", () => {
     const normalized = normalizeCandidate(candidate);
     const sameEvent = normalizeCandidate({

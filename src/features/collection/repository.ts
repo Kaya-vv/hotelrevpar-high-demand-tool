@@ -233,6 +233,8 @@ export function createCollectionRepository(): CollectionRepository {
       let conflict: ValidationReason | null = null;
       let preserveCanonical = automatedSourceStates.has(candidate.sourceState);
       let duplicate = false;
+      let canonicalStartAt = candidate.startAt;
+      let canonicalEndAt = candidate.endAt;
       let reviewTargetEventId: string | null = null;
 
       if (existingSource) {
@@ -325,6 +327,14 @@ export function createCollectionRepository(): CollectionRepository {
             eventId = match.eventId;
             duplicate = true;
             preserveCanonical = !shouldRefreshCanonical(candidate);
+            const merged = match.extend ? nearby.find((event) => event.id === match.eventId) : null;
+            if (merged) {
+              // Day two of the same programme must widen the stored range, never replace it.
+              const mergedEnd = merged.end_at ?? merged.start_at;
+              const candidateEnd = candidate.endAt ?? candidate.startAt;
+              canonicalStartAt = merged.start_at < canonicalStartAt ? merged.start_at : canonicalStartAt;
+              canonicalEndAt = mergedEnd > candidateEnd ? mergedEnd : candidateEnd;
+            }
           }
           if (match.kind === "uncertain") {
             duplicate = true;
@@ -342,8 +352,8 @@ export function createCollectionRepository(): CollectionRepository {
         latitude: candidate.latitude,
         longitude: candidate.longitude,
         region_scope: candidate.regionScope,
-        start_at: candidate.startAt,
-        end_at: candidate.endAt,
+        start_at: canonicalStartAt,
+        end_at: canonicalEndAt,
         source_state: candidate.sourceState,
         certainty: candidate.certainty,
         updated_at: new Date().toISOString(),
