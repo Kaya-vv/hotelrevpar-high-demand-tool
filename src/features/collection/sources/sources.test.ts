@@ -756,6 +756,40 @@ describe("source adapters", () => {
       reason: "Eenmalige clubavond zonder bovenregionale toestroom.",
     });
   });
+  it("never puts a multi-day candidate through metadata triage", async () => {
+    const create = vi.fn();
+    queueClaudeSearches(create, [
+      discoveredCandidate({
+        title: "Revolution Calling",
+        startDate: "2027-09-20",
+        endDate: "2027-09-21",
+        officialUrl: "https://venue.nl/revolution-calling",
+      }),
+      discoveredCandidate({
+        title: "Marillion",
+        startDate: "2027-09-16",
+        endDate: null,
+        officialUrl: "https://venue.nl/marillion",
+      }),
+    ]);
+    create.mockResolvedValue(verificationResponse("https://venue.nl/revolution-calling", []));
+
+    await collectClaude({
+      ...claudeWindow,
+      location: "Eindhoven",
+      radiusKm: 25,
+      model: "claude-test",
+      client: { messages: { create } } as unknown as Anthropic,
+    });
+
+    const triageRequest = create.mock.calls
+      .map(([request]) => request.messages[0].content as string)
+      .find((content) => content.includes("welke kandidaten een webcontrole waard zijn"));
+    expect(triageRequest).toBeDefined();
+    expect(triageRequest).toContain("Marillion");
+    expect(triageRequest).not.toContain("Revolution Calling");
+  });
+
 
 
   it("keeps collecting when one discovery search fails", async () => {

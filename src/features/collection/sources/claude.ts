@@ -280,8 +280,13 @@ async function triageDiscoveries(input: {
   const excluded = new Map<number, string>();
   let requests = 0;
   const messages: Anthropic.Message[] = [];
-  for (let offset = 0; offset < input.candidates.length; offset += 40) {
-    const batch = input.candidates.slice(offset, offset + 40);
+  // A programme spanning two or more calendar days can create an overnight stay by itself,
+  // so it is never dropped on metadata alone.
+  const eligible = input.candidates
+    .map((candidate, index) => ({ candidate, index }))
+    .filter(({ candidate }) => (candidate.endDate ?? candidate.startDate) === candidate.startDate);
+  for (let offset = 0; offset < eligible.length; offset += 40) {
+    const batch = eligible.slice(offset, offset + 40);
     try {
       const message = await requestPhase("triage", () => input.client.messages.create({
         model,
@@ -289,7 +294,7 @@ async function triageDiscoveries(input: {
         output_config: { format: zodOutputFormat(discoveryTriageSchema) },
         messages: [{
           role: "user",
-          content: `Beoordeel op basis van alleen deze metadata welke kandidaten een webcontrole waard zijn voor een hotel in ${input.location} met een straal van ${input.radiusKm} km. Kies verify voor meerdaagse evenementen, congressen, vakbeurzen, festivals of sportevenementen met bovenregionale, landelijke of internationale toestroom, en voor alles wat aannemelijk extra hotelovernachtingen veroorzaakt. Kies exclude alleen als de metadata duidelijk wijst op eenmalige avondprogrammering in een club of zaal, een markt, een buurtfestival, een bioscoop- of theatervoorstelling, een cursus of een wekelijkse activiteit zonder bovenregionale toestroom. Kies bij twijfel altijd verify. Geef voor elke index precies één beslissing met een korte reden. Kandidaten:\n${JSON.stringify(batch.map((candidate, index) => ({ index: offset + index, title: candidate.title, startDate: candidate.startDate, endDate: candidate.endDate, venue: candidate.venue, city: candidate.city, category: candidate.category })))}`,
+          content: `Beoordeel op basis van alleen deze metadata welke kandidaten een webcontrole waard zijn voor een hotel in ${input.location} met een straal van ${input.radiusKm} km. Elke kandidaat duurt één dag. Kies exclude alleen als de titel een optredende artiest, band, dj, comedian of tournee noemt, of als het duidelijk gaat om een doorlopende theater- of bioscoopvoorstelling, een warenmarkt, een cursus of een wekelijkse activiteit. Dat zijn gewone zaalavonden waarvoor bezoekers niet blijven overnachten. Kies verify voor elke naam die een evenement, festival, beurs, congres, wedstrijd of stadsbreed programma aanduidt, ook als het maar één dag duurt en ook als je de naam niet kent; een eigen merknaam zonder artiestennaam is vrijwel altijd een evenement. Kies bij twijfel verify. Geef voor elke index precies één beslissing met een korte reden. Kandidaten:\n${JSON.stringify(batch.map(({ candidate, index }) => ({ index, title: candidate.title, startDate: candidate.startDate, endDate: candidate.endDate, venue: candidate.venue, city: candidate.city, category: candidate.category })))}`,
         }],
       }, triageRequestOptions));
       requests += 1;
@@ -298,8 +303,9 @@ async function triageDiscoveries(input: {
       if (message.stop_reason === "max_tokens") continue;
       const text = message.content.find((block) => block.type === "text")?.text;
       if (!text) continue;
+      const batchIds = new Set(batch.map(({ index }) => index));
       discoveryTriageSchema.parse(JSON.parse(text)).reviews.forEach((review) => {
-        if (review.decision === "exclude" && review.index >= offset && review.index < offset + batch.length) {
+        if (review.decision === "exclude" && batchIds.has(review.index)) {
           excluded.set(review.index, review.reason);
         }
       });
