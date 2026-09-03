@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
-import { requireAccount } from "@/lib/auth/require-account";
+import { requirePlatformAdmin } from "@/lib/auth/require-account";
 import { createServerClient } from "@/lib/supabase/server";
 
 import { enqueueCollectionAreas } from "./jobs";
@@ -45,7 +45,7 @@ export async function refreshHotel(
   _state: RefreshState,
   formData: FormData
 ): Promise<RefreshState> {
-  const { accountId, userId } = await requireAccount();
+  const { accountId, userId } = await requirePlatformAdmin();
   const hotelId = String(formData.get("hotelId") ?? "");
   const { data: area, error } = await (await createServerClient())
     .from("collection_areas")
@@ -81,7 +81,7 @@ export async function refreshHotel(
 }
 
 export async function refreshAllHotels(): Promise<RefreshState> {
-  const { accountId, userId } = await requireAccount();
+  const { accountId, userId } = await requirePlatformAdmin();
   const { data: areas, error } = await (await createServerClient())
     .from("collection_areas")
     .select("id")

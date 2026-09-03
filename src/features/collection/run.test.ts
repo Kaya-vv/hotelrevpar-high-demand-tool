@@ -43,11 +43,11 @@ it("uses a rolling 90-day collection window", () => {
   });
 });
 
-it("runs Claude discovery again after seven days", () => {
+it("runs Claude discovery again after thirty days", () => {
   const now = new Date("2026-09-01T12:00:00Z");
   expect(claudeDiscoveryDue(null, now)).toBe(true);
-  expect(claudeDiscoveryDue("2026-08-26T12:00:01Z", now)).toBe(false);
-  expect(claudeDiscoveryDue("2026-08-25T12:00:00Z", now)).toBe(true);
+  expect(claudeDiscoveryDue("2026-08-02T12:00:01Z", now)).toBe(false);
+  expect(claudeDiscoveryDue("2026-08-02T12:00:00Z", now)).toBe(true);
 });
 
 it("selects the oldest unique Claude pages inside the active window", () => {
@@ -409,7 +409,7 @@ describe("runCollection", () => {
     expect(repo.persistCandidate).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ providerEventId: "phq-2", primarySourceConfirmed: true }));
   });
 
-  it("runs scheduled Claude discovery at most once every 7 days", async () => {
+  it("runs scheduled Claude discovery at most once every 30 days", async () => {
     const claude = vi.fn();
     const repo = repository({
       shouldRunClaudeDiscovery: vi.fn().mockResolvedValue(false),
@@ -427,11 +427,11 @@ describe("runCollection", () => {
     expect(claude).not.toHaveBeenCalled();
     expect(result.sourceResults.claude).toEqual({
       state: "skipped",
-      reason: "Claude discovery runs at most once every 7 days.",
+      reason: "Claude discovery runs at most once every 30 days.",
     });
   });
 
-  it("runs Claude discovery on manual refresh during the 7-day cooldown", async () => {
+  it("runs Claude discovery on manual refresh during the 30-day cooldown", async () => {
     const claude = vi.fn().mockResolvedValue({
       source: "claude",
       candidates: [],

@@ -1,4 +1,4 @@
-# HotelRevPar High Demand Tool Pilot Runbook
+# DemandRadar Pilot Runbook
 
 Record the evidence for each gate before calling the data-quality demo ready. Deployment and RevControl import remain later milestones.
 

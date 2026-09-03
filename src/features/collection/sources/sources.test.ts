@@ -4,6 +4,7 @@ import {
   type default as Anthropic,
 } from "@anthropic-ai/sdk";
 
+import footballdataFixture from "../../../../tests/fixtures/footballdata.json";
 import openHolidaysFixture from "../../../../tests/fixtures/openholidays.json";
 import predictHqFixture from "../../../../tests/fixtures/predicthq.json";
 import rijksoverheidFixture from "../../../../tests/fixtures/rijksoverheid.json";
@@ -15,6 +16,7 @@ import {
   triageExclusionAllowed,
   verifyPredictHqCandidates,
 } from "./claude";
+import { collectFootballdata } from "./footballdata";
 import { collectOpenHolidays } from "./openholidays";
 import { collectPredictHq } from "./predicthq";
 import { collectRijksoverheid } from "./rijksoverheid";
@@ -176,6 +178,39 @@ describe("source adapters", () => {
     expect(url.searchParams.get("radius")).toBe("25");
     expect(url.searchParams.get("unit")).toBe("km");
     expect(url.searchParams.has("city")).toBe(false);
+  });
+
+  it("keeps only Dutch home Champions League ties inside the window", async () => {
+    const fetcher = vi.fn().mockResolvedValue(jsonResponse(footballdataFixture));
+    const result = await collectFootballdata({
+      ...window,
+      apiKey: "test",
+      fetcher,
+    });
+    expect(result.candidates).toHaveLength(2);
+    expect(result.candidates.map((event) => event.providerEventId)).toEqual([
+      "501",
+      "504",
+    ]);
+    expect(result.candidates.map((event) => event.sourceState)).toEqual([
+      "active",
+      "postponed",
+    ]);
+    expect(result.candidates[0]).toMatchObject({
+      title: "PSV - Club Brugge (Champions League)",
+      category: "sports",
+      venue: "Philips Stadion",
+      latitude: 51.4417,
+      longitude: 5.4675,
+      publicSourceUrl: "https://www.psv.nl",
+    });
+    expect(
+      new Date(result.candidates[0].endAt).getTime() -
+        new Date(result.candidates[0].startAt).getTime()
+    ).toBe(2 * 60 * 60 * 1000);
+    expect(
+      (fetcher.mock.calls[0][1] as RequestInit).headers
+    ).toMatchObject({ "X-Auth-Token": "test" });
   });
 
   it("keeps PredictHQ predicted events provisional", async () => {

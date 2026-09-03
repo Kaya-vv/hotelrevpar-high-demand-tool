@@ -1,4 +1,3 @@
-import { RefreshAllForm } from "@/features/collection/refresh-all-form";
 import { getDashboardData } from "@/features/dashboard/query";
 import { PortfolioForm } from "@/features/portfolio/portfolio-form";
 import { getPortfolio } from "@/features/portfolio/queries";
@@ -22,7 +21,6 @@ export default async function PortfolioPage() {
             zoekinstellingen.
           </p>
         </header>
-        {portfolio.hotels.length > 0 && <RefreshAllForm />}
       </div>
       <PortfolioForm
         {...portfolio}

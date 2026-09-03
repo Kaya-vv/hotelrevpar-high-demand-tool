@@ -7,7 +7,7 @@ const otpTypes = new Set<EmailOtpType>(["email", "email_change", "invite", "magi
 
 export function safeNextPath(value: string | null) {
   if (!value) return "/calendar";
-  const base = "https://hotelrevpar.invalid";
+  const base = "https://demandradar.invalid";
   try {
     const target = new URL(value, base);
     return target.origin === base ? `${target.pathname}${target.search}${target.hash}` : "/calendar";

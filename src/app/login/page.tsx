@@ -3,9 +3,10 @@ import Image from "next/image";
 import { login } from "./actions";
 
 const errorMessages: Record<string, string> = {
-  account: "Dit account is niet actief. Neem contact op met HotelRevPar.",
+  account: "Dit account is niet actief. Neem contact op met DemandRadar.",
   credentials: "Controleer je e-mailadres en wachtwoord.",
-  invite: "De uitnodiging is verlopen of ongeldig. Vraag HotelRevPar om een nieuwe uitnodiging.",
+  invite:
+    "De uitnodiging is verlopen of ongeldig. Vraag DemandRadar om een nieuwe uitnodiging.",
 };
 
 export default async function LoginPage({
@@ -18,9 +19,8 @@ export default async function LoginPage({
   return (
     <main className="login-page">
       <section className="login-card">
-        <Image src="/logo.webp" alt="HotelRevPar" width={210} height={153} priority />
+        <Image src="/DemandRadar-Logo.png" alt="DemandRadar" width={210} height={140} priority />
         <div>
-          <span className="eyebrow">High Demand Tool</span>
           <h1>Inloggen</h1>
         </div>
         {error && <p className="notice error">{errorMessages[error] ?? "Inloggen is mislukt."}</p>}

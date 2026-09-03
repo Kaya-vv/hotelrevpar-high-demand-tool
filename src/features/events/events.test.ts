@@ -531,6 +531,28 @@ describe("event domain", () => {
     ).toEqual({ points: 35, basis: "ai_assessment" });
   });
 
+  it("scores a marquee fixture on the competition rule without attendance data", () => {
+    expect(
+      impact({
+        localRank: null,
+        attendance: null,
+        venueCapacity: null,
+        category: "sports",
+        title: "PSV - Club Brugge (Champions League)",
+      })
+    ).toEqual({ points: 60, basis: "competition_rule" });
+    expect(
+      impact({
+        localRank: null,
+        attendance: null,
+        venueCapacity: null,
+        category: "sports",
+        title: "PSV - Heracles",
+      })
+    ).toEqual({ points: 20, basis: "default" });
+    expect(isPublishableDemand("Peak", "competition_rule")).toBe(true);
+  });
+
   it("returns zero distance points at the radius edge", () => {
     const hotel = { latitude: 51.44, longitude: 5.48 };
     const edgeLatitude = hotel.latitude + 25 / 111.195;

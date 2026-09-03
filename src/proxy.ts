@@ -35,5 +35,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|logo.webp|auth).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|DemandRadar-Logo.png|auth).*)"],
 };

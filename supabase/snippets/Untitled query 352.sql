@@ -1,6 +1,6 @@
 with robert_account as (
   insert into public.accounts (name)
-  values ('HotelRevPar test')
+  values ('DemandRadar test')
   returning id
 )
 insert into public.account_members (account_id, user_id, role)

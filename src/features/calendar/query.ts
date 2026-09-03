@@ -13,7 +13,6 @@ import type { ReviewEvent } from "@/features/review/review-list";
 export type CalendarFilters = {
   month: string;
   category?: string;
-  maxDistance?: number;
   importance?: DemandLevel;
 };
 
@@ -156,15 +155,6 @@ export async function getCalendarData(
     .filter((event) => event.sources.length > 0)
     .filter((event) => event.hotelScores.length > 0)
     .filter((event) => !filters.category || event.category === filters.category)
-    .filter(
-      (event) =>
-        filters.maxDistance === undefined ||
-        event.hotelScores.some(
-          (score) =>
-            score.distanceKm === null ||
-            score.distanceKm <= filters.maxDistance!
-        )
-    )
     .filter(
       (event) =>
         !filters.importance ||

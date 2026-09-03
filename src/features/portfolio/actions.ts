@@ -54,8 +54,8 @@ export async function saveHotel(
           "rijksoverheid",
           "openholidays",
           "ticketmaster",
-          "predicthq",
           "claude",
+          "footballdata",
         ];
   const parsed = hotelInput.safeParse({
     ...Object.fromEntries(formData),

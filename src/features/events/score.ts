@@ -73,6 +73,8 @@ export function impact(input: {
     const basis = input.attendance !== null ? "attendance" : "venue_capacity";
     return { points, basis };
   }
+  if (marqueeSport(input.category, input.title))
+    return { points: 60, basis: "competition_rule" };
   if (input.category === "school_holiday")
     return { points: 30, basis: "holiday_rule" };
   if (input.category === "public_holiday")

@@ -1,4 +1,6 @@
 import type { SourceHealthRun } from "@/features/accounts/source-health";
+import { RefreshAllForm } from "@/features/collection/refresh-all-form";
+import { RefreshHotelForm } from "@/features/collection/refresh-hotel-form";
 
 export function runStatusLabel(run: SourceHealthRun) {
   if (!run.finishedAt) return "Bezig";
@@ -42,15 +44,24 @@ export function SourceHealthTable({ runs }: { runs: SourceHealthRun[] }) {
 }
 
 export default async function SourceHealthPage() {
-  const [{ requirePlatformAdmin }, { getSourceHealthRuns }] = await Promise.all([
-    import("@/lib/auth/require-account"),
-    import("@/features/accounts/source-health"),
-  ]);
-  await requirePlatformAdmin();
+  const [{ requirePlatformAdmin }, { getSourceHealthRuns }, { getHotelScope }] =
+    await Promise.all([
+      import("@/lib/auth/require-account"),
+      import("@/features/accounts/source-health"),
+      import("@/features/workspace/hotel-context"),
+    ]);
+  const account = await requirePlatformAdmin();
+  const scope = await getHotelScope(account.accountId);
   const runs = await getSourceHealthRuns();
   return (
     <main className="admin-page">
       <header className="page-title"><span className="eyebrow">Platformbeheer</span><h1>Bronstatus</h1><p>De laatste 100 verzamelruns met aantallen, fouten en API-verbruik.</p></header>
+      <div className="admin-refresh">
+        {scope.selectedHotelId && (
+          <RefreshHotelForm hotelId={scope.selectedHotelId} />
+        )}
+        <RefreshAllForm />
+      </div>
       <SourceHealthTable runs={runs} />
     </main>
   );

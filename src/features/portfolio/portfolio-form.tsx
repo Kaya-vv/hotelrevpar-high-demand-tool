@@ -14,6 +14,7 @@ const sources = [
   ["ticketmaster", "Ticketmaster"],
   ["predicthq", "PredictHQ"],
   ["claude", "Claude webaanvulling"],
+  ["footballdata", "Champions League"],
 ] as const;
 
 function FieldError({ state, name }: { state: FormState; name: string }) {
@@ -107,7 +108,9 @@ function HotelEditor({
                   type="checkbox"
                   value={value}
                   defaultChecked={
-                    hotel ? hotel.enabled_sources.includes(value) : true
+                    hotel
+                      ? hotel.enabled_sources.includes(value)
+                      : value !== "predicthq"
                   }
                 />
                 {label}

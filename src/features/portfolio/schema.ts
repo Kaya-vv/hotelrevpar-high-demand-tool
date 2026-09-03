@@ -6,6 +6,7 @@ export const sourceName = z.enum([
   "ticketmaster",
   "predicthq",
   "claude",
+  "footballdata",
   "uefa",
 ]);
 

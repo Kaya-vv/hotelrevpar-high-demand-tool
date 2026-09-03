@@ -91,13 +91,6 @@ a {
   background: var(--white);
 }
 
-.brand span {
-  color: #bce7f1;
-  font-size: 0.78rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
 .sidebar nav,
 .nav-group {
   display: grid;
@@ -459,14 +452,10 @@ a {
 
 .filter-bar {
   display: grid;
-  grid-template-columns: repeat(4, minmax(140px, 1fr)) auto;
+  grid-template-columns: repeat(2, minmax(180px, 260px));
   gap: 10px;
   align-items: end;
   margin-bottom: 20px;
-  padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--white);
 }
 
 .filter-bar label {
@@ -610,12 +599,6 @@ a {
   cursor: pointer;
 }
 
-.calendar-chip:hover,
-.calendar-chip.selected {
-  color: var(--white);
-  background: var(--blue);
-}
-
 .calendar-chip.high {
   border-left-color: #dd6547;
 }
@@ -623,6 +606,12 @@ a {
 .calendar-chip.peak {
   border-left-color: var(--orange-action);
   background: #fff0ec;
+}
+
+.calendar-chip:hover,
+.calendar-chip.selected {
+  color: var(--white);
+  background: var(--blue);
 }
 
 .event-overview {
@@ -988,6 +977,14 @@ td {
   max-width: 440px;
   justify-items: end;
   gap: 8px;
+}
+
+.admin-refresh {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
 }
 
 .onboarding-empty {

@@ -18,9 +18,8 @@ export default async function SetPasswordPage({
   return (
     <main className="login-page">
       <section className="login-card">
-        <Image src="/logo.webp" alt="HotelRevPar" width={210} height={153} priority />
+        <Image src="/DemandRadar-Logo.png" alt="DemandRadar" width={210} height={140} priority />
         <div>
-          <span className="eyebrow">High Demand Tool</span>
           <h1>Wachtwoord instellen</h1>
         </div>
         {error && <p className="notice error">{errorMessages[error] ?? "Probeer het opnieuw."}</p>}

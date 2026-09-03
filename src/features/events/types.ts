@@ -4,6 +4,7 @@ export type SourceName =
   | "ticketmaster"
   | "predicthq"
   | "claude"
+  | "footballdata"
   | "uefa";
 
 export type EventCandidate = {
@@ -67,6 +68,7 @@ export type DemandScore = {
     | "venue_capacity"
     | "ai_assessment"
     | "holiday_rule"
+    | "competition_rule"
     | "default";
   distanceKm: number | null;
   distancePoints: number;

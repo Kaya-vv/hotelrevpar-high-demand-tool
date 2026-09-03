@@ -33,16 +33,15 @@ export function AppShell({
         <Link
           className="brand"
           href="/calendar"
-          aria-label="HotelRevPar vraagmomenten"
+          aria-label="DemandRadar vraagmomenten"
         >
           <Image
-            src="/logo.webp"
-            alt="HotelRevPar"
+            src="/DemandRadar-Logo.png"
+            alt="DemandRadar"
             width={180}
-            height={131}
+            height={120}
             priority
           />
-          <span>High Demand Tool</span>
         </Link>
         <AppNavigation
           isPlatformAdmin={isPlatformAdmin}

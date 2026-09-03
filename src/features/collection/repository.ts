@@ -26,7 +26,7 @@ import {
 } from "./run";
 import { shouldRefreshCanonical, sourceChange } from "./source-change";
 
-const structuredUpdateProviders = new Set(["rijksoverheid", "openholidays", "ticketmaster", "predicthq"]);
+const structuredUpdateProviders = new Set(["rijksoverheid", "openholidays", "ticketmaster", "predicthq", "footballdata"]);
 const automatedSourceStates = new Set<EventCandidate["sourceState"]>(["cancelled", "postponed", "removed"]);
 
 function publicSourceUrl(candidate: EventCandidate) {
@@ -34,7 +34,8 @@ function publicSourceUrl(candidate: EventCandidate) {
   if (!value) return null;
   if (/[\s'"{}\[\]]/.test(value)) return null;
   try {
-    return new URL(value).hostname === "api.predicthq.com" ? null : value;
+    const hostname = new URL(value).hostname;
+    return hostname === "api.predicthq.com" || hostname === "api.football-data.org" ? null : value;
   } catch {
     return null;
   }

@@ -1,11 +1,11 @@
 import Link from "next/link";
 
+import { CalendarFilters } from "@/features/calendar/calendar-filters";
 import { CalendarView } from "@/features/calendar/calendar-view";
 import {
-  type CalendarFilters,
+  type CalendarFilters as CalendarQueryFilters,
   getCalendarData,
 } from "@/features/calendar/query";
-import { RefreshHotelForm } from "@/features/collection/refresh-hotel-form";
 import {
   demandLabels,
   publishableDemandLevels,
@@ -62,22 +62,14 @@ export default async function CalendarPage({
       ? rawMonth
       : currentMonth();
   const rawImportance = value(params, "importance");
-  const view = value(params, "view") === "calendar" ? "calendar" : "list";
-  const rawDistance = value(params, "maxDistance");
-  const parsedDistance = rawDistance ? Number(rawDistance) : undefined;
-  const filters: CalendarFilters = {
+  const view = value(params, "view") === "list" ? "list" : "calendar";
+  const filters: CalendarQueryFilters = {
     month,
     category: value(params, "category"),
-    maxDistance:
-      parsedDistance !== undefined &&
-      Number.isFinite(parsedDistance) &&
-      parsedDistance >= 0
-        ? parsedDistance
-        : undefined,
     importance: publishableDemandLevels.includes(
       rawImportance as (typeof publishableDemandLevels)[number]
     )
-      ? (rawImportance as CalendarFilters["importance"])
+      ? (rawImportance as CalendarQueryFilters["importance"])
       : undefined,
   };
   const data = await getCalendarData(accountId, filters);
@@ -89,8 +81,6 @@ export default async function CalendarPage({
     next.set("month", month);
     next.set("view", view);
     if (filters.category) next.set("category", filters.category);
-    if (filters.maxDistance !== undefined)
-      next.set("maxDistance", String(filters.maxDistance));
     if (filters.importance) next.set("importance", filters.importance);
     Object.entries(changes).forEach(([key, item]) =>
       item ? next.set(key, item) : next.delete(key)
@@ -98,9 +88,7 @@ export default async function CalendarPage({
     return `/calendar?${next.toString()}`;
   };
   const activeFilterCount =
-    Number(Boolean(filters.category)) +
-    Number(filters.maxDistance !== undefined) +
-    Number(Boolean(filters.importance));
+    Number(Boolean(filters.category)) + Number(Boolean(filters.importance));
 
   return (
     <div>
@@ -110,9 +98,6 @@ export default async function CalendarPage({
           <h1>{selectedHotel?.name ?? "Hoge-vraagmomenten"}</h1>
           <p>Alle relevante momenten met hun verwachte hotelvraag en score.</p>
         </header>
-        {data.selectedHotelId && (
-          <RefreshHotelForm hotelId={data.selectedHotelId} />
-        )}
       </div>
       <div className="event-toolbar">
         <nav className="month-navigation" aria-label="Maand kiezen">
@@ -147,46 +132,17 @@ export default async function CalendarPage({
           </Link>
         </nav>
       </div>
-      <form className="filter-bar">
-        <input name="view" type="hidden" value={view} />
-        <label>
-          Maand
-          <input name="month" type="month" defaultValue={month} />
-        </label>
-        <label>
-          Categorie
-          <select name="category" defaultValue={filters.category ?? ""}>
-            <option value="">Alle categorieën</option>
-            {data.categories.map((category) => (
-              <option key={category}>{category}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Max. afstand
-          <input
-            name="maxDistance"
-            type="number"
-            min="0"
-            step="1"
-            defaultValue={filters.maxDistance}
-          />
-        </label>
-        <label>
-          Vraaginschatting
-          <select name="importance" defaultValue={filters.importance ?? ""}>
-            <option value="">Alle niveaus</option>
-            {publishableDemandLevels.map((level) => (
-              <option key={level} value={level}>
-                {demandLabels[level]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button className="secondary" type="submit">
-          Filteren
-        </button>
-      </form>
+      <CalendarFilters
+        month={month}
+        view={view}
+        category={filters.category}
+        importance={filters.importance}
+        categories={data.categories}
+        levels={publishableDemandLevels.map((level) => ({
+          value: level,
+          label: demandLabels[level],
+        }))}
+      />
       {activeFilterCount > 0 && (
         <div className="active-filters">
           <span>
@@ -196,7 +152,6 @@ export default async function CalendarPage({
           <Link
             href={href({
               category: undefined,
-              maxDistance: undefined,
               importance: undefined,
             })}
           >

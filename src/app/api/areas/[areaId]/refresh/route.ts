@@ -1,9 +1,9 @@
 import { enqueueCollectionAreas } from "@/features/collection/jobs";
-import { requireAccount } from "@/lib/auth/require-account";
+import { requirePlatformAdmin } from "@/lib/auth/require-account";
 import { createServerClient } from "@/lib/supabase/server";
 
 export async function POST(_request: Request, { params }: { params: Promise<{ areaId: string }> }) {
-  const { accountId, userId } = await requireAccount();
+  const { accountId, userId } = await requirePlatformAdmin();
   const { areaId } = await params;
   const { data: area, error } = await (await createServerClient())
     .from("collection_areas")

@@ -1,0 +1,32 @@
+{
+  "matches": [
+    {
+      "id": 501,
+      "utcDate": "2027-09-15T19:00:00Z",
+      "status": "SCHEDULED",
+      "homeTeam": { "name": "PSV Eindhoven", "shortName": "PSV" },
+      "awayTeam": { "name": "Club Brugge KV", "shortName": "Club Brugge" }
+    },
+    {
+      "id": 502,
+      "utcDate": "2027-09-30T19:00:00Z",
+      "status": "SCHEDULED",
+      "homeTeam": { "name": "Club Brugge KV", "shortName": "Club Brugge" },
+      "awayTeam": { "name": "PSV Eindhoven", "shortName": "PSV" }
+    },
+    {
+      "id": 503,
+      "utcDate": "2028-03-10T19:00:00Z",
+      "status": "SCHEDULED",
+      "homeTeam": { "name": "PSV Eindhoven", "shortName": "PSV" },
+      "awayTeam": { "name": "Real Madrid CF", "shortName": "Real Madrid" }
+    },
+    {
+      "id": 504,
+      "utcDate": "2027-10-20T17:45:00Z",
+      "status": "POSTPONED",
+      "homeTeam": { "name": "AFC Ajax", "shortName": "Ajax" },
+      "awayTeam": { "name": "FC Internazionale Milano", "shortName": "Inter" }
+    }
+  ]
+}

@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 
 import { createServerClient } from "@/lib/supabase/server";
 
-export const SELECTED_HOTEL_COOKIE = "hotelrevpar_selected_hotel";
+export const SELECTED_HOTEL_COOKIE = "demandradar_selected_hotel";
 
 export async function getHotelScope(accountId: string, requestedHotelId?: string) {
   const supabase = await createServerClient();

@@ -16,6 +16,7 @@ import {
   verifyPredictHqCandidates,
   type ClaudeUsageEvent,
 } from "./sources/claude";
+import { collectFootballdata } from "./sources/footballdata";
 import { collectOpenHolidays } from "./sources/openholidays";
 import { collectPredictHq } from "./sources/predicthq";
 import { collectRijksoverheid } from "./sources/rijksoverheid";
@@ -71,7 +72,7 @@ export function claudeDiscoveryDue(
   return (
     !lastFinishedAt ||
     now.getTime() - new Date(lastFinishedAt).getTime() >=
-      7 * 24 * 60 * 60 * 1000
+      30 * 24 * 60 * 60 * 1000
   );
 }
 
@@ -234,6 +235,11 @@ function defaultCollectors(
         onUsage: (usage) => onUsage("claude", usage),
       });
     },
+    footballdata: (context) =>
+      collectFootballdata({
+        ...context.window,
+        apiKey: configured(process.env.FOOTBALLDATA_API_KEY, "Football Data"),
+      }),
     uefa: () => Promise.resolve({ source: "uefa", candidates: [], requests: 0, usage: {} }),
   };
 }
@@ -338,7 +344,7 @@ export async function runCollection(
       ) {
         sourceResults.claude = {
           state: "skipped",
-          reason: "Claude discovery runs at most once every 7 days.",
+          reason: "Claude discovery runs at most once every 30 days.",
         };
       } else {
         sourcesToRun.push(source);
