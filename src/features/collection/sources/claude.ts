@@ -22,6 +22,7 @@ const ownerTypes = ["organizer", "venue", "club", "federation", "ticket_provider
 const searchRequestOptions = { timeout: 180_000, maxRetries: 1 } as const;
 const verificationRequestOptions = { timeout: 180_000, maxRetries: 0 } as const;
 const triageRequestOptions = { timeout: 90_000, maxRetries: 0 } as const;
+const DEFAULT_TRIAGE_MODEL = "claude-haiku-4-5-20251001";
 
 export type ClaudeUsageEvent = {
   phase: "discovery" | "discovery_fetch" | "demand_triage" | "demand_verification";
@@ -366,7 +367,9 @@ async function triageDiscoveries(input: {
   batching: Batching;
   onUsage?: UsageObserver;
 }) {
-  const model = process.env.ANTHROPIC_TRIAGE_MODEL ?? "claude-haiku-4-5-20251001";
+  // `||`, not `??`: Vercel hands an env var that exists but is blank through as "", and the
+  // batch API rejects `model: ""` for every request in the phase.
+  const model = process.env.ANTHROPIC_TRIAGE_MODEL || DEFAULT_TRIAGE_MODEL;
   const excluded = new Map<number, string>();
   const messages: Anthropic.Message[] = [];
   const errors: { label: string; reason: string }[] = [];
@@ -1019,7 +1022,7 @@ export async function triagePredictHqCandidates(input: {
   client?: Anthropic;
   onUsage?: UsageObserver;
 }): Promise<{ reviews: DemandTriage[]; requests: number; usage: Record<string, number> }> {
-  const model = input.model ?? process.env.ANTHROPIC_TRIAGE_MODEL ?? "claude-haiku-4-5-20251001";
+  const model = input.model || process.env.ANTHROPIC_TRIAGE_MODEL || DEFAULT_TRIAGE_MODEL;
   const client = input.client ?? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const batches: EventCandidate[][] = [];
   for (let index = 0; index < input.candidates.length; index += 40) batches.push(input.candidates.slice(index, index + 40));

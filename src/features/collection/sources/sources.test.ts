@@ -968,9 +968,9 @@ describe("source adapters", () => {
     const official = "https://organizer.example/event";
     const create = vi.fn();
     queueClaudeSearches(create, [discoveredCandidate({ officialUrl: official })]);
-    // Production ran for months against a model id that does not exist; the swallowed error
-    // looked identical to a run where nothing deserved excluding.
-    create.mockRejectedValueOnce(new Error("404 model: claude-haiku-4-5"));
+    // Production ran for months with a swallowed error that looked identical to a run where
+    // nothing deserved excluding.
+    create.mockRejectedValueOnce(new Error("model: String should have at least 1 character"));
     create.mockResolvedValueOnce(
       verificationResponse(official, [verifiedEvent({ sourceUrl: official, impactPoints: 45 })]),
     );
@@ -986,10 +986,38 @@ describe("source adapters", () => {
     expect(result.funnel?.drops).toContainEqual({
       title: "<triage 0-0>",
       stage: "triage",
-      reason: "404 model: claude-haiku-4-5",
+      reason: "model: String should have at least 1 character",
     });
     // The candidate still reaches verification: a broken triage must not drop real demand.
     expect(result.candidates).toHaveLength(1);
+  });
+
+  it("falls back to a real triage model when the env var is set but blank", async () => {
+    // Vercel passes a variable that exists with no value through as "", which `??` accepts and
+    // the API then rejects for every request in the phase.
+    vi.stubEnv("ANTHROPIC_TRIAGE_MODEL", "");
+    const official = "https://organizer.example/event";
+    const create = vi.fn();
+    queueClaudeSearches(create, [discoveredCandidate({ officialUrl: official })]);
+    create.mockResolvedValueOnce({
+      content: [{ type: "text", text: JSON.stringify({ reviews: [] }) }],
+      usage: { input_tokens: 10, output_tokens: 5 },
+    });
+    create.mockResolvedValueOnce(
+      verificationResponse(official, [verifiedEvent({ sourceUrl: official, impactPoints: 45 })]),
+    );
+
+    await collectClaude({
+      ...claudeWindow,
+      location: "Eindhoven",
+      radiusKm: 25,
+      model: "claude-test",
+      client: { messages: { create } } as unknown as Anthropic,
+    });
+
+    const triageRequest = create.mock.calls.find(([request]) =>
+      request.messages[0].content.startsWith("Beoordeel op basis"));
+    expect(triageRequest?.[0].model).toBe("claude-haiku-4-5-20251001");
   });
 
   it("shares a city result whenever every month/category slice was searched", () => {
