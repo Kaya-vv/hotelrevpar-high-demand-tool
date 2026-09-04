@@ -21,6 +21,10 @@ function previousDate(value: string) {
   return date.toISOString().slice(0, 10);
 }
 
+function repeatedPerformance(category: string) {
+  return /musical|theat(?:er|re)|voorstelling/i.test(category);
+}
+
 export function importance(total: number): DemandScore["suggestedImportance"] {
   return total >= 85
     ? "Peak"
@@ -135,7 +139,10 @@ export function scoreHotelEvent({
       candidate.endAt.slice(11, 16) === "23:59");
   // A programme finishing before dawn is still the same evening, not a second day.
   const programmeEndDate = end.hour < 6 ? previousDate(end.date) : end.date;
-  const multiDay = !allDayPlaceholder && programmeEndDate > start.date;
+  const multiDay =
+    !allDayPlaceholder &&
+    !repeatedPerformance(candidate.category) &&
+    programmeEndDate > start.date;
   let stayPressurePoints = multiDay ? 6 : 0;
   // A programme ending after midnight is a stronger overnight signal than one
   // ending at 20:00, so both earn the evening-finish bonus.
@@ -168,21 +175,34 @@ export function scoreHotelEvent({
   const people = candidate.attendance ?? candidate.venueCapacity;
   // An explicit assessment from the source beats every proxy below it: a
   // two-day daytime market is multi-day without generating a single booking.
+  const assessedDemandSignal =
+    (candidate.attendance !== null && candidate.attendance >= 5_000) ||
+    (candidate.venueCapacity !== null && candidate.venueCapacity >= 10_000) ||
+    marqueeSport(
+      candidate.category,
+      candidate.title,
+      candidate.regionScope ?? "",
+    );
+  const knownReach =
+    /internationaal|international|nationaal|national|europees|european|wereld|world/i.test(
+      candidate.regionScope ?? "",
+    );
   const overnightSignal =
     candidate.overnightAudience != null
       ? candidate.overnightAudience === "national" ||
         candidate.overnightAudience === "international"
-      : programmeEndDate > start.date ||
-        (people !== null && people >= 5_000) ||
-        /internationaal|international|nationaal|national|europees|european|wereld|world/i.test(
-          candidate.regionScope ?? "",
-        ) ||
-        marqueeSport(
-          candidate.category,
-          candidate.title,
-          candidate.regionScope ?? "",
-        );
-  const total = routineSport || !overnightSignal ? Math.min(69, rawTotal) : rawTotal;
+      : candidate.aiImpactPoints != null
+        ? assessedDemandSignal
+        : programmeEndDate > start.date ||
+          (people !== null && people >= 5_000) ||
+          knownReach ||
+          assessedDemandSignal;
+  const contextOnly =
+    candidate.category === "school_holiday" ||
+    candidate.category === "public_holiday";
+  const total = routineSport || contextOnly || !overnightSignal
+    ? Math.min(69, rawTotal)
+    : rawTotal;
 
   return {
     impactPoints: impactScore.points,

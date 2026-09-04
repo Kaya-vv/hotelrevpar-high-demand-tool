@@ -153,7 +153,7 @@ export function claudeMarketCacheKey(input: ClaudeMarketInput) {
   // Account history may improve the first run, but it must not partition the shared city result.
   return createHash("sha256")
     .update(JSON.stringify({
-      version: 1,
+      version: 2,
       start: input.start,
       end: input.end,
       location: input.location.trim().toLocaleLowerCase("nl-NL"),

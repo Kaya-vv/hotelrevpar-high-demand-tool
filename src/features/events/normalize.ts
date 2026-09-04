@@ -38,6 +38,27 @@ export function localParts(value: string) {
   };
 }
 
+// A place qualifier in a title carries no identity: every comparison that uses these tokens has
+// already matched the event's date and place. Left in, they invent distinctions - "DigiMarCon
+// Amsterdam 2026", "DigiMarCon Europe 2026" and "DigiMarCon Netherlands 2026" became three rows
+// for one conference, one day, one venue, each published at High. Only continents, countries and
+// Dutch cities belong here; "world" and "international" describe an audience, not a place, and
+// they separate real events like the World Drug and World Patient Safety congresses.
+const placeQualifiers = new Set([
+  "europe", "europa", "european", "europees", "netherlands", "nederland", "dutch", "holland",
+  "benelux", "amsterdam", "rotterdam", "utrecht", "eindhoven", "haag", "hague", "groningen",
+  "maastricht", "tilburg", "almere", "breda", "nijmegen", "haarlem", "arnhem", "zaandam",
+  "naarden", "leiden", "delft", "apeldoorn", "amersfoort", "zwolle",
+]);
+
+/** Title tokens that identify an event: no year, no place. Empty when a title is only those. */
+export function meaningfulTokens(value: string) {
+  const tokens = value
+    .split(" ")
+    .filter((token) => token && !/^20\d{2}$/.test(token) && !placeQualifiers.has(token));
+  return tokens.length ? tokens : value.split(" ").filter(Boolean);
+}
+
 // Venue is free text and the model rephrases it every run - "Diverse locaties, Eindhoven centrum"
 // one day, "Strijp-S en 100+ locaties in Eindhoven" the next - which gave one festival a fresh
 // identity each time. A coarse coordinate bucket keeps different cities apart without depending

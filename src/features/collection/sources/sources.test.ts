@@ -106,6 +106,8 @@ const verifiedEvent = (overrides: Record<string, unknown> = {}) => ({
   status: "active",
   ownerType: "organizer",
   evidenceText: "Meerdaagse internationale editie.",
+  attendance: null,
+  venueCapacity: null,
   impactPoints: 60,
   overnightAudience: "international",
   titleConfirmed: true,
@@ -640,6 +642,8 @@ describe("source adapters", () => {
               startAt: "2027-09-18T09:00:00+02:00",
               endAt: "2027-09-19T18:00:00+02:00",
               evidenceText: "De gemeentepagina bevestigt de data van de huidige editie.",
+              attendance: 25_000,
+              venueCapacity: 30_000,
             })],
           }),
         },
@@ -659,12 +663,16 @@ describe("source adapters", () => {
     const verification = create.mock.calls[12][0];
     expect(verification.tools[0]).toMatchObject({ name: "web_fetch", max_uses: 2 });
     expect(verification.messages[0].content).toContain("tweede web_fetch");
+    expect(verification.messages[0].content).toContain("Een bezoekersaantal is nuttig maar niet verplicht");
+    expect(verification.messages[0].content).toContain("Meerdaagse duur alleen is geen sterk signaal");
     expect(result.candidates).toMatchObject([{
       sourceUrl: organizer,
       title: "ASML Marathon Eindhoven",
       primarySourceConfirmed: true,
       aiImpactPoints: 60,
       overnightAudience: "international",
+      attendance: 25_000,
+      venueCapacity: 30_000,
     }]);
     expect(result.funnel).toMatchObject({ pagesVerified: 1, demandAccepted: 1 });
   });

@@ -113,6 +113,41 @@ describe("event domain", () => {
     ).toEqual({ kind: "exact", eventId: "event-2" });
   });
 
+  it("treats editions that differ only by a place word as one event", () => {
+    // "DigiMarCon Amsterdam 2026", "DigiMarCon Europe 2026" and "DigiMarCon Netherlands 2026"
+    // ran on one day at the Johan Cruijff ArenA and became three rows, each published at High.
+    const dutch = normalizeCandidate({
+      ...candidate,
+      providerEventId: "dm-nl",
+      title: "DigiMarCon Netherlands 2026",
+    });
+    const europe = normalizeCandidate({
+      ...candidate,
+      providerEventId: "dm-eu",
+      title: "DigiMarCon Europe 2026",
+    });
+    expect(classifyMatch(europe, [{ ...dutch, id: "dm-1" }])).toEqual({
+      kind: "exact",
+      eventId: "dm-1",
+    });
+  });
+
+  it("keeps two events apart when only a place word is shared", () => {
+    // Stripping the city must not make different events identical. Both are real Amsterdam
+    // candidates whose titles collapse to two tokens once "Amsterdam" is removed.
+    const swim = normalizeCandidate({
+      ...candidate,
+      providerEventId: "swim",
+      title: "Amsterdam City Swim",
+    });
+    const walk = normalizeCandidate({
+      ...candidate,
+      providerEventId: "walk",
+      title: "Amsterdam City Walk",
+    });
+    expect(classifyMatch(walk, [{ ...swim, id: "swim-1" }]).kind).not.toBe("exact");
+  });
+
   it("marks a similar same-day title as uncertain", () => {
     const normalized = normalizeCandidate(candidate);
     const changed = normalizeCandidate({
@@ -484,13 +519,13 @@ describe("event domain", () => {
       .toBe("Medium");
 
     expect(scoreHotelEvent({
-      candidate: { ...clubNight, attendance: 8_000 },
+      candidate: { ...clubNight, attendance: 5_000 },
       hotel,
       overlaps: [],
     }).suggestedImportance).toBe("High");
 
     expect(scoreHotelEvent({
-      candidate: { ...clubNight, regionScope: "internationaal" },
+      candidate: { ...clubNight, overnightAudience: "international" },
       hotel,
       overlaps: [],
     }).suggestedImportance).toBe("High");
@@ -554,7 +589,7 @@ describe("event domain", () => {
     expect(
       scoreHotelEvent({ candidate: dayMarket, hotel, overlaps: [] })
         .suggestedImportance
-    ).toBe("High");
+    ).toBe("Medium");
     expect(
       scoreHotelEvent({
         candidate: { ...dayMarket, overnightAudience: "regional" },
@@ -569,6 +604,89 @@ describe("event domain", () => {
         overlaps: [],
       }).suggestedImportance
     ).toBe("High");
+  });
+
+  it("does not let multi-day duration alone justify High after an AI assessment", () => {
+    const hotel = {
+      latitude: 52.37,
+      longitude: 4.9,
+      demandRadiusKm: 25,
+      holidayRegion: "north" as const,
+    };
+    const conference = {
+      ...candidate,
+      title: "Small international-themed conference",
+      category: "conference",
+      aiImpactPoints: 45,
+      latitude: hotel.latitude,
+      longitude: hotel.longitude,
+      regionScope: null,
+      startAt: "2026-09-17T09:00:00+02:00",
+      endAt: "2026-09-18T17:00:00+02:00",
+    };
+
+    expect(scoreHotelEvent({ candidate: conference, hotel, overlaps: [] }).suggestedImportance)
+      .toBe("Medium");
+    expect(scoreHotelEvent({
+      candidate: { ...conference, attendance: 5_000 },
+      hotel,
+      overlaps: [],
+    }).suggestedImportance).toBe("High");
+    expect(scoreHotelEvent({
+      candidate: { ...conference, venueCapacity: 10_000 },
+      hotel,
+      overlaps: [],
+    }).suggestedImportance).toBe("High");
+  });
+
+  it("does not award a multi-day bonus to a run of separate performances", () => {
+    const score = scoreHotelEvent({
+      candidate: {
+        ...candidate,
+        title: "The Last Ship",
+        category: "musical",
+        aiImpactPoints: 35,
+        overnightAudience: "regional",
+        startAt: "2026-08-29T20:00:00+02:00",
+        endAt: "2026-09-13T17:00:00+02:00",
+      },
+      hotel: {
+        latitude: candidate.latitude!,
+        longitude: candidate.longitude!,
+        demandRadiusKm: 25,
+        holidayRegion: "north",
+      },
+      overlaps: [],
+    });
+
+    expect(score.stayPressurePoints).toBe(0);
+    expect(score.suggestedImportance).toBe("Medium");
+  });
+
+  it("keeps holidays as internal context even when events overlap", () => {
+    const score = scoreHotelEvent({
+      candidate: {
+        ...candidate,
+        category: "school_holiday",
+        latitude: null,
+        longitude: null,
+        regionScope: "south",
+      },
+      hotel: {
+        latitude: 51.44,
+        longitude: 5.48,
+        demandRadiusKm: 25,
+        holidayRegion: "south",
+      },
+      overlaps: [{
+        startAt: candidate.startAt,
+        endAt: candidate.endAt,
+        preOverlapTotal: 80,
+      }],
+    });
+
+    expect(score.total).toBe(69);
+    expect(score.suggestedImportance).toBe("Medium");
   });
 
   it("rewards a programme that runs past midnight", () => {

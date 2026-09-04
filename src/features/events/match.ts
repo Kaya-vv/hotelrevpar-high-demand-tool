@@ -1,3 +1,4 @@
+import { meaningfulTokens } from "./normalize";
 import type { NormalizedCandidate } from "./types";
 import { distanceKm } from "./distance";
 
@@ -7,6 +8,9 @@ export type Match =
   | { kind: "uncertain"; eventId: string }
   | { kind: "new"; eventId: null };
 
+// Deliberately keeps place qualifiers: dropping them shortens titles, and the containment rule
+// below needs three tokens, so "Dutch Design Week" against "Dutch Design Festival" would score
+// lower and split into two events. Place-only differences get their own rule instead.
 function similarity(left: string, right: string) {
   const meaningful = (value: string) =>
     value.split(" ").filter((token) => token && !/^20\d{2}$/.test(token));
@@ -28,6 +32,17 @@ function similarity(left: string, right: string) {
   const prefix = shorter.length > 0 && shorter.every((token, index) => longer[index] === token);
   const containment = smallest >= 3 || prefix ? shared / smallest : 0;
   return Math.max(jaccard, containment);
+}
+
+// One conference, three editions of the same name: "DigiMarCon Amsterdam 2026", "DigiMarCon
+// Europe 2026" and "DigiMarCon Netherlands 2026" ran on one day in one venue and became three
+// rows, each published at High. Once date and place already agree, a title that differs only by
+// a place word is the same event. Additive on purpose - it can never lower `similarity`.
+function samePlaceEdition(left: string, right: string) {
+  const leftTokens = meaningfulTokens(left);
+  const rightTokens = meaningfulTokens(right);
+  if (!leftTokens.length || leftTokens.length !== rightTokens.length) return false;
+  return leftTokens.every((token, index) => rightTokens[index] === token);
 }
 
 function nextDay(value: string) {
@@ -93,7 +108,8 @@ export function classifyMatch(
       ((!placesConflict(event, candidate) &&
         similarity(event.normalizedTitle, candidate.normalizedTitle) >= 0.92) ||
         (samePlace(event, candidate) &&
-          similarity(event.normalizedTitle, candidate.normalizedTitle) >= 0.8))
+          (similarity(event.normalizedTitle, candidate.normalizedTitle) >= 0.8
+            || samePlaceEdition(event.normalizedTitle, candidate.normalizedTitle))))
   );
   if (strong) return { kind: "exact", eventId: strong.id };
 
