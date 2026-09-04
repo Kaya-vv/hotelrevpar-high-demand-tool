@@ -1056,6 +1056,76 @@ describe("source adapters", () => {
     expect(result.usage.failedFetches).toBe(0);
   });
 
+  it("keeps an agenda page that answered after a redirect", async () => {
+    const agendaUrl = "https://www.rai.nl/en/rai-events";
+    const official = "https://show.ibc.org";
+    const create = vi.fn();
+    queueClaudeSearches(create, [], [agendaUrl]);
+    // Production: the RAI calendar reported two fetch requests because it redirected. An
+    // `=== 1` check called that a skipped fetch and dropped every RAI trade fair with it.
+    const redirected = agendaResponse(agendaUrl, [
+      discoveredCandidate({ title: "IBC 2026", city: "Amsterdam", venue: "RAI", officialUrl: official }),
+    ]);
+    create.mockResolvedValueOnce({
+      ...redirected,
+      usage: { ...redirected.usage, server_tool_use: { web_fetch_requests: 2 } },
+    });
+    create.mockResolvedValueOnce(
+      verificationResponse(official, [verifiedEvent({ sourceUrl: official, title: "IBC 2026", impactPoints: 60 })]),
+    );
+
+    const result = await collectClaude({
+      ...claudeWindow,
+      location: "Amsterdam",
+      radiusKm: 15,
+      model: "claude-test",
+      client: { messages: { create } } as unknown as Anthropic,
+      triage: async () => new Map<number, string>(),
+    });
+
+    expect(result.usage.failedFetches).toBe(0);
+    expect(result.funnel?.drops.map((drop) => drop.title)).not.toContain(agendaUrl);
+    expect(result.candidates.map((candidate) => candidate.title)).toEqual(["IBC 2026"]);
+  });
+
+  it("verifies the organiser's own page instead of a listing site", async () => {
+    const listing = "https://www.eventseye.com/fairs/f-ibc-10984-1.html";
+    const organiser = "https://show.ibc.org";
+    const create = vi.fn();
+    queueClaudeSearches(create, [], ["https://a.example/agenda", "https://b.example/agenda"]);
+    // Production: both pages described IBC 2026. eventseye.com arrived first and won on order
+    // alone, so verification read the aggregator, returned `ownerType: other`, and the largest
+    // congress in the window was rejected on all five runs that discovered it.
+    create.mockResolvedValueOnce(agendaResponse("https://a.example/agenda", [
+      discoveredCandidate({ title: "IBC", city: "Amsterdam", venue: "RAI", officialUrl: listing }),
+    ]));
+    create.mockResolvedValueOnce(agendaResponse("https://b.example/agenda", [
+      discoveredCandidate({
+        title: "IBC 2026 International Broadcasting Convention",
+        city: "Amsterdam",
+        venue: "RAI",
+        officialUrl: organiser,
+      }),
+    ]));
+    create.mockResolvedValueOnce(
+      verificationResponse(organiser, [verifiedEvent({ sourceUrl: organiser, title: "IBC 2026", impactPoints: 60 })]),
+    );
+
+    const result = await collectClaude({
+      ...claudeWindow,
+      location: "Amsterdam",
+      radiusKm: 15,
+      model: "claude-test",
+      client: { messages: { create } } as unknown as Anthropic,
+      triage: async () => new Map<number, string>(),
+    });
+
+    const asked = create.mock.calls.map(([request]) => request.messages[0].content as string);
+    expect(asked.some((content) => content.includes(organiser))).toBe(true);
+    expect(asked.some((content) => content.includes(listing))).toBe(false);
+    expect(result.candidates.map((candidate) => candidate.title)).toEqual(["IBC 2026"]);
+  });
+
   it("shares a city result whenever every month/category slice was searched", () => {
     // Every production run failed between two and eight page fetches, so a zero-failure gate
     // meant no city result was ever shared and the saving never materialised.

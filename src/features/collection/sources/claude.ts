@@ -662,9 +662,11 @@ async function collectClaudeFresh(
       }],
     } satisfies MessageCreateParamsNonStreaming,
   });
-  const agendaFetched = (result: PromiseSettledResult<Anthropic.Message>) =>
-    result.status === "fulfilled" &&
-    (result.value.usage.server_tool_use?.web_fetch_requests ?? 0) >= 1;
+  // One shared predicate, because a retry gate that disagrees with the check below drops a page
+  // without ever retrying it. `>= 1`, not `=== 1`: rai.nl/en/rai-events answers after a redirect
+  // and reports two fetch requests, and it did fetch - rejecting that lost every RAI trade fair.
+  const agendaFetched = (message: Anthropic.Message) =>
+    (message.usage.server_tool_use?.web_fetch_requests ?? 0) >= 1;
   const agendaResults = await requestMessages(
     client,
     "agenda",
@@ -675,7 +677,7 @@ async function collectClaudeFresh(
   // fair. Losing it to a single skipped fetch costs a month of business demand, so it gets the
   // same one retry that verification has always had.
   const agendaRetryIndexes = agendaResults.flatMap((result, index) =>
-    agendaFetched(result) ? [] : [index],
+    result.status === "fulfilled" && agendaFetched(result.value) ? [] : [index],
   );
   if (agendaRetryIndexes.length) {
     const retries = await requestMessages(
@@ -695,7 +697,7 @@ async function collectClaudeFresh(
       const message = result.value;
       agendaMessages.push(message);
       await observeUsage(input.onUsage, usageEvent(message, "discovery_fetch", discoveryModel));
-      if (message.usage.server_tool_use?.web_fetch_requests !== 1) {
+      if (!agendaFetched(message)) {
         throw new Error("Claude agenda fetch did not execute its required web fetch.");
       }
       if (message.stop_reason === "max_tokens") {
@@ -724,6 +726,19 @@ async function collectClaudeFresh(
     return left.startDate <= (right.endDate ?? right.startDate)
       && right.startDate <= (left.endDate ?? left.startDate);
   };
+  // A listing site and the organiser describe the same event, but only the organiser's page
+  // survives verification - `ownerType: other` is rejected. An organiser puts the event name in
+  // its own domain (show.ibc.org), an aggregator never does (eventseye.com), so the name is the
+  // signal. Without this, eventseye.com beat show.ibc.org on arrival order and IBC 2026 - the
+  // largest congress in the window - was discovered five times and rejected every time.
+  const namedInDomain = (url: string, tokens: string[]) => {
+    try {
+      const host = new URL(url).hostname.toLowerCase().replace(/[^a-z0-9]/g, "");
+      return tokens.some((token) => token.length >= 3 && host.includes(token));
+    } catch {
+      return false;
+    }
+  };
   const pool: DiscoveredCandidate[] = [];
   for (const candidate of discovered) {
     const existing = pool.find((entry) => sameIdentity(entry, candidate));
@@ -731,7 +746,12 @@ async function collectClaudeFresh(
       pool.push({ ...candidate });
       continue;
     }
-    if (!existing.officialUrl && candidate.officialUrl) existing.officialUrl = candidate.officialUrl;
+    if (candidate.officialUrl) {
+      const tokens = [...identityTokens(existing.title), ...identityTokens(candidate.title)];
+      const better = !existing.officialUrl
+        || (namedInDomain(candidate.officialUrl, tokens) && !namedInDomain(existing.officialUrl, tokens));
+      if (better) existing.officialUrl = candidate.officialUrl;
+    }
     if (identityTokens(candidate.title).length < identityTokens(existing.title).length) {
       existing.title = candidate.title;
     }
