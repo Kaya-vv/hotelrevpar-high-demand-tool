@@ -14,6 +14,8 @@ import {
   loadClaudeMarketResult,
   runAnthropicBatch,
   saveClaudeMarketResult,
+  type BatchStore,
+  type ClaudeMarketInput,
 } from "../anthropic-batches";
 
 const ownerTypes = ["organizer", "venue", "club", "federation", "ticket_provider", "university", "municipality", "event_owner"] as const;
@@ -79,25 +81,38 @@ type DiscoveredCandidate = {
   officialUrl: string | null;
 };
 
+// `weekly` is deliberately absent. Recurrence is unobservable in a single dated candidate, so
+// the category could only ever be a guess — and "Feyenoord - Inter (Champions League)" reads as
+// a weekly fixture to any model asked the question. What it legitimately caught (recurring
+// markets and classes) is already covered by `market` and `course`.
+const excludableCategories = ["artist_show", "theatre_run", "market", "course"] as const;
+
 const discoveryTriageSchema = z.object({
   reviews: z.array(z.object({
     index: z.number().int(),
     decision: z.enum(["verify", "exclude"]),
-    excludeAs: z.enum(["artist_show", "theatre_run", "market", "course", "weekly"]).nullable(),
+    excludeAs: z.enum(excludableCategories).nullable(),
     act: z.string().nullable(),
     reason: z.string(),
   })),
 });
 
-// A metadata-only exclusion has to name what it is rejecting. Two guesses are void: an unnamed
-// "probably a club night", and calling a multi-day programme a one-off show.
+// A metadata-only exclusion has to quote the words in the title that carry the category, and
+// those words have to actually be there. Any free text in `act` would let "act: concert" reject
+// anything, and "probably a club night" would remove a festival nobody recognised. A multi-day
+// programme is additionally never a one-off show.
 export function triageExclusionAllowed(
   review: { decision: string; excludeAs: string | null; act: string | null },
-  multiDay: boolean,
+  candidate: { title: string; startDate: string; endDate: string | null },
 ) {
-  if (review.decision !== "exclude" || !review.excludeAs) return false;
-  if (review.excludeAs !== "artist_show") return true;
-  return !multiDay && Boolean(review.act?.trim());
+  if (review.decision !== "exclude") return false;
+  if (!excludableCategories.includes(review.excludeAs as (typeof excludableCategories)[number])) {
+    return false;
+  }
+  const quoted = normalizeText(review.act ?? "");
+  if (!quoted || !normalizeText(candidate.title).includes(quoted)) return false;
+  const multiDay = (candidate.endDate ?? candidate.startDate) !== candidate.startDate;
+  return review.excludeAs !== "artist_show" || !multiDay;
 }
 
 type VerificationEntry = {
@@ -277,20 +292,35 @@ type MessageRequest = {
   options: { timeout: number; maxRetries: number };
 };
 
+type Batching = {
+  enabled: boolean;
+  store?: BatchStore;
+  wait?: (milliseconds: number) => Promise<void>;
+};
+
 async function requestMessages(
   client: Anthropic,
-  phase: "search" | "agenda" | "verification",
+  phase: "search" | "agenda" | "triage" | "verification",
   requests: MessageRequest[],
-  useBatches: boolean,
+  batching: Batching,
 ) {
-  if (!useBatches) {
-    return Promise.allSettled(
-      requests.map((request) =>
-        requestPhase(phase, () => client.messages.create(request.params, request.options)),
-      ),
-    );
+  if (!batching.enabled) {
+    // Eight at a time, as before batching existed. Firing a 40-entry verification queue at once
+    // draws 429s, and a rate-limited run looks exactly like a run that found less.
+    const settled: PromiseSettledResult<Anthropic.Message>[] = [];
+    for (let index = 0; index < requests.length; index += 8) {
+      settled.push(...await Promise.allSettled(
+        requests.slice(index, index + 8).map((request) =>
+          requestPhase(phase, () => client.messages.create(request.params, request.options)),
+        ),
+      ));
+    }
+    return settled;
   }
-  const results = await runAnthropicBatch(client, requests.map((request) => request.params));
+  const results = await runAnthropicBatch(client, requests.map((request) => request.params), {
+    store: batching.store,
+    wait: batching.wait,
+  });
   return results.map((result): PromiseSettledResult<Anthropic.Message> => {
     if (result.status === "rejected") return result;
     if (!result.value.billable) unbilledMessages.add(result.value.message);
@@ -333,41 +363,68 @@ async function triageDiscoveries(input: {
   location: string;
   radiusKm: number;
   client: Anthropic;
+  batching: Batching;
   onUsage?: UsageObserver;
 }) {
-  const model = process.env.ANTHROPIC_TRIAGE_MODEL ?? "claude-haiku-4-5";
+  const model = process.env.ANTHROPIC_TRIAGE_MODEL ?? "claude-haiku-4-5-20251001";
   const excluded = new Map<number, string>();
-  let requests = 0;
   const messages: Anthropic.Message[] = [];
+  const errors: { label: string; reason: string }[] = [];
+  const slices: { offset: number; size: number; request: MessageRequest }[] = [];
   for (let offset = 0; offset < input.candidates.length; offset += 40) {
     const batch = input.candidates.slice(offset, offset + 40);
+    slices.push({
+      offset,
+      size: batch.length,
+      request: {
+        options: triageRequestOptions,
+        params: {
+          model,
+          max_tokens: 4_000,
+          output_config: { format: zodOutputFormat(discoveryTriageSchema) },
+          messages: [{
+            role: "user",
+            content: `Beoordeel op basis van alleen deze metadata welke kandidaten een webcontrole waard zijn voor een hotel in ${input.location} met een straal van ${input.radiusKm} km. Kies verify voor alles wat aannemelijk extra hotelovernachtingen veroorzaakt, en kies bij twijfel altijd verify. Kies exclude alleen met een categorie in excludeAs: artist_show voor een avond met een optredende artiest, band, dj of comedian; theatre_run voor een doorlopende theater- of bioscoopvoorstelling; market voor een waren-, rommel- of vintagemarkt; course voor een cursus of workshop. Zet bij elke exclude in act de woorden uit de titel die de categorie aantonen: bij artist_show de naam van de artiest, en bij de andere categorieën het woord of de merknaam waaruit de categorie blijkt. Neem die woorden letterlijk uit de titel over; kun je dat niet, kies dan verify. Een eigen merknaam zonder artiestennaam is een evenement en geen artist_show, ook als je de naam niet kent. Een competitiewedstrijd of professionele sportwedstrijd is nooit een exclude-categorie; kies dan verify. Geef voor elke index precies één beslissing met een korte reden. Kandidaten:\n${JSON.stringify(batch.map((candidate, index) => ({ index: offset + index, title: candidate.title, startDate: candidate.startDate, endDate: candidate.endDate, venue: candidate.venue, city: candidate.city, category: candidate.category })))}`,
+          }],
+        } satisfies MessageCreateParamsNonStreaming,
+      },
+    });
+  }
+  // Batched so a resumed run replays the same exclusions. A fresh triage verdict would rebuild
+  // the verification queue, change its batch key, and pay for the whole phase twice.
+  const results = await requestMessages(
+    input.client,
+    "triage",
+    slices.map((slice) => slice.request),
+    input.batching,
+  );
+  for (let index = 0; index < results.length; index += 1) {
+    const { offset, size } = slices[index];
+    const label = `<triage ${offset}-${offset + size - 1}>`;
+    const result = results[index];
+    if (result.status === "rejected") {
+      errors.push({ label, reason: dropReason(result.reason) });
+      continue;
+    }
+    const message = result.value;
+    messages.push(message);
+    await observeUsage(input.onUsage, usageEvent(message, "demand_triage", model));
     try {
-      const message = await requestPhase("triage", () => input.client.messages.create({
-        model,
-        max_tokens: 4_000,
-        output_config: { format: zodOutputFormat(discoveryTriageSchema) },
-        messages: [{
-          role: "user",
-          content: `Beoordeel op basis van alleen deze metadata welke kandidaten een webcontrole waard zijn voor een hotel in ${input.location} met een straal van ${input.radiusKm} km. Kies verify voor alles wat aannemelijk extra hotelovernachtingen veroorzaakt, en kies bij twijfel altijd verify. Kies exclude alleen met een categorie in excludeAs: artist_show voor een avond met een optredende artiest, band, dj of comedian; theatre_run voor een doorlopende theater- of bioscoopvoorstelling; market voor een waren-, rommel- of vintagemarkt; course voor een cursus of workshop; weekly voor een wekelijks terugkerende activiteit. Vul bij artist_show in act de naam van de artiest precies zoals die in de titel staat; staat er geen artiestennaam in de titel, kies dan verify. Een eigen merknaam zonder artiestennaam is een evenement en geen artist_show, ook als je de naam niet kent. Geef voor elke index precies één beslissing met een korte reden. Kandidaten:\n${JSON.stringify(batch.map((candidate, index) => ({ index: offset + index, title: candidate.title, startDate: candidate.startDate, endDate: candidate.endDate, venue: candidate.venue, city: candidate.city, category: candidate.category })))}`,
-        }],
-      }, triageRequestOptions));
-      requests += 1;
-      messages.push(message);
-      await observeUsage(input.onUsage, usageEvent(message, "demand_triage", model));
-      if (message.stop_reason === "max_tokens") continue;
+      if (message.stop_reason === "max_tokens") {
+        throw new Error("Claude triage reached its token limit.");
+      }
       const text = message.content.find((block) => block.type === "text")?.text;
-      if (!text) continue;
+      if (!text) throw new Error("Claude triage returned no structured output.");
       discoveryTriageSchema.parse(JSON.parse(text)).reviews.forEach((review) => {
         const candidate = input.candidates[review.index];
-        if (!candidate || review.index < offset || review.index >= offset + batch.length) return;
-        const multiDay = (candidate.endDate ?? candidate.startDate) !== candidate.startDate;
-        if (triageExclusionAllowed(review, multiDay)) excluded.set(review.index, review.reason);
+        if (!candidate || review.index < offset || review.index >= offset + size) return;
+        if (triageExclusionAllowed(review, candidate)) excluded.set(review.index, review.reason);
       });
-    } catch {
-      requests += 1;
+    } catch (error) {
+      errors.push({ label, reason: dropReason(error) });
     }
   }
-  return { excluded, requests, messages };
+  return { excluded, requests: slices.length, messages, errors };
 }
 
 function verificationInstructions(input: { start: string; end: string; location: string; radiusKm: number }) {
@@ -378,6 +435,7 @@ function usageTotals(
   messages: Anthropic.Message[],
   failedFetches: number,
   completedSearches: number,
+  plannedSearches: number,
 ) {
   return {
     inputTokens: messages.reduce((total, message) => total + usageEvent(message, "discovery", "").inputTokens, 0),
@@ -392,8 +450,14 @@ function usageTotals(
     ),
     failedFetches,
     completedSearches,
+    plannedSearches,
   };
 }
+
+type MarketCache = {
+  load: (input: ClaudeMarketInput) => Promise<SourceResult | null>;
+  save: (input: ClaudeMarketInput, result: SourceResult) => Promise<void>;
+};
 
 type CollectClaudeInput = CollectionWindow & {
   location: string;
@@ -405,14 +469,30 @@ type CollectClaudeInput = CollectionWindow & {
   geocode?: (query: string) => Promise<{ latitude: number; longitude: number } | null>;
   triage?: (candidates: DiscoveredCandidate[]) => Promise<Map<number, string>>;
   knownUrls?: string[];
+  // Injecting a client used to disable batching, which left the resume path — the whole reason
+  // batches exist here — with no way to be exercised outside production.
+  batching?: Batching;
+  marketCache?: MarketCache;
 };
+
+/**
+ * Failed page fetches are the steady state of this pipeline, not a defect, so gating sharing on
+ * them left the city cache empty for every production run. What must never be shared is a run
+ * that skipped a month/category slice, because whole categories would be missing from the city.
+ */
+export function marketResultIsShareable(usage: Record<string, number>) {
+  return usage.plannedSearches > 0 && usage.completedSearches === usage.plannedSearches;
+}
 
 export async function collectClaude(input: CollectClaudeInput): Promise<SourceResult> {
   const model = input.model ?? process.env.ANTHROPIC_MODEL;
   if (!model) throw new Error("ANTHROPIC_MODEL is required for the Claude source.");
   const discoveryModel = input.discoveryModel ?? (process.env.ANTHROPIC_DISCOVERY_MODEL || model);
   const client = input.client ?? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  const useBatches = !input.client && process.env.ANTHROPIC_BATCHES !== "disabled";
+  const batching: Batching = input.batching
+    ?? { enabled: !input.client && process.env.ANTHROPIC_BATCHES !== "disabled" };
+  const marketCache = input.marketCache
+    ?? { load: loadClaudeMarketResult, save: saveClaudeMarketResult };
   const market = {
     start: input.start,
     end: input.end,
@@ -422,17 +502,13 @@ export async function collectClaude(input: CollectClaudeInput): Promise<SourceRe
     discoveryModel,
     knownUrls: input.knownUrls ?? [],
   };
-  if (useBatches) {
-    const cached = await loadClaudeMarketResult(market);
+  if (batching.enabled) {
+    const cached = await marketCache.load(market);
     if (cached) return cached;
   }
-  const result = await collectClaudeFresh(input, model, discoveryModel, client, useBatches);
-  if (
-    useBatches &&
-    result.usage.completedSearches === 12 &&
-    result.usage.failedFetches === 0
-  ) {
-    await saveClaudeMarketResult(market, result);
+  const result = await collectClaudeFresh(input, model, discoveryModel, client, batching);
+  if (batching.enabled && marketResultIsShareable(result.usage)) {
+    await marketCache.save(market, result);
   }
   return result;
 }
@@ -442,7 +518,7 @@ async function collectClaudeFresh(
   model: string,
   discoveryModel: string,
   client: Anthropic,
-  useBatches: boolean,
+  batching: Batching,
 ): Promise<SourceResult> {
   const userLocation = {
     type: "approximate" as const,
@@ -500,7 +576,7 @@ async function collectClaudeFresh(
     client,
     "search",
     searchTasks.map((task) => task.request),
-    useBatches,
+    batching,
   );
   for (let index = 0; index < searchResults.length; index += 1) {
     const result = searchResults[index];
@@ -583,7 +659,7 @@ async function collectClaudeFresh(
         }],
       } satisfies MessageCreateParamsNonStreaming,
     })),
-    useBatches,
+    batching,
   );
   for (let index = 0; index < agendaResults.length; index += 1) {
     const result = agendaResults[index];
@@ -645,14 +721,18 @@ async function collectClaudeFresh(
     return true;
   });
   const triage = input.triage
-    ? { excluded: await input.triage(inWindow), requests: 0, messages: [] as Anthropic.Message[] }
+    ? { excluded: await input.triage(inWindow), requests: 0, messages: [] as Anthropic.Message[], errors: [] }
     : await triageDiscoveries({
       candidates: inWindow,
       location: input.location,
       radiusKm: input.radiusKm,
       client,
+      batching,
       onUsage: input.onUsage,
     });
+  // A silent triage failure sends every candidate to the expensive verification stage and looks
+  // exactly like a run where nothing deserved excluding. Name it so source health shows it.
+  triage.errors.forEach(({ label, reason }) => recordDrop(label, "triage", reason));
   const urlEntries: VerificationEntry[] = [];
   const nameEntries: VerificationEntry[] = [];
   inWindow.forEach((candidate, index) => {
@@ -716,6 +796,7 @@ async function collectClaudeFresh(
         [...searches, ...agendaMessages, ...triage.messages],
         failedFetches,
         parsedSearches,
+        searchTasks.length,
       ),
       funnel: { namesDiscovered, urlsResolved: 0, pagesVerified: 0, demandAccepted: 0, drops },
     };
@@ -770,7 +851,7 @@ async function collectClaudeFresh(
     client,
     "verification",
     queue.map((entry) => verificationRequest(entry, false)),
-    useBatches,
+    batching,
   );
   const retryIndexes: number[] = [];
   for (let index = 0; index < settled.length; index += 1) {
@@ -785,7 +866,7 @@ async function collectClaudeFresh(
       client,
       "verification",
       retryIndexes.map((index) => verificationRequest(queue[index], true)),
-      useBatches,
+      batching,
     );
     for (let index = 0; index < retries.length; index += 1) {
       const retry = retries[index];
@@ -916,6 +997,7 @@ async function collectClaudeFresh(
       [...searches, ...agendaMessages, ...triage.messages, ...verified.map(({ message }) => message)],
       failedFetches,
       parsedSearches,
+      searchTasks.length,
     ),
     funnel: {
       namesDiscovered,
@@ -937,7 +1019,7 @@ export async function triagePredictHqCandidates(input: {
   client?: Anthropic;
   onUsage?: UsageObserver;
 }): Promise<{ reviews: DemandTriage[]; requests: number; usage: Record<string, number> }> {
-  const model = input.model ?? process.env.ANTHROPIC_TRIAGE_MODEL ?? "claude-haiku-4-5";
+  const model = input.model ?? process.env.ANTHROPIC_TRIAGE_MODEL ?? "claude-haiku-4-5-20251001";
   const client = input.client ?? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const batches: EventCandidate[][] = [];
   for (let index = 0; index < input.candidates.length; index += 40) batches.push(input.candidates.slice(index, index + 40));

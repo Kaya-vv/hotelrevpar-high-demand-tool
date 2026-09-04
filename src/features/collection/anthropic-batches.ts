@@ -15,7 +15,7 @@ export type BatchedMessageResult =
   | { status: "fulfilled"; value: BatchedMessage }
   | { status: "rejected"; reason: unknown };
 
-type BatchRow = {
+export type BatchRow = {
   batch_id: string | null;
   created_at: string;
   error: string | null;
@@ -247,7 +247,11 @@ export async function runAnthropicBatch(
 
   if (!row) {
     const ownerToken = randomUUID();
-    const claimExpiresAt = new Date(now.getTime() + 5 * 60 * 1000).toISOString();
+    // The lease must outlive the stuck-creation check below. With both at five minutes the
+    // expiry sweep deletes the row first, `attach` silently updates nothing, and the batch that
+    // Anthropic already accepted is orphaned while the next attempt submits — and pays for — a
+    // duplicate. A longer lease makes the stuck check the failure path instead.
+    const claimExpiresAt = new Date(now.getTime() + 60 * 60 * 1000).toISOString();
     if (await store.claim(key, ownerToken, claimExpiresAt)) {
       try {
         const batch = await client.messages.batches.create({

@@ -9,9 +9,11 @@ import openHolidaysFixture from "../../../../tests/fixtures/openholidays.json";
 import predictHqFixture from "../../../../tests/fixtures/predicthq.json";
 import rijksoverheidFixture from "../../../../tests/fixtures/rijksoverheid.json";
 import ticketmasterFixture from "../../../../tests/fixtures/ticketmaster.json";
+import type { BatchRow, BatchStore } from "../anthropic-batches";
 import {
   claudeProviderEventId,
   collectClaude,
+  marketResultIsShareable,
   triagePredictHqCandidates,
   triageExclusionAllowed,
   verifyPredictHqCandidates,
@@ -818,28 +820,190 @@ describe("source adapters", () => {
       reason: "Eenmalige clubavond zonder bovenregionale toestroom.",
     });
   });
-  it("honours a metadata exclusion only when it names what it rejects", () => {
+  it("honours a metadata exclusion only when it quotes the title it rejects", () => {
+    const oneNight = { title: "Marillion", startDate: "2027-09-15", endDate: "2027-09-15" };
     const named = { decision: "exclude", excludeAs: "artist_show", act: "Marillion" };
-    expect(triageExclusionAllowed(named, false)).toBe(true);
+    expect(triageExclusionAllowed(named, oneNight)).toBe(true);
 
     // Production: "Rock event (Helldorado) zonder verdere context, waarschijnlijk clubavond".
-    expect(triageExclusionAllowed({ decision: "exclude", excludeAs: "artist_show", act: null }, false))
-      .toBe(false);
-    expect(triageExclusionAllowed({ decision: "exclude", excludeAs: "artist_show", act: "  " }, false))
-      .toBe(false);
+    expect(triageExclusionAllowed({ ...named, act: null }, oneNight)).toBe(false);
+    expect(triageExclusionAllowed({ ...named, act: "  " }, oneNight)).toBe(false);
+
+    // A generic word satisfies "act is not empty" but proves nothing: the quoted evidence has to
+    // be in the title, or one arena headliner reads the same as any other night out.
+    expect(triageExclusionAllowed(
+      { decision: "exclude", excludeAs: "artist_show", act: "concert" },
+      { title: "KATSEYE - The Wildworld Tour", startDate: "2027-09-15", endDate: "2027-09-15" },
+    )).toBe(false);
 
     // Production: Revolution Calling dropped as a "tweedaagse rock concert".
-    expect(triageExclusionAllowed(named, true)).toBe(false);
+    expect(triageExclusionAllowed(named, { ...oneNight, endDate: "2027-09-16" })).toBe(false);
 
-    // A two-day vintage market is still a market.
-    expect(triageExclusionAllowed({ decision: "exclude", excludeAs: "market", act: null }, true))
-      .toBe(true);
-    expect(triageExclusionAllowed({ decision: "exclude", excludeAs: "theatre_run", act: null }, true))
-      .toBe(true);
+    // A two-day vintage market is still a market, but it has to quote the word it read.
+    expect(triageExclusionAllowed(
+      { decision: "exclude", excludeAs: "market", act: "vintagemarkt" },
+      { title: "Vintagemarkt Klokgebouw", startDate: "2027-09-15", endDate: "2027-09-16" },
+    )).toBe(true);
 
-    expect(triageExclusionAllowed({ decision: "exclude", excludeAs: null, act: null }, false))
+    // "Feyenoord - Inter (Champions League)" reads as a weekly fixture, and the words are right
+    // there in the title, so quoting alone could not save it. The category is gone instead.
+    expect(triageExclusionAllowed(
+      { decision: "exclude", excludeAs: "weekly", act: "Champions League" },
+      { title: "Feyenoord - Inter (Champions League)", startDate: "2027-09-15", endDate: null },
+    )).toBe(false);
+
+    expect(triageExclusionAllowed({ decision: "exclude", excludeAs: null, act: "Marillion" }, oneNight))
       .toBe(false);
-    expect(triageExclusionAllowed({ decision: "verify", excludeAs: "market", act: null }, false))
+    expect(triageExclusionAllowed({ decision: "verify", excludeAs: "market", act: "Marillion" }, oneNight))
+      .toBe(false);
+  });
+
+  it("resumes a timed-out run from the batch cache without resubmitting a phase", async () => {
+    const official = "https://organizer.example/event";
+    const rows = new Map<string, BatchRow>();
+    const usageClaimed = new Set<string>();
+    const store: BatchStore = {
+      removeExpired: async () => undefined,
+      get: async (key) => rows.get(key) ?? null,
+      claim: async (key) => {
+        if (rows.has(key)) return false;
+        rows.set(key, { batch_id: null, created_at: new Date().toISOString(), error: null, results: null, status: "creating" });
+        return true;
+      },
+      attach: async (key, _owner, batchId) => {
+        rows.set(key, { ...rows.get(key)!, batch_id: batchId, status: "processing" });
+      },
+      complete: async (key, results) => {
+        rows.set(key, { ...rows.get(key)!, results, status: "completed" });
+      },
+      fail: async () => undefined,
+      release: async (key) => { rows.delete(key); },
+      claimUsage: async (key) => {
+        if (usageClaimed.has(key)) return false;
+        usageClaimed.add(key);
+        return true;
+      },
+    };
+
+    // Triage is the only sampled step between discovery and verification. If it were called live
+    // on the second pass it would answer differently, rebuild the queue, and force a new
+    // verification batch — the whole phase billed twice.
+    let triageCalls = 0;
+    const respond = (params: { messages: Array<{ content: string }> }) => {
+      const prompt = params.messages[0].content;
+      if (prompt.startsWith("Voer eerst precies")) {
+        return prompt.includes("stadsbrede festivals")
+          ? discoveryResponse([discoveredCandidate({ officialUrl: official })])
+          : discoveryResponse();
+      }
+      if (prompt.startsWith("Beoordeel op basis")) {
+        triageCalls += 1;
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              reviews: [{
+                index: 0,
+                decision: triageCalls === 1 ? "verify" : "exclude",
+                excludeAs: triageCalls === 1 ? null : "artist_show",
+                act: triageCalls === 1 ? null : "Dutch Design Week",
+                reason: "wisselend",
+              }],
+            }),
+          }],
+          usage: { input_tokens: 10, output_tokens: 5 },
+        };
+      }
+      return verificationResponse(official, [verifiedEvent({ sourceUrl: official })]);
+    };
+
+    const submitted: Array<Array<{ params: { messages: Array<{ content: string }> } }>> = [];
+    const create = vi.fn(async ({ requests }) => {
+      submitted.push(requests);
+      return { id: `batch-${submitted.length}` };
+    });
+    const client = {
+      messages: {
+        // Functional, so a phase that skipped batching succeeds instead of crashing: the
+        // assertions below then fail on the resubmission itself, not on a broken stub.
+        create: vi.fn(async (params: { messages: Array<{ content: string }> }) => respond(params)),
+        batches: {
+          create,
+          retrieve: vi.fn().mockResolvedValue({ processing_status: "ended" }),
+          results: vi.fn(async function* (batchId: string) {
+            const index = Number(batchId.split("-")[1]) - 1;
+            for (const [offset, request] of submitted[index].entries()) {
+              yield { custom_id: `request-${offset}`, result: { type: "succeeded", message: respond(request.params) } };
+            }
+          }),
+        },
+      },
+    } as unknown as Anthropic;
+    const collect = () => collectClaude({
+      ...claudeWindow,
+      location: "Eindhoven",
+      radiusKm: 25,
+      model: "claude-test",
+      client,
+      batching: { enabled: true, store, wait: async () => undefined },
+      marketCache: { load: async () => null, save: async () => undefined },
+    });
+
+    const first = await collect();
+    const batchesAfterFirst = create.mock.calls.length;
+    const second = await collect();
+
+    // The headline contract: the resumed pass reuses every cached phase and submits nothing.
+    expect(create.mock.calls.length).toBe(batchesAfterFirst);
+    expect(triageCalls).toBe(1);
+    expect(client.messages.create).not.toHaveBeenCalled();
+    expect(second.candidates.map((candidate) => candidate.sourceUrl))
+      .toEqual(first.candidates.map((candidate) => candidate.sourceUrl));
+    // Anthropic bills a shared batch once, so the resumed pass must report no spend.
+    expect(second.usage.inputTokens).toBe(0);
+    expect(first.usage.inputTokens).toBeGreaterThan(0);
+  });
+
+  it("records a triage failure instead of silently verifying every candidate", async () => {
+    const official = "https://organizer.example/event";
+    const create = vi.fn();
+    queueClaudeSearches(create, [discoveredCandidate({ officialUrl: official })]);
+    // Production ran for months against a model id that does not exist; the swallowed error
+    // looked identical to a run where nothing deserved excluding.
+    create.mockRejectedValueOnce(new Error("404 model: claude-haiku-4-5"));
+    create.mockResolvedValueOnce(
+      verificationResponse(official, [verifiedEvent({ sourceUrl: official, impactPoints: 45 })]),
+    );
+
+    const result = await collectClaude({
+      ...claudeWindow,
+      location: "Eindhoven",
+      radiusKm: 25,
+      model: "claude-test",
+      client: { messages: { create } } as unknown as Anthropic,
+    });
+
+    expect(result.funnel?.drops).toContainEqual({
+      title: "<triage 0-0>",
+      stage: "triage",
+      reason: "404 model: claude-haiku-4-5",
+    });
+    // The candidate still reaches verification: a broken triage must not drop real demand.
+    expect(result.candidates).toHaveLength(1);
+  });
+
+  it("shares a city result whenever every month/category slice was searched", () => {
+    // Every production run failed between two and eight page fetches, so a zero-failure gate
+    // meant no city result was ever shared and the saving never materialised.
+    expect(marketResultIsShareable({ completedSearches: 12, plannedSearches: 12, failedFetches: 8 }))
+      .toBe(true);
+    // A slice that never parsed leaves a whole category missing from the shared city.
+    expect(marketResultIsShareable({ completedSearches: 11, plannedSearches: 12, failedFetches: 0 }))
+      .toBe(false);
+    // A short window plans fewer slices; the count is not hardcoded to twelve.
+    expect(marketResultIsShareable({ completedSearches: 4, plannedSearches: 4, failedFetches: 3 }))
+      .toBe(true);
+    expect(marketResultIsShareable({ completedSearches: 0, plannedSearches: 0, failedFetches: 0 }))
       .toBe(false);
   });
 
