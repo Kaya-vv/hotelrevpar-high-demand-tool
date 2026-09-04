@@ -151,6 +151,14 @@ function fetchedUrls(message: Anthropic.Message) {
 }
 
 const dutchMonthFormat = new Intl.DateTimeFormat("nl-NL", { month: "long", year: "numeric", timeZone: "UTC" });
+const englishMonthFormat = new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
+
+type MonthLabel = { nl: string; en: string };
+
+function monthLabels(day: string): MonthLabel {
+  const date = new Date(`${day}T00:00:00Z`);
+  return { nl: dutchMonthFormat.format(date), en: englishMonthFormat.format(date) };
+}
 
 function dropReason(reason: unknown) {
   return reason instanceof Error ? reason.message : String(reason);
@@ -256,11 +264,14 @@ async function observeUsage(observer: UsageObserver | undefined, event: ClaudeUs
   if (observer) await observer(event);
 }
 
+// Each group carries its own query. A shared example query collapses all four into the same
+// generic consumer-agenda search, which never reaches business demand: international trade
+// fairs and congresses are indexed in English, so that group searches in English.
 const searchGroups = [
-  "stadsbrede festivals, design weeks en marathons",
-  "congressen, tentoonstellingen, vakbeurzen en conferenties",
-  "grote concerten en meerdaagse entertainment-evenementen",
-  "bevestigde professionele sportwedstrijden en sporttoernooien",
+  { focus: "stadsbrede festivals, design weeks en marathons", query: (city: string, month: MonthLabel) => `festivals en stadsevenementen ${city} ${month.nl}` },
+  { focus: "congressen, tentoonstellingen, vakbeurzen en conferenties", query: (city: string, month: MonthLabel) => `trade fairs conferences exhibitions ${city} ${month.en}` },
+  { focus: "grote concerten en meerdaagse entertainment-evenementen", query: (city: string, month: MonthLabel) => `concerten en shows ${city} ${month.nl}` },
+  { focus: "bevestigde professionele sportwedstrijden en sporttoernooien", query: (city: string, month: MonthLabel) => `sportevenementen en wedstrijden ${city} ${month.nl}` },
 ] as const;
 
 function addDays(value: string, days: number) {
@@ -379,8 +390,10 @@ export async function collectClaude(
   let parsedSearches = 0;
   let firstFailure: unknown;
   for (const window of searchWindows(input.start, input.end)) {
-    const monthLabel = dutchMonthFormat.format(new Date(`${window.start}T00:00:00Z`));
-    for (const focus of searchGroups) {
+    const month = monthLabels(window.start);
+    for (const group of searchGroups) {
+      const focus = group.focus;
+      const searchQuery = group.query(input.location, month);
       try {
         const search = await requestPhase("search", () => client.messages.create({
           model: discoveryModel,
@@ -401,7 +414,7 @@ export async function collectClaude(
           output_config: { format: zodOutputFormat(discoverySchema) },
           messages: [{
             role: "user",
-            content: `Voer eerst precies één web_search uit en antwoord nooit zonder zoekresultaten. Zoek evenementen binnen ${input.radiusKm} km van ${input.location} tussen ${window.start} en ${window.end}: ${focus}. Formuleer je zoekopdracht in het Nederlands met de stad en de maand, bijvoorbeeld "evenementen ${input.location} ${monthLabel}". Gebruik uitagenda's, toeristische kalenders, ticketlijsten en overzichtspagina's om namen van evenementen te leren; dat mag in deze stap. Geef per evenement de naam, begindatum en einddatum als YYYY-MM-DD, de plaats, de locatie en de officiële pagina van de organisator, locatie, club, federatie, universiteit of gemeente als die in de zoekresultaten staat. Verzin geen URL's en neem alleen URL's over die letterlijk in de zoekresultaten voorkomen; gebruik null als je de officiële pagina niet ziet. Geef maximaal zes evenementen die aannemelijk extra hotelovernachtingen veroorzaken en sla markten, wekelijkse activiteiten en kleine lokale programmering over. Geef daarnaast maximaal twee agendapagina's met het volledigste programma voor deze periode; kies bij voorkeur de agenda van een concrete zaal, poppodium, congrescentrum, stadion of organisator boven een breed stadsportaal of een landelijke zoeksite, omdat die laatste vaak niet op te halen zijn. Geef daarna je antwoord in het gevraagde JSON-formaat.`,
+            content: `Voer eerst precies één web_search uit en antwoord nooit zonder zoekresultaten. Zoek evenementen binnen ${input.radiusKm} km van ${input.location} tussen ${window.start} en ${window.end}: ${focus}. Gebruik als zoekopdracht exact "${searchQuery}" en verzin geen andere zoekopdracht. Gebruik uitagenda's, toeristische kalenders, ticketlijsten en overzichtspagina's om namen van evenementen te leren; dat mag in deze stap. Geef per evenement de naam, begindatum en einddatum als YYYY-MM-DD, de plaats, de locatie en de officiële pagina van de organisator, locatie, club, federatie, universiteit of gemeente als die in de zoekresultaten staat. Verzin geen URL's en neem alleen URL's over die letterlijk in de zoekresultaten voorkomen; gebruik null als je de officiële pagina niet ziet. Geef maximaal zes evenementen die aannemelijk extra hotelovernachtingen veroorzaken en sla markten, wekelijkse activiteiten en kleine lokale programmering over. Geef daarnaast maximaal twee agendapagina's met het volledigste programma voor deze periode; kies bij voorkeur de agenda van een concrete zaal, poppodium, congrescentrum, stadion of organisator boven een breed stadsportaal of een landelijke zoeksite, omdat die laatste vaak niet op te halen zijn. Geef daarna je antwoord in het gevraagde JSON-formaat.`,
           }],
         }, searchRequestOptions));
         searches.push(search);

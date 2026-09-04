@@ -391,6 +391,30 @@ describe("source adapters", () => {
     });
   });
 
+  it("searches each discovery category with its own query so business demand is reachable", async () => {
+    const create = vi.fn();
+    queueClaudeSearches(create);
+
+    await collectClaude({
+      ...claudeWindow,
+      location: "Amsterdam",
+      radiusKm: 15,
+      model: "claude-test",
+      client: { messages: { create } } as unknown as Anthropic,
+      triage: async () => new Map<number, string>(),
+    });
+
+    const quoted = (content: string) => content.match(/zoekopdracht exact "([^"]+)"/)?.[1];
+    const queries = create.mock.calls.slice(0, 4).map(([request]) => quoted(request.messages[0].content));
+    // A shared query example collapsed all four categories into one generic consumer search,
+    // which never surfaced trade fairs such as IBC at the RAI.
+    expect(new Set(queries).size).toBe(4);
+    queries.forEach((query) => expect(query).toContain("Amsterdam"));
+    // International trade fairs and congresses are indexed in English, not Dutch.
+    expect(queries[1]).toBe("trade fairs conferences exhibitions Amsterdam August 2027");
+    expect(queries[0]).toBe("festivals en stadsevenementen Amsterdam augustus 2027");
+  });
+
   it("rejects an official URL that Claude searched but never fetched", async () => {
     const official = "https://official.example/event";
     const create = vi.fn();

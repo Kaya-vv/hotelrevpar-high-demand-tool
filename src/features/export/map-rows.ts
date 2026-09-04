@@ -7,16 +7,24 @@ function excelDate(value: string) {
   return new Date(Date.UTC(year, month - 1, day));
 }
 
+function publishableHotels(event: ExportEvent, selected: Set<string>) {
+  return event.hotels.filter(
+    (hotel) => selected.has(hotel.id) && isPublishableDemand(hotel.importance, hotel.impactBasis),
+  );
+}
+
+/** The events that actually reach the workbook, so a preview count matches its rows. */
+export function exportableEvents(events: ExportEvent[], selectedHotelIds: string[]): ExportEvent[] {
+  const selected = new Set(selectedHotelIds);
+  return events.filter((event) => publishableHotels(event, selected).length > 0);
+}
+
 export function mapRevControlRows(events: ExportEvent[], selectedHotelIds: string[]): RevControlRow[] {
   const selected = new Set(selectedHotelIds);
   return events
     .flatMap((event) => {
       const groups = new Map<RevControlRow["importance"], string[]>();
-      event.hotels.forEach((hotel) => {
-        if (
-          !selected.has(hotel.id) ||
-          !isPublishableDemand(hotel.importance, hotel.impactBasis)
-        ) return;
+      publishableHotels(event, selected).forEach((hotel) => {
         const importance = hotel.importance === "Peak" ? "High" : hotel.importance;
         groups.set(importance, [...(groups.get(importance) ?? []), hotel.code]);
       });

@@ -1,5 +1,5 @@
 import { demandLabels, type DemandLevel } from "@/features/events/importance";
-import { mapRevControlRows } from "@/features/export/map-rows";
+import { exportableEvents, mapRevControlRows } from "@/features/export/map-rows";
 import { exportRange, loadExportEvents } from "@/features/export/query";
 import { getHotelScope } from "@/features/workspace/hotel-context";
 import { requireAccount } from "@/lib/auth/require-account";
@@ -22,7 +22,8 @@ export default async function ExportPage({ searchParams }: { searchParams: Promi
   const { hotels, events } = selectedHotelIds.length
     ? await loadExportEvents(accountId, range, selectedHotelIds)
     : { hotels: [], events: [] };
-  const rows = mapRevControlRows(events, selectedHotelIds);
+  const exportable = exportableEvents(events, selectedHotelIds);
+  const rows = mapRevControlRows(exportable, selectedHotelIds);
   const query = new URLSearchParams({ from: range.start, to: range.end });
   selectedHotelIds.forEach((hotelId) => query.append("hotel", hotelId));
 
@@ -46,7 +47,7 @@ export default async function ExportPage({ searchParams }: { searchParams: Promi
 
       {selectedHotelIds.length > 0 && (
         <section className="panel export-preview">
-          <div className="preview-heading"><div><span className="eyebrow">Voorbeeld</span><h2>{events.length} events, {rows.length} Excel-rijen</h2></div><a className="primary link-button" href={`/api/export?${query}`}>Excel downloaden</a></div>
+          <div className="preview-heading"><div><span className="eyebrow">Voorbeeld</span><h2>{exportable.length} events, {rows.length} Excel-rijen</h2></div><a className="primary link-button" href={`/api/export?${query}`}>Excel downloaden</a></div>
           <p className="muted">Hotels: {hotels.map((hotel) => `${hotel.name} (${hotel.revcontrol_code})`).join(", ")}</p>
           {rows.length ? (
             <div className="table-wrap"><table><thead><tr><th>Event</th><th>Start</th><th>Einde</th><th>Vraag</th><th>Hotelcodes</th></tr></thead><tbody>{rows.slice(0, 20).map((row, index) => <tr key={`${row.event}-${index}`}><td>{row.event}</td><td>{row.startDate.toLocaleDateString("nl-NL")}</td><td>{row.endDate.toLocaleDateString("nl-NL")}</td><td>{demandLabels[row.importance as Exclude<DemandLevel, "Peak">]}</td><td>{row.hotels}</td></tr>)}</tbody></table></div>
