@@ -135,6 +135,30 @@ export async function processCollectionJob(
   if (jobError) throw jobError;
   if (!job || ["succeeded", "partial", "skipped"].includes(job.status)) return;
 
+  if (deliveryCount > 1 && job.status === "running") {
+    const finishedAt = new Date().toISOString();
+    const errorSummary = "Verzameling afgebroken door een time-out.";
+    const { error: runError } = await admin
+      .from("collection_runs")
+      .update({ finished_at: finishedAt, error_summary: errorSummary })
+      .eq("account_id", job.account_id)
+      .eq("collection_area_id", job.collection_area_id)
+      .is("finished_at", null);
+    if (runError) throw runError;
+
+    const { error: updateError } = await admin
+      .from("collection_jobs")
+      .update({
+        status: "failed",
+        attempts: deliveryCount,
+        finished_at: finishedAt,
+        error_summary: errorSummary,
+      })
+      .eq("id", job.id);
+    if (updateError) throw updateError;
+    return;
+  }
+
   const [{ data: account, error: accountError }, { data: area, error: areaError }] = await Promise.all([
     admin.from("accounts").select("id").eq("id", job.account_id).eq("active", true).maybeSingle(),
     admin

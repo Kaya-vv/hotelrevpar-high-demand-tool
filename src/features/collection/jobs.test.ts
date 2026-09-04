@@ -70,6 +70,47 @@ describe("collection jobs", () => {
     expect(run).not.toHaveBeenCalled();
   });
 
+  it("closes a timed-out run on redelivery without running collection again", async () => {
+    const jobUpdates: Array<Record<string, unknown>> = [];
+    const jobQuery = selectable({
+      id: "job-1",
+      account_id: "account-1",
+      collection_area_id: "area-1",
+      trigger: "manual",
+      status: "running",
+    });
+    Object.assign(jobQuery, {
+      update: vi.fn((value: Record<string, unknown>) => {
+        jobUpdates.push(value);
+        return { eq: vi.fn().mockResolvedValue({ error: null }) };
+      }),
+    });
+    const runUpdate = {
+      eq: vi.fn(),
+      is: vi.fn().mockResolvedValue({ error: null }),
+    };
+    runUpdate.eq.mockReturnValue(runUpdate);
+    const runQuery = {
+      update: vi.fn().mockReturnValue(runUpdate),
+    };
+    adminHolder.current = {
+      from: vi.fn((table: string) => table === "collection_jobs" ? jobQuery : runQuery),
+    };
+    const run = vi.fn();
+
+    await processCollectionJob({ jobId: "job-1" }, 2, run);
+
+    expect(run).not.toHaveBeenCalled();
+    expect(runQuery.update).toHaveBeenCalledWith(expect.objectContaining({
+      error_summary: "Verzameling afgebroken door een time-out.",
+    }));
+    expect(jobUpdates).toEqual([expect.objectContaining({
+      status: "failed",
+      attempts: 2,
+      error_summary: "Verzameling afgebroken door een time-out.",
+    })]);
+  });
+
   it("records a failed attempt and rethrows so Vercel can retry it", async () => {
     const updates: Array<Record<string, unknown>> = [];
     const jobQuery = selectable({
