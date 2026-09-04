@@ -1,4 +1,5 @@
 import { getHotelScope } from "./hotel-context";
+import { publishableReviewEventIds } from "@/features/events/importance";
 
 export type BatchProgress = {
   batchId: string;
@@ -28,15 +29,23 @@ export async function getWorkspaceData(accountId: string) {
       .eq("account_id", accountId)
       .eq("collection_area_id", scope.areaId);
     if (linkError) throw linkError;
-    if (links.length) {
-      const { data: decisions, error } = await scope.supabase
-        .from("account_events")
-        .select("event_id")
-        .eq("account_id", accountId)
-        .eq("state", "needs_review");
-      if (error) throw error;
+    if (links.length && scope.selectedHotelId) {
+      const [decisionsResult, scoresResult] = await Promise.all([
+        scope.supabase
+          .from("account_events")
+          .select("event_id, state")
+          .eq("account_id", accountId)
+          .eq("state", "needs_review"),
+        scope.supabase
+          .from("hotel_event_scores")
+          .select("event_id, suggested_importance, importance_override, impact_basis")
+          .eq("hotel_id", scope.selectedHotelId),
+      ]);
+      if (decisionsResult.error) throw decisionsResult.error;
+      if (scoresResult.error) throw scoresResult.error;
       const linkedIds = new Set(links.map((link) => link.event_id));
-      reviewCount = decisions.filter((decision) => linkedIds.has(decision.event_id)).length;
+      reviewCount = [...publishableReviewEventIds(decisionsResult.data, scoresResult.data)]
+        .filter((eventId) => linkedIds.has(eventId)).length;
     }
   }
 

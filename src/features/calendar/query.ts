@@ -1,6 +1,7 @@
 import { createServerClient } from "@/lib/supabase/server";
 import {
   isPublishableDemand,
+  publishableReviewEventIds,
   type DemandLevel,
 } from "@/features/events/importance";
 import { getHotelScope } from "@/features/workspace/hotel-context";
@@ -197,7 +198,22 @@ export async function getReviewData(accountId: string) {
   const decisionsByEvent = new Map(
     decisions.map((decision) => [decision.event_id, decision])
   );
+  const reviewEventIds = events
+    .filter((event) => linkedIds.has(event.id))
+    .map((event) => event.id);
+  const scores =
+    reviewEventIds.length && selectedHotelId
+      ? await fetchInBatches(reviewEventIds, (ids) =>
+          supabase
+            .from("hotel_event_scores")
+            .select("event_id, suggested_importance, importance_override, impact_basis")
+            .in("event_id", ids)
+            .eq("hotel_id", selectedHotelId)
+        )
+      : [];
+  const reviewableIds = publishableReviewEventIds(decisions, scores);
   const targetIds = decisions
+    .filter((decision) => reviewableIds.has(decision.event_id))
     .map((decision) => decision.review_target_event_id)
     .filter((id): id is string => Boolean(id));
   const targets = targetIds.length
@@ -210,7 +226,7 @@ export async function getReviewData(accountId: string) {
     : [];
   const targetsById = new Map(targets.map((target) => [target.id, target]));
   const reviewEvents: ReviewEvent[] = events
-    .filter((event) => linkedIds.has(event.id))
+    .filter((event) => linkedIds.has(event.id) && reviewableIds.has(event.id))
     .map((event) => {
       const decision = decisionsByEvent.get(event.id);
       const proposed = sources.find(

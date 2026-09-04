@@ -4,6 +4,7 @@ import { distanceKm } from "./distance";
 import {
   isPublishableDemand,
   publishableDemandLevels,
+  publishableReviewEventIds,
 } from "./importance";
 import { classifyMatch } from "./match";
 import { normalizeCandidate, normalizeText } from "./normalize";
@@ -41,6 +42,30 @@ describe("event domain", () => {
     expect(isPublishableDemand("Peak", "attendance")).toBe(true);
     expect(isPublishableDemand("High", "default")).toBe(false);
     expect(isPublishableDemand("Low", "attendance")).toBe(false);
+  });
+
+  it("reviews only events that could be published", () => {
+    const decisions = [
+      { event_id: "medium", state: "needs_review" },
+      { event_id: "high", state: "needs_review" },
+      { event_id: "default", state: "needs_review" },
+      { event_id: "active", state: "active" },
+    ];
+    const score = (event_id: string, suggested_importance: string, impact_basis = "ai_assessment") => ({
+      event_id,
+      suggested_importance,
+      importance_override: null,
+      impact_basis,
+    });
+
+    expect(
+      [...publishableReviewEventIds(decisions, [
+        score("medium", "Medium"),
+        score("high", "High"),
+        score("default", "Peak", "default"),
+        score("active", "Peak"),
+      ])],
+    ).toEqual(["high"]);
   });
 
   it("requires an enabled active primary source with a public URL", () => {

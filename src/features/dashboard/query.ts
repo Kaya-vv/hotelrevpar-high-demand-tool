@@ -1,5 +1,6 @@
 import { createServerClient } from "@/lib/supabase/server";
 import { fetchInBatches } from "@/lib/supabase/fetch-in-batches";
+import { publishableReviewEventIds } from "@/features/events/importance";
 
 export type DashboardHotel = {
   id: string;
@@ -34,7 +35,7 @@ export async function getDashboardData(accountId: string): Promise<DashboardHote
       ? supabase.from("account_event_areas").select("collection_area_id, event_id").eq("account_id", accountId).in("collection_area_id", areaIds)
       : Promise.resolve({ data: [], error: null }),
     supabase.from("account_events").select("event_id, state, override_title, override_start_at, override_end_at").eq("account_id", accountId).in("state", ["active", "needs_review"]),
-    supabase.from("hotel_event_scores").select("hotel_id, event_id, suggested_importance, importance_override").in("hotel_id", hotelIds),
+    supabase.from("hotel_event_scores").select("hotel_id, event_id, suggested_importance, importance_override, impact_basis").in("hotel_id", hotelIds),
     areaIds.length
       ? supabase.from("collection_runs").select("collection_area_id, finished_at, error_summary").eq("account_id", accountId).in("collection_area_id", areaIds).order("started_at", { ascending: false })
       : Promise.resolve({ data: [], error: null }),
@@ -82,8 +83,10 @@ export async function getDashboardData(accountId: string): Promise<DashboardHote
   return hotels.map((hotel) => {
     const areaId = areaByHotel.get(hotel.id);
     const linkedIds = areaId ? linksByArea.get(areaId) ?? new Set<string>() : new Set<string>();
-    const nextScore = scores
-      .filter((score) => score.hotel_id === hotel.id && linkedIds.has(score.event_id) && eventById.has(score.event_id))
+    const hotelScores = scores.filter((score) => score.hotel_id === hotel.id);
+    const reviewableIds = publishableReviewEventIds(decisions, hotelScores);
+    const nextScore = hotelScores
+      .filter((score) => linkedIds.has(score.event_id) && eventById.has(score.event_id))
       .map((score) => ({ ...score, importance: score.importance_override ?? score.suggested_importance }))
       .filter((score) => score.importance === "High" || score.importance === "Peak")
       .sort((left, right) => eventById.get(left.event_id)!.start_at.localeCompare(eventById.get(right.event_id)!.start_at))[0];
@@ -99,7 +102,7 @@ export async function getDashboardData(accountId: string): Promise<DashboardHote
         startAt: nextEvent.start_at,
         importance: nextScore!.importance as "High" | "Peak",
       } : null,
-      reviewCount: [...linkedIds].filter((eventId) => reviewIds.has(eventId)).length,
+      reviewCount: [...linkedIds].filter((eventId) => reviewIds.has(eventId) && reviewableIds.has(eventId)).length,
       updatedAt: latestRun?.finished_at ?? null,
       status: latestJob?.status === "queued" || latestJob?.status === "running"
         ? "running"

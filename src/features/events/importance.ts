@@ -21,3 +21,31 @@ export function isPublishableDemand(
     ) && impactBasis !== "default"
   );
 }
+
+export function publishableReviewEventIds(
+  decisions: { event_id: string; state: string }[],
+  scores: {
+    event_id: string;
+    suggested_importance: string;
+    importance_override: string | null;
+    impact_basis: string;
+  }[],
+) {
+  const reviewIds = new Set(
+    decisions
+      .filter((decision) => decision.state === "needs_review")
+      .map((decision) => decision.event_id),
+  );
+  return new Set(
+    scores
+      .filter(
+        (score) =>
+          reviewIds.has(score.event_id) &&
+          isPublishableDemand(
+            (score.importance_override ?? score.suggested_importance) as DemandLevel,
+            score.impact_basis,
+          ),
+      )
+      .map((score) => score.event_id),
+  );
+}
