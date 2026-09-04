@@ -596,6 +596,7 @@ export type Database = {
       event_sources: {
         Row: {
           ai_impact_points: number | null;
+          assessment_version: number;
           attendance: number | null;
           certainty: Database["public"]["Enums"]["event_certainty"];
           checked_at: string;
@@ -622,6 +623,7 @@ export type Database = {
         };
         Insert: {
           ai_impact_points?: number | null;
+          assessment_version?: number;
           attendance?: number | null;
           certainty?: Database["public"]["Enums"]["event_certainty"];
           checked_at?: string;
@@ -648,6 +650,7 @@ export type Database = {
         };
         Update: {
           ai_impact_points?: number | null;
+          assessment_version?: number;
           attendance?: number | null;
           certainty?: Database["public"]["Enums"]["event_certainty"];
           checked_at?: string;

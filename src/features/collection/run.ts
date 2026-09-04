@@ -55,6 +55,7 @@ type ClaudeSourceRow = {
   extracted_start_at: string;
   extracted_end_at: string | null;
   checked_at: string;
+  needs_reassessment?: boolean;
 };
 
 export function collectionWindow(now = new Date()): CollectionWindow {
@@ -91,7 +92,12 @@ export function selectClaudeRefreshUrls(
             (row.extracted_end_at ?? row.extracted_start_at).slice(0, 10) >=
               window.start,
         )
-        .sort((left, right) => left.checked_at.localeCompare(right.checked_at))
+        .sort(
+          (left, right) =>
+            Number(Boolean(right.needs_reassessment)) -
+              Number(Boolean(left.needs_reassessment)) ||
+            left.checked_at.localeCompare(right.checked_at),
+        )
         .map((row) => [row.source_url, row] as const),
     ).keys(),
   ].slice(0, limit);
@@ -130,6 +136,10 @@ export type CollectionRepository = {
   hideCandidates: (
     context: CollectionContext,
     candidates: EventCandidate[]
+  ) => Promise<void>;
+  invalidateClaudeSources: (
+    context: CollectionContext,
+    sourceUrls: string[]
   ) => Promise<void>;
   shouldRunClaudeDiscovery: (context: CollectionContext) => Promise<boolean>;
   recalculateScores: (context: CollectionContext) => Promise<void>;
@@ -375,6 +385,12 @@ export async function runCollection(
       const relevant = result.value.candidates.filter((event) =>
         context.hotels.some((hotel) => relevantToHotel(event, hotel))
       );
+      if (source === "claude" && result.value.invalidatedUrls?.length) {
+        await repository.invalidateClaudeSources(
+          context,
+          result.value.invalidatedUrls,
+        );
+      }
       const missingLocationCount = result.value.candidates.filter(
         (event) =>
           !["school_holiday", "public_holiday"].includes(event.category) &&

@@ -39,6 +39,7 @@ export type EventCandidate = {
   attendance: number | null;
   venueCapacity: number | null;
   aiImpactPoints?: number | null;
+  assessmentVersion?: number;
   overnightAudience?: OvernightAudience | null;
   evidenceText: string | null;
   primarySourceConfirmed: boolean;

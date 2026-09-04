@@ -1,6 +1,7 @@
 import { normalizeCandidate } from "@/features/events/normalize";
 import { fetchInBatches } from "@/lib/supabase/fetch-in-batches";
 import { classifyMatch } from "@/features/events/match";
+import { isPublishableDemand, type DemandLevel } from "@/features/events/importance";
 import {
   automatedExclusionReason,
   providerStatusReasons,
@@ -14,6 +15,9 @@ import { validateCandidate } from "@/features/events/validate";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Json } from "@/lib/supabase/database.types";
 
+import {
+  CLAUDE_ASSESSMENT_VERSION,
+} from "./anthropic-batches";
 import {
   claudeDiscoveryDue,
   collectionWindow,
@@ -86,12 +90,40 @@ export function createCollectionRepository(): CollectionRepository {
           links.map((link) => link.event_id),
           (ids) => supabase
             .from("event_sources")
-            .select("source_url, extracted_start_at, extracted_end_at, checked_at")
+            .select("event_id, source_url, extracted_start_at, extracted_end_at, checked_at, assessment_version")
             .eq("provider", "claude")
             .eq("primary_source_confirmed", true)
             .in("event_id", ids),
         )
         : [];
+      const scores = links.length
+        ? await fetchInBatches(
+          links.map((link) => link.event_id),
+          (ids) => supabase
+            .from("hotel_event_scores")
+            .select("event_id, suggested_importance, importance_override, impact_basis")
+            .eq("hotel_id", hotel.id)
+            .in("event_id", ids),
+        )
+        : [];
+      const visibleEventIds = new Set(scores.filter((score) =>
+        isPublishableDemand(
+          (score.importance_override ?? score.suggested_importance) as DemandLevel,
+          score.impact_basis,
+        )
+      ).map((score) => score.event_id));
+      const currentAssessmentEventIds = new Set(
+        claudeSources
+          .filter((source) => source.assessment_version >= CLAUDE_ASSESSMENT_VERSION)
+          .map((source) => source.event_id),
+      );
+      const refreshSources = claudeSources.map((source) => ({
+        ...source,
+        needs_reassessment:
+          visibleEventIds.has(source.event_id) &&
+          !currentAssessmentEventIds.has(source.event_id),
+      }));
+      const reassessmentDue = refreshSources.some((source) => source.needs_reassessment);
       // A third of every run's verification budget went to events this area already holds as
       // confirmed. Loading their identity lets discovery skip them and spend the slot on
       // something unknown; refreshing them stays the job of `knownClaudeUrls`.
@@ -126,7 +158,11 @@ export function createCollectionRepository(): CollectionRepository {
           holidayRegion: hotel.holiday_region,
         }],
         window,
-        knownClaudeUrls: selectClaudeRefreshUrls(claudeSources, window),
+        knownClaudeUrls: selectClaudeRefreshUrls(
+          refreshSources,
+          window,
+          reassessmentDue ? 60 : 8,
+        ),
         knownEvents: knownEvents.map((event) => ({
           title: event.title,
           startDate: event.start_at.slice(0, 10),
@@ -230,6 +266,31 @@ export function createCollectionRepository(): CollectionRepository {
       }
     },
 
+    async invalidateClaudeSources(context, sourceUrls) {
+      if (!sourceUrls.length) return;
+      const { data: links, error: linkError } = await supabase
+        .from("account_event_areas")
+        .select("event_id")
+        .eq("account_id", context.area.accountId)
+        .eq("collection_area_id", context.area.id);
+      if (linkError) throw linkError;
+      if (!links.length) return;
+      const eventIds = links.map((link) => link.event_id);
+      for (let index = 0; index < eventIds.length; index += 50) {
+        const { error } = await supabase
+          .from("event_sources")
+          .update({
+            primary_source_confirmed: false,
+            assessment_version: CLAUDE_ASSESSMENT_VERSION,
+            checked_at: new Date().toISOString(),
+          })
+          .eq("provider", "claude")
+          .in("event_id", eventIds.slice(index, index + 50))
+          .in("source_url", sourceUrls);
+        if (error) throw error;
+      }
+    },
+
     async shouldRunClaudeDiscovery(context) {
       const { data, error } = await supabase
         .from("collection_runs")
@@ -278,94 +339,108 @@ export function createCollectionRepository(): CollectionRepository {
           conflict = null;
           preserveCanonical = false;
         }
-      } else {
-        if (candidate.providerDuplicateOfId) {
-          const { data: duplicateTarget, error: duplicateTargetError } = await supabase
-            .from("event_sources")
-            .select("event_id")
-            .eq("provider", candidate.provider)
-            .eq("provider_event_id", candidate.providerDuplicateOfId)
-            .maybeSingle();
-          if (duplicateTargetError) throw duplicateTargetError;
-          if (duplicateTarget) {
-            eventId = duplicateTarget.event_id;
-            duplicate = true;
-            preserveCanonical = true;
-          }
-        }
+      }
 
-        if (!eventId) {
-          const shiftDay = (days: number) => {
-            const date = new Date(`${normalized.localStartDate}T00:00:00Z`);
-            date.setUTCDate(date.getUTCDate() + days);
-            return date.toISOString().slice(0, 10);
-          };
-          const dayStart = `${shiftDay(-1)}T00:00:00Z`;
-          const dayEnd = `${shiftDay(1)}T23:59:59Z`;
-          const { data: nearby, error: nearbyError } = await supabase
-            .from("events")
-            .select("*")
-            .gte("start_at", dayStart)
-            .lte("start_at", dayEnd);
-          if (nearbyError) throw nearbyError;
-          const confirmedIds = new Set(
-            (nearby.length
-              ? await fetchInBatches(nearby.map((event) => event.id), (ids) =>
-                supabase
-                  .from("event_sources")
-                  .select("event_id")
-                  .eq("source_state", "active")
-                  .eq("primary_source_confirmed", true)
-                  .in("event_id", ids),
-              )
-              : []
-            ).map((row) => row.event_id),
+      if (!existingSource && candidate.providerDuplicateOfId) {
+        const { data: duplicateTarget, error: duplicateTargetError } = await supabase
+          .from("event_sources")
+          .select("event_id")
+          .eq("provider", candidate.provider)
+          .eq("provider_event_id", candidate.providerDuplicateOfId)
+          .maybeSingle();
+        if (duplicateTargetError) throw duplicateTargetError;
+        if (duplicateTarget) {
+          eventId = duplicateTarget.event_id;
+          duplicate = true;
+          preserveCanonical = true;
+        }
+      }
+
+      // Re-run canonical matching for an existing provider row too. Earlier code stopped at the
+      // provider ID, so improved title matching could merge new rows but never repair old ones.
+      if (!eventId || existingSource) {
+        const shiftDay = (days: number) => {
+          const date = new Date(`${normalized.localStartDate}T00:00:00Z`);
+          date.setUTCDate(date.getUTCDate() + days);
+          return date.toISOString().slice(0, 10);
+        };
+        const dayStart = `${shiftDay(-1)}T00:00:00Z`;
+        const dayEnd = `${shiftDay(1)}T23:59:59Z`;
+        const { data: nearbyRows, error: nearbyError } = await supabase
+          .from("events")
+          .select("*")
+          .gte("start_at", dayStart)
+          .lte("start_at", dayEnd);
+        if (nearbyError) throw nearbyError;
+        const orderedNearby = nearbyRows.toSorted((left, right) =>
+          left.created_at.localeCompare(right.created_at) || left.id.localeCompare(right.id)
+        );
+        const currentEvent = orderedNearby.find((event) => event.id === existingSource?.event_id);
+        const nearby = orderedNearby.filter((event) => event.id !== existingSource?.event_id);
+        const confirmedIds = new Set(
+          (nearby.length
+            ? await fetchInBatches(nearby.map((event) => event.id), (ids) =>
+              supabase
+                .from("event_sources")
+                .select("event_id")
+                .eq("source_state", "active")
+                .eq("primary_source_confirmed", true)
+                .in("event_id", ids),
+            )
+            : []
+          ).map((row) => row.event_id),
+        );
+        const match = classifyMatch(
+          normalized,
+          nearby.map((event) => ({
+            ...normalizeCandidate({
+              provider: candidate.provider,
+              providerEventId: "",
+              sourceUrl: candidate.sourceUrl,
+              title: event.title,
+              category: event.category,
+              venue: event.venue,
+              latitude: event.latitude,
+              longitude: event.longitude,
+              regionScope: event.region_scope,
+              startAt: event.start_at,
+              endAt: event.end_at,
+              sourceState: event.source_state === "predicted" ? "predicted" : "active",
+              certainty: event.certainty,
+              localRank: null,
+              attendance: null,
+              venueCapacity: null,
+              aiImpactPoints: null,
+              evidenceText: null,
+              primarySourceConfirmed: confirmedIds.has(event.id),
+            }),
+            id: event.id,
+          })),
+        );
+        if (match.kind === "exact") {
+          const target = nearby.find((event) => event.id === match.eventId);
+          const currentIsCanonical = Boolean(
+            currentEvent && target &&
+            (currentEvent.created_at < target.created_at ||
+              (currentEvent.created_at === target.created_at && currentEvent.id < target.id)),
           );
-          const match = classifyMatch(
-            normalized,
-            nearby.map((event) => ({
-              ...normalizeCandidate({
-                provider: candidate.provider,
-                providerEventId: "",
-                sourceUrl: candidate.sourceUrl,
-                title: event.title,
-                category: event.category,
-                venue: event.venue,
-                latitude: event.latitude,
-                longitude: event.longitude,
-                regionScope: event.region_scope,
-                startAt: event.start_at,
-                endAt: event.end_at,
-                sourceState: event.source_state === "predicted" ? "predicted" : "active",
-                certainty: event.certainty,
-                localRank: null,
-                attendance: null,
-                venueCapacity: null,
-                aiImpactPoints: null,
-                evidenceText: null,
-                primarySourceConfirmed: confirmedIds.has(event.id),
-              }),
-              id: event.id,
-            })),
-          );
-          if (match.kind === "exact") {
+          if (!currentIsCanonical) {
             eventId = match.eventId;
             duplicate = true;
             preserveCanonical = !shouldRefreshCanonical(candidate);
-            const merged = match.extend ? nearby.find((event) => event.id === match.eventId) : null;
-            if (merged) {
+            if (match.extend && target) {
               // Day two of the same programme must widen the stored range, never replace it.
-              const mergedEnd = merged.end_at ?? merged.start_at;
+              const mergedEnd = target.end_at ?? target.start_at;
               const candidateEnd = candidate.endAt ?? candidate.startAt;
-              canonicalStartAt = merged.start_at < canonicalStartAt ? merged.start_at : canonicalStartAt;
+              canonicalStartAt = target.start_at < canonicalStartAt ? target.start_at : canonicalStartAt;
               canonicalEndAt = mergedEnd > candidateEnd ? mergedEnd : candidateEnd;
             }
           }
-          if (match.kind === "uncertain") {
-            duplicate = true;
-            conflict = "duplicate_uncertain";
-            reviewTargetEventId = match.eventId;
-          }
+        }
+        if (!existingSource && match.kind === "uncertain") {
+          duplicate = true;
+          conflict = "duplicate_uncertain";
+          reviewTargetEventId = match.eventId;
         }
       }
 
@@ -412,6 +487,7 @@ export function createCollectionRepository(): CollectionRepository {
           attendance: candidate.attendance,
           venue_capacity: candidate.venueCapacity,
           ai_impact_points: candidate.aiImpactPoints ?? null,
+          assessment_version: candidate.assessmentVersion ?? 1,
           overnight_audience: candidate.overnightAudience ?? null,
           primary_source_confirmed: primarySourceConfirmed,
           provider_duplicate_of_id: candidate.providerDuplicateOfId ?? null,

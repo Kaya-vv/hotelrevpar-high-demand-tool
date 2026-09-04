@@ -596,7 +596,7 @@ describe("source adapters", () => {
     expect(verification.tools.map((tool: { name: string }) => tool.name)).toEqual(["web_fetch"]);
   });
 
-  it("verifies freshly discovered candidates before refreshing known pages", async () => {
+  it("reassesses known visible pages before newly discovered candidates", async () => {
     const official = "https://organizer.nl/festival";
     const knownUrl = "https://venue.nl/known-event";
     const create = vi.fn();
@@ -613,8 +613,8 @@ describe("source adapters", () => {
       triage: async () => new Map<number, string>(),
     });
 
-    expect(create.mock.calls[12][0].messages[0].content).toContain(official);
-    expect(create.mock.calls[13][0].messages[0].content).toContain(knownUrl);
+    expect(create.mock.calls[12][0].messages[0].content).toContain(knownUrl);
+    expect(create.mock.calls[13][0].messages[0].content).toContain(official);
   });
 
   it("confirms current-edition dates from a second official owner page", async () => {
@@ -1400,7 +1400,32 @@ describe("source adapters", () => {
     expect(result.candidates[0]).toMatchObject({
       provider: "claude",
       sourceState: "cancelled",
+      assessmentVersion: 3,
     });
+  });
+
+  it("marks a stored URL invalid when its fetched page is an aggregator", async () => {
+    const knownUrl = "https://eventseye.com/metstrade";
+    const create = vi.fn();
+    queueClaudeSearches(create);
+    create.mockResolvedValueOnce(
+      verificationResponse(knownUrl, [
+        verifiedEvent({ sourceUrl: knownUrl, ownerType: "other" }),
+      ]),
+    );
+
+    const result = await collectClaude({
+      ...claudeWindow,
+      location: "Amsterdam",
+      radiusKm: 25,
+      knownUrls: [knownUrl],
+      model: "claude-test",
+      client: { messages: { create } } as unknown as Anthropic,
+      triage: async () => new Map<number, string>(),
+    });
+
+    expect(result.candidates).toEqual([]);
+    expect(result.invalidatedUrls).toEqual([knownUrl]);
   });
 
   it("keeps successful page evidence when another Claude fetch fails", async () => {

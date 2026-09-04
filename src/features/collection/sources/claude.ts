@@ -11,6 +11,7 @@ import { getAddressById, searchAddresses } from "@/features/portfolio/geocode";
 
 import type { CollectionWindow, DiscoveryDrop, SourceResult } from "../types";
 import {
+  CLAUDE_ASSESSMENT_VERSION,
   loadClaudeMarketResult,
   runAnthropicBatch,
   saveClaudeMarketResult,
@@ -438,7 +439,7 @@ async function triageDiscoveries(input: {
 }
 
 function verificationInstructions(input: { start: string; end: string; location: string; radiusKm: number }) {
-  return `Controleer titel, datum, locatie en status. Gebruik status active, cancelled of postponed. Neem maximaal één evenement op, alleen tussen ${input.start} en ${input.end} en binnen ${input.radiusKm} km van ${input.location}. Baseer je uitsluitend op de tekst van de pagina's die je met web_fetch hebt opgehaald; een zoekfragment kan verouderd zijn, dus als een fragment een eerdere editie noemt en de opgehaalde pagina de huidige data toont, gelden de data van de opgehaalde pagina. Geef als sourceUrl altijd de gewone pagina-URL zonder #-fragment en zonder #:~:text=. Als de opgehaalde pagina het evenement bevestigt maar de data of een beslissend vraagsignaal van de huidige editie niet noemt, mag je de tweede web_fetch gebruiken voor een andere officiële eigenaarspagina, zoals de organisator, gemeente, sportbond, locatie of ticketverkoper. Een uitagenda, blog, wiki of zoekpagina telt daarvoor niet. Leid data nooit af uit een terugkerend patroon zoals "het tweede weekend van oktober"; zet dateConfirmed dan op false. Neem bij een echte meerdaagse huidige editie de eerste en laatste bevestigde datum over; maak van een bevestigde meerdaagse editie geen eendaagse 00:00-23:59-vermelding. Een reeks losse concerten, musicals of theatervoorstellingen is geen meerdaags evenement: beoordeel de vraag per voorstelling en gebruik de speelreeks niet als verblijfsduur. Classificeer aantoonbare extra overnachtingsvraag voor hotels: 35 Medium, 45 High of 60 Piek. Een bezoekersaantal is nuttig maar niet verplicht. Geef 45 High alleen als de huidige editie ten minste één sterk signaal heeft: aantoonbaar landelijke of internationale bezoekers of deelnemers, officiële hotel- of verblijfsinformatie, stadsbrede uitstraling, een actueel bezoekers- of deelnemersaantal van minstens 5.000, of gebruik van een officieel bevestigde zaalcapaciteit van minstens 10.000 voor deze uitvoering. Meerdaagse duur alleen is geen sterk signaal. Een internationale artiest, organisator, evenementnaam of vakinhoud bewijst geen internationale bezoekersstroom. Vul attendance alleen met een aantal voor de huidige editie. Vul venueCapacity alleen met de officiële capaciteit van de gebruikte zaal of opstelling; neem niet aan dat het evenement uitverkocht is. Gebruik alleen feiten over de huidige editie. Negeer cumulatieve bezoekersaantallen van eerdere edities en algemene marketingclaims. Reserveer 60 Piek voor stadsbrede evenementen of een uitzonderlijke combinatie van omvang, meerdere dagen en internationale toestroom. Neem actieve evenementen met null of Low impact niet op. Geef een specifieke locatie zodat die gegeocodeerd kan worden. Gebruik ownerType other voor een agenda, blog, wiki, zoekpagina of andere pagina die de evenementinformatie niet bezit. Bepaal daarnaast overnightAudience: waar komt het publiek vandaan en moet het blijven slapen? Gebruik none als het publiek uit de stad zelf komt en na het programma naar huis gaat, regional als het publiek uit de omliggende provincie komt en binnen een uur naar huis rijdt, national als de pagina bezoekers uit heel Nederland aantoont, en international als de pagina buitenlandse bezoekers of deelnemers aantoont. Beoordeel dit los van impactPoints en los van de duur: een markt of familiefestival dat twee dagen achter elkaar van 10:00 tot 17:00 open is, trekt twee dagen dezelfde dagbezoekers en is dus none of regional, terwijl één avond die om 02:00 eindigt met een landelijke line-up national is. Een voorstelling in een stadstheater is none of regional tenzij de pagina landelijke toestroom aantoont. Gebruik null als de opgehaalde pagina geen aanwijzing over de herkomst van het publiek geeft; verzin dan geen herkomst om High te rechtvaardigen.`;
+  return `Controleer titel, datum, locatie en status. Gebruik status active, cancelled of postponed. Neem maximaal één evenement op, alleen tussen ${input.start} en ${input.end} en binnen ${input.radiusKm} km van ${input.location}. Baseer je uitsluitend op de tekst van de pagina's die je met web_fetch hebt opgehaald; een zoekfragment kan verouderd zijn, dus als een fragment een eerdere editie noemt en de opgehaalde pagina de huidige data toont, gelden de data van de opgehaalde pagina. Geef als sourceUrl altijd de gewone pagina-URL zonder #-fragment en zonder #:~:text=. Als de opgehaalde pagina het evenement bevestigt maar de data of een beslissend vraagsignaal van de huidige editie niet noemt, mag je de tweede web_fetch gebruiken voor een andere officiële eigenaarspagina, zoals de organisator, gemeente, sportbond, locatie of ticketverkoper. Een uitagenda, blog, wiki of zoekpagina telt daarvoor niet. Leid data nooit af uit een terugkerend patroon zoals "het tweede weekend van oktober"; zet dateConfirmed dan op false. Neem bij een echte meerdaagse huidige editie de eerste en laatste bevestigde datum over; maak van een bevestigde meerdaagse editie geen eendaagse 00:00-23:59-vermelding. Een reeks losse concerten, musicals of theatervoorstellingen is geen meerdaags evenement: beoordeel de vraag per voorstelling en gebruik de speelreeks niet als verblijfsduur. Classificeer aantoonbare extra overnachtingsvraag voor hotels: 35 Medium, 45 High of 60 Piek. Een bezoekersaantal is nuttig maar niet verplicht. Geef 45 High alleen als de huidige editie ten minste één sterk signaal heeft: aantoonbaar landelijke of internationale bezoekers of deelnemers, officiële hotel- of verblijfsinformatie, stadsbrede uitstraling, een actueel bezoekers- of deelnemersaantal van minstens 5.000, of gebruik van een officieel bevestigde zaalcapaciteit van minstens 10.000 voor deze uitvoering. Meerdaagse duur alleen is geen sterk signaal. Een internationale artiest, organisator, evenementnaam of vakinhoud bewijst geen internationale bezoekersstroom. Vul attendance alleen met een aantal voor de huidige editie. Vul venueCapacity alleen met de officiële capaciteit van de gebruikte zaal of opstelling; neem niet aan dat het evenement uitverkocht is. Gebruik alleen feiten over de huidige editie. Negeer cumulatieve bezoekersaantallen van eerdere edities en algemene marketingclaims. Reserveer 60 Piek voor stadsbrede evenementen of een uitzonderlijke combinatie van omvang, meerdere dagen en internationale toestroom. Geef een bevestigd actief evenement zonder sterk vraagsignaal terug met 35 Medium, zodat een eerdere High-score kan worden herzien; laat alleen een onbevestigd of Low evenement weg. Geef een specifieke locatie zodat die gegeocodeerd kan worden. Gebruik ownerType other voor een agenda, blog, wiki, zoekpagina of andere pagina die de evenementinformatie niet bezit. Bepaal daarnaast overnightAudience: waar komt het publiek vandaan en moet het blijven slapen? Gebruik none als het publiek uit de stad zelf komt en na het programma naar huis gaat, regional als het publiek uit de omliggende provincie komt en binnen een uur naar huis rijdt, national als de pagina bezoekers uit heel Nederland aantoont, en international als de pagina buitenlandse bezoekers of deelnemers aantoont. Beoordeel dit los van impactPoints en los van de duur: een markt of familiefestival dat twee dagen achter elkaar van 10:00 tot 17:00 open is, trekt twee dagen dezelfde dagbezoekers en is dus none of regional, terwijl één avond die om 02:00 eindigt met een landelijke line-up national is. Een voorstelling in een stadstheater is none of regional tenzij de pagina landelijke toestroom aantoont. Gebruik null als de opgehaalde pagina geen aanwijzing over de herkomst van het publiek geeft; verzin dan geen herkomst om High te rechtvaardigen.`;
 }
 
 function usageTotals(
@@ -847,9 +848,7 @@ async function collectClaudeFresh(
   }
 
   const pending: VerificationEntry[] = [
-    ...urlEntries,
-    ...spreadNames,
-    ...(input.knownUrls ?? []).slice(0, 8).map((url) => ({
+    ...(input.knownUrls ?? []).map((url) => ({
       title: null,
       startDate: null,
       venue: null,
@@ -857,6 +856,8 @@ async function collectClaudeFresh(
       officialUrl: url,
       search: false,
     })),
+    ...urlEntries,
+    ...spreadNames,
   ];
   const queue: VerificationEntry[] = [];
   const queuedUrlKeys = new Set<string>();
@@ -995,6 +996,7 @@ async function collectClaudeFresh(
   let parsedFetches = 0;
   let urlsResolved = 0;
   let pagesVerified = 0;
+  const invalidatedUrls: string[] = [];
   const events = verified.flatMap(({ entry, message }) => {
     const label = entry.title ?? entry.officialUrl ?? "";
     try {
@@ -1037,6 +1039,7 @@ async function collectClaudeFresh(
         }
         if (event.ownerType === "other") {
           recordDrop(label, "verification", "Pagina is geen eigenaarspagina (ownerType other).");
+          if (entry.title === null) invalidatedUrls.push(sourceUrl);
           return [];
         }
         if (event.status === "active" && ![35, 45, 60].includes(event.impactPoints ?? 0)) {
@@ -1080,6 +1083,7 @@ async function collectClaudeFresh(
       attendance: event.attendance,
       venueCapacity: event.venueCapacity,
       aiImpactPoints: event.impactPoints,
+      assessmentVersion: CLAUDE_ASSESSMENT_VERSION,
       overnightAudience: event.overnightAudience,
       evidenceText: event.evidenceText,
       primarySourceConfirmed: event.primarySourceConfirmed,
@@ -1098,6 +1102,7 @@ async function collectClaudeFresh(
       parsedSearches,
       searchTasks.length,
     ),
+    invalidatedUrls: [...new Set(invalidatedUrls)],
     funnel: {
       namesDiscovered,
       urlsResolved,

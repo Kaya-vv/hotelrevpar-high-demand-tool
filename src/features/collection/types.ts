@@ -15,6 +15,7 @@ export type SourceResult = {
   candidates: EventCandidate[];
   requests: number;
   usage: Record<string, number>;
+  invalidatedUrls?: string[];
   funnel?: DiscoveryFunnel;
 };
 

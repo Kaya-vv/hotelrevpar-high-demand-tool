@@ -6,6 +6,8 @@ import type { Json } from "@/lib/supabase/database.types";
 
 import type { SourceResult } from "./types";
 
+export const CLAUDE_ASSESSMENT_VERSION = 3;
+
 export type BatchedMessage = {
   message: Anthropic.Message;
   billable: boolean;
@@ -153,7 +155,7 @@ export function claudeMarketCacheKey(input: ClaudeMarketInput) {
   // Account history may improve the first run, but it must not partition the shared city result.
   return createHash("sha256")
     .update(JSON.stringify({
-      version: 2,
+      version: CLAUDE_ASSESSMENT_VERSION,
       start: input.start,
       end: input.end,
       location: input.location.trim().toLocaleLowerCase("nl-NL"),

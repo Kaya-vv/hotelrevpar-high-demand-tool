@@ -87,6 +87,23 @@ it("selects the oldest unique Claude pages inside the active window", () => {
   ).toEqual(["https://venue.nl/oldest", "https://venue.nl/newer"]);
 });
 
+it("prioritizes visible events that need the current Claude assessment", () => {
+  const row = (source_url: string, needs_reassessment = false) => ({
+    source_url,
+    extracted_start_at: "2026-10-10T10:00:00Z",
+    extracted_end_at: "2026-10-10T20:00:00Z",
+    checked_at: "2026-08-01T00:00:00Z",
+    needs_reassessment,
+  });
+
+  expect(selectClaudeRefreshUrls([
+    row("https://venue.nl/routine"),
+    row("https://venue.nl/stale-visible", true),
+  ], { start: "2026-09-01", end: "2026-11-30" }, 1)).toEqual([
+    "https://venue.nl/stale-visible",
+  ]);
+});
+
 function repository(overrides: Partial<CollectionRepository> = {}): CollectionRepository {
   return {
     startRun: vi.fn().mockResolvedValue("run-1"),
@@ -101,6 +118,7 @@ function repository(overrides: Partial<CollectionRepository> = {}): CollectionRe
     loadEvidenceReviews: vi.fn().mockResolvedValue({}),
     saveEvidenceReviews: vi.fn().mockResolvedValue(undefined),
     hideCandidates: vi.fn().mockResolvedValue(undefined),
+    invalidateClaudeSources: vi.fn().mockResolvedValue(undefined),
     shouldRunClaudeDiscovery: vi.fn().mockResolvedValue(true),
     recalculateScores: vi.fn().mockResolvedValue(undefined),
     recordUsage: vi.fn().mockResolvedValue(undefined),
@@ -110,6 +128,32 @@ function repository(overrides: Partial<CollectionRepository> = {}): CollectionRe
 }
 
 describe("runCollection", () => {
+  it("invalidates a stored Claude page that verification identifies as an aggregator", async () => {
+    const repo = repository();
+    const invalidatedUrl = "https://eventseye.com/metstrade";
+
+    await runCollection(
+      { accountId: "account-1", areaId: "area-1", trigger: "manual" },
+      {
+        repository: repo,
+        collectors: {
+          claude: vi.fn().mockResolvedValue({
+            source: "claude",
+            candidates: [],
+            requests: 1,
+            usage: {},
+            invalidatedUrls: [invalidatedUrl],
+          }),
+        },
+      },
+    );
+
+    expect(repo.invalidateClaudeSources).toHaveBeenCalledWith(
+      expect.anything(),
+      [invalidatedUrl],
+    );
+  });
+
   it("keeps successful candidates when one source fails", async () => {
     const repo = repository();
     const result = await runCollection(
