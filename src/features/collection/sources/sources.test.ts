@@ -537,7 +537,7 @@ describe("source adapters", () => {
   });
 
   it("stops giving the search tool to name-only candidates past the search budget", async () => {
-    const names = Array.from({ length: 22 }, (_, index) =>
+    const names = Array.from({ length: 38 }, (_, index) =>
       discoveredCandidate({ title: `Evenement ${index}`, startDate: "2027-09-01", endDate: null }),
     );
     const create = vi.fn();
@@ -555,16 +555,16 @@ describe("source adapters", () => {
       triage: async () => new Map<number, string>(),
     });
 
-    expect(create).toHaveBeenCalledTimes(32);
+    expect(create).toHaveBeenCalledTimes(48);
     const verificationCalls = create.mock.calls.slice(12);
     expect(
       verificationCalls.filter(([request]) =>
         request.tools.some((tool: { name: string }) => tool.name === "web_search"),
       ),
-    ).toHaveLength(20);
+    ).toHaveLength(36);
     expect(result.funnel?.drops).toEqual([
-      { title: "Evenement 20", stage: "resolution", reason: "Zoekbudget voor officiële pagina's bereikt." },
-      { title: "Evenement 21", stage: "resolution", reason: "Zoekbudget voor officiële pagina's bereikt." },
+      { title: "Evenement 36", stage: "resolution", reason: "Zoekbudget voor officiële pagina's bereikt." },
+      { title: "Evenement 37", stage: "resolution", reason: "Zoekbudget voor officiële pagina's bereikt." },
     ]);
   });
 
@@ -1124,6 +1124,108 @@ describe("source adapters", () => {
     expect(asked.some((content) => content.includes(organiser))).toBe(true);
     expect(asked.some((content) => content.includes(listing))).toBe(false);
     expect(result.candidates.map((candidate) => candidate.title)).toEqual(["IBC 2026"]);
+  });
+
+  it("spreads name searches across the three 30-day periods", async () => {
+    const create = vi.fn();
+    // Candidates enter the pool one 30-day slice at a time, so plain arrival order is month
+    // order. Run 80c59a07 gave all 16 name-search slots to September and none to October or
+    // November, so two thirds of a 90-day calendar was never resolved.
+    queueClaudeSearches(create, [
+      discoveredCandidate({ title: "Eerste Augustus", startDate: "2027-08-10", endDate: "2027-08-11", officialUrl: null }),
+      discoveredCandidate({ title: "Tweede Augustus", startDate: "2027-08-12", endDate: "2027-08-13", officialUrl: null }),
+      discoveredCandidate({ title: "Derde Augustus", startDate: "2027-08-14", endDate: "2027-08-15", officialUrl: null }),
+      discoveredCandidate({ title: "Eerste September", startDate: "2027-09-10", endDate: "2027-09-11", officialUrl: null }),
+      discoveredCandidate({ title: "Eerste Oktober", startDate: "2027-10-10", endDate: "2027-10-11", officialUrl: null }),
+    ]);
+    create.mockResolvedValue(verificationResponse("https://ignored.example/page", []));
+
+    await collectClaude({
+      ...claudeWindow,
+      location: "Amsterdam",
+      radiusKm: 15,
+      model: "claude-test",
+      client: { messages: { create } } as unknown as Anthropic,
+      triage: async () => new Map<number, string>(),
+    });
+
+    const searched = create.mock.calls
+      .map(([request]) => request.messages[0].content as string)
+      .filter((content) => content.startsWith("Zoek met één zoekopdracht"))
+      .map((content) => content.slice(content.indexOf("evenement en open die pagina: ") + 30).split(",")[0]);
+    expect(searched.slice(0, 5)).toEqual([
+      "Eerste Augustus",
+      "Eerste September",
+      "Eerste Oktober",
+      "Tweede Augustus",
+      "Derde Augustus",
+    ]);
+  });
+
+  it("retries a verification whose turn was paused mid-answer", async () => {
+    const official = "https://www.amsterdam-dance-event.nl/";
+    const create = vi.fn();
+    queueClaudeSearches(create, [discoveredCandidate({ title: "Amsterdam Dance Event", officialUrl: official })]);
+    // Run 7764bbe6: two requests ran 21 fetches and came back `pause_turn`. One held zero
+    // events, the other a literal "placeholder" title for ADE. Both fetched, so the existing
+    // gate saw nothing wrong and a Peak event was dropped as `ownerType: other`.
+    const paused = verificationResponse(official, [
+      verifiedEvent({ sourceUrl: official, title: "placeholder", ownerType: "other" }),
+    ]);
+    create.mockResolvedValueOnce({
+      ...paused,
+      stop_reason: "pause_turn",
+      usage: { ...paused.usage, server_tool_use: { web_fetch_requests: 21 } },
+    });
+    create.mockResolvedValueOnce(
+      verificationResponse(official, [
+        verifiedEvent({ sourceUrl: official, title: "Amsterdam Dance Event (ADE)", impactPoints: 60 }),
+      ]),
+    );
+
+    const result = await collectClaude({
+      ...claudeWindow,
+      location: "Amsterdam",
+      radiusKm: 15,
+      model: "claude-test",
+      client: { messages: { create } } as unknown as Anthropic,
+      triage: async () => new Map<number, string>(),
+    });
+
+    expect(result.candidates.map((candidate) => candidate.title)).toEqual(["Amsterdam Dance Event (ADE)"]);
+  });
+
+  it("skips a candidate the calendar already holds and spends the slot elsewhere", async () => {
+    const official = "https://newevent.example/programma";
+    const create = vi.fn();
+    queueClaudeSearches(create, [
+      discoveredCandidate({ title: "TCS Amsterdam Marathon", startDate: "2027-09-17", endDate: "2027-09-18", officialUrl: null }),
+      discoveredCandidate({ title: "Nieuw Congres 2026", startDate: "2027-09-20", endDate: "2027-09-21", officialUrl: official }),
+    ]);
+    create.mockResolvedValue(
+      verificationResponse(official, [verifiedEvent({ sourceUrl: official, title: "Nieuw Congres 2026" })]),
+    );
+
+    const result = await collectClaude({
+      ...claudeWindow,
+      location: "Amsterdam",
+      radiusKm: 15,
+      model: "claude-test",
+      // Run 80c59a07 spent 24 of 74 slots re-confirming events already in the calendar.
+      knownEvents: [{ title: "TCS Amsterdam Marathon", startDate: "2027-09-15", endDate: "2027-09-18" }],
+      client: { messages: { create } } as unknown as Anthropic,
+      triage: async () => new Map<number, string>(),
+    });
+
+    expect(result.funnel?.drops).toContainEqual({
+      title: "TCS Amsterdam Marathon",
+      stage: "discovery",
+      reason: 'Staat al bevestigd in de agenda als "TCS Amsterdam Marathon".',
+    });
+    // No verification request may be spent on the stored event.
+    const asked = create.mock.calls.map(([request]) => request.messages[0].content as string);
+    expect(asked.some((content) => content.includes("TCS Amsterdam Marathon"))).toBe(false);
+    expect(result.candidates.map((candidate) => candidate.title)).toEqual(["Nieuw Congres 2026"]);
   });
 
   it("shares a city result whenever every month/category slice was searched", () => {

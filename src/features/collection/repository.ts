@@ -92,6 +92,21 @@ export function createCollectionRepository(): CollectionRepository {
             .in("event_id", ids),
         )
         : [];
+      // A third of every run's verification budget went to events this area already holds as
+      // confirmed. Loading their identity lets discovery skip them and spend the slot on
+      // something unknown; refreshing them stays the job of `knownClaudeUrls`.
+      const knownEvents = links.length
+        ? await fetchInBatches(
+          links.map((link) => link.event_id),
+          (ids) => supabase
+            .from("events")
+            .select("title, start_at, end_at")
+            .eq("certainty", "confirmed")
+            .in("id", ids)
+            .lte("start_at", `${window.end}T23:59:59Z`)
+            .gte("end_at", `${window.start}T00:00:00Z`),
+        )
+        : [];
       return {
         area: {
           id: area.id,
@@ -112,6 +127,11 @@ export function createCollectionRepository(): CollectionRepository {
         }],
         window,
         knownClaudeUrls: selectClaudeRefreshUrls(claudeSources, window),
+        knownEvents: knownEvents.map((event) => ({
+          title: event.title,
+          startDate: event.start_at.slice(0, 10),
+          endDate: event.end_at?.slice(0, 10) ?? null,
+        })),
       } as CollectionContext;
     },
 

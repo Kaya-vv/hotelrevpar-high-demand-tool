@@ -23,6 +23,11 @@ const searchRequestOptions = { timeout: 180_000, maxRetries: 1 } as const;
 const verificationRequestOptions = { timeout: 180_000, maxRetries: 0 } as const;
 const triageRequestOptions = { timeout: 90_000, maxRetries: 0 } as const;
 const DEFAULT_TRIAGE_MODEL = "claude-haiku-4-5-20251001";
+// 40 verification slots with 20 of them reachable by name-search left 34 of 74 candidates
+// unlooked-at in run 80c59a07, and two thirds of the 90-day window unresolved. A run bills
+// roughly $0.30, so the ceiling was never the constraint the numbers implied.
+const VERIFICATION_BUDGET = 60;
+const SEARCH_BUDGET = 36;
 
 export type ClaudeUsageEvent = {
   phase: "discovery" | "discovery_fetch" | "demand_triage" | "demand_verification";
@@ -462,6 +467,9 @@ type MarketCache = {
   save: (input: ClaudeMarketInput, result: SourceResult) => Promise<void>;
 };
 
+/** The identity fields `sameIdentity` compares, shared by a fresh candidate and a stored event. */
+export type DatedTitle = { title: string; startDate: string; endDate: string | null };
+
 type CollectClaudeInput = CollectionWindow & {
   location: string;
   radiusKm: number;
@@ -472,6 +480,14 @@ type CollectClaudeInput = CollectionWindow & {
   geocode?: (query: string) => Promise<{ latitude: number; longitude: number } | null>;
   triage?: (candidates: DiscoveredCandidate[]) => Promise<Map<number, string>>;
   knownUrls?: string[];
+  /**
+   * Events this area already holds as confirmed. A third of run 80c59a07's verification budget
+   * re-confirmed events already in the calendar, so these are skipped and the slot goes to an
+   * unknown candidate. Refreshing a stored event stays the job of `knownUrls`, which needs no
+   * search. Deliberately absent from `claudeMarketCacheKey`: account history must not partition
+   * the shared city result.
+   */
+  knownEvents?: DatedTitle[];
   // Injecting a client used to disable batching, which left the resume path — the whole reason
   // batches exist here — with no way to be exercised outside production.
   batching?: Batching;
@@ -714,7 +730,7 @@ async function collectClaudeFresh(
 
   const identityTokens = (title: string) =>
     normalizeText(title).split(" ").filter((token) => token && !/^20\d{2}$/.test(token));
-  const sameIdentity = (left: DiscoveredCandidate, right: DiscoveredCandidate) => {
+  const sameIdentity = (left: DatedTitle, right: DatedTitle) => {
     const leftTokens = identityTokens(left.title);
     const rightTokens = identityTokens(right.title);
     if (!leftTokens.length || !rightTokens.length) return false;
@@ -765,6 +781,15 @@ async function collectClaudeFresh(
       recordDrop(candidate.title, "discovery", "Buiten het verzamelvenster.");
       return false;
     }
+    // Verifying an event the calendar already holds buys nothing: the row is confirmed, scored
+    // and exported. Run 80c59a07 spent 24 of 74 slots that way, so TCS Amsterdam Marathon and
+    // IDFA were re-confirmed while genuinely new candidates never got looked at. Skipping before
+    // triage also keeps them out of the Haiku call.
+    const stored = (input.knownEvents ?? []).find((event) => sameIdentity(event, candidate));
+    if (stored) {
+      recordDrop(candidate.title, "discovery", `Staat al bevestigd in de agenda als "${stored.title}".`);
+      return false;
+    }
     return true;
   });
   const triage = input.triage
@@ -799,9 +824,30 @@ async function collectClaudeFresh(
     (candidate.officialUrl ? urlEntries : nameEntries).push(entry);
   });
 
+  // A 90-day window is searched in three 30-day slices and candidates enter the pool slice by
+  // slice, so arrival order is month order. In run 80c59a07 all 16 name-search slots went to
+  // September while October and November got none: the calendar covers 90 days but only the
+  // first 30 were ever resolved. Round-robin over the same slots so each period gets a share -
+  // no extra searches, no bigger queue, it only changes which candidates win the scarce slots.
+  const periodOf = (startDate: string | null) => {
+    const offset = Math.floor(
+      (Date.parse(`${startDate ?? input.start}T00:00:00Z`) - Date.parse(`${input.start}T00:00:00Z`)) / 86_400_000,
+    );
+    return Math.min(2, Math.max(0, Math.floor(offset / 30)));
+  };
+  const byPeriod: VerificationEntry[][] = [[], [], []];
+  nameEntries.forEach((entry) => byPeriod[periodOf(entry.startDate)].push(entry));
+  const spreadNames: VerificationEntry[] = [];
+  const deepest = Math.max(...byPeriod.map((period) => period.length));
+  for (let index = 0; index < deepest; index += 1) {
+    byPeriod.forEach((period) => {
+      if (index < period.length) spreadNames.push(period[index]);
+    });
+  }
+
   const pending: VerificationEntry[] = [
     ...urlEntries,
-    ...nameEntries,
+    ...spreadNames,
     ...(input.knownUrls ?? []).slice(0, 8).map((url) => ({
       title: null,
       startDate: null,
@@ -813,15 +859,15 @@ async function collectClaudeFresh(
   ];
   const queue: VerificationEntry[] = [];
   const queuedUrlKeys = new Set<string>();
-  let searchBudget = 20;
+  let searchBudget = SEARCH_BUDGET;
   for (const entry of pending) {
     if (entry.officialUrl) {
       const key = comparableUrl(entry.officialUrl);
       if (queuedUrlKeys.has(key)) continue;
       queuedUrlKeys.add(key);
     }
-    if (queue.length === 40) {
-      recordDrop(entry.title ?? entry.officialUrl ?? "", "resolution", "Verificatiebudget van 40 kandidaten bereikt.");
+    if (queue.length === VERIFICATION_BUDGET) {
+      recordDrop(entry.title ?? entry.officialUrl ?? "", "resolution", `Verificatiebudget van ${VERIFICATION_BUDGET} kandidaten bereikt.`);
       continue;
     }
     if (!entry.officialUrl) {
@@ -888,7 +934,7 @@ async function collectClaudeFresh(
           messages: [{
             role: "user",
             content: retry
-              ? `Je vorige antwoord gebruikte geen web_fetch en is daarom verworpen. Haal de pagina eerst op met web_fetch en antwoord pas daarna. ${prompt}`
+              ? `Je vorige antwoord was onbruikbaar: het gebruikte geen web_fetch of werd halverwege afgebroken. Open hoogstens twee pagina's en antwoord daarna direct. ${prompt}`
               : prompt,
           }],
       },
@@ -905,7 +951,12 @@ async function collectClaudeFresh(
     const result = settled[index];
     if (result.status === "fulfilled") {
       await observeUsage(input.onUsage, usageEvent(result.value, "discovery_fetch", model));
-      if (!fetched(result.value)) retryIndexes.push(index);
+      // `pause_turn` means Anthropic stopped a long tool loop mid-answer and expects the turn to
+      // continue; the reply is not a verdict. Two requests in run 7764bbe6 ran 21 fetches and
+      // paused: one returned zero events and one returned a literal "placeholder" title for
+      // Amsterdam Dance Event, which then read as `ownerType: other` and was dropped. They pass
+      // `fetched` precisely because they fetched too much, so name the stop reason instead.
+      if (!fetched(result.value) || result.value.stop_reason === "pause_turn") retryIndexes.push(index);
     }
   }
   if (retryIndexes.length) {

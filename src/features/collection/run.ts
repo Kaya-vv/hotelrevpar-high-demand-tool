@@ -47,6 +47,7 @@ export type CollectionContext = {
   hotels: HotelContext[];
   window: CollectionWindow;
   knownClaudeUrls: string[];
+  knownEvents: { title: string; startDate: string; endDate: string | null }[];
 };
 
 type ClaudeSourceRow = {
@@ -232,6 +233,7 @@ function defaultCollectors(
         location: context.area.searchLocation,
         radiusKm: context.area.radiusKm,
         knownUrls: context.knownClaudeUrls,
+        knownEvents: context.knownEvents,
         onUsage: (usage) => onUsage("claude", usage),
       });
     },
