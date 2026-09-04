@@ -22,7 +22,8 @@ export async function publishCollectionJob(
   const { send } = await import("@vercel/queue");
   await send(COLLECTION_TOPIC, message, {
     idempotencyKey: message.jobId,
-    retentionSeconds: 86_400,
+    // Anthropic batches may use their full 24-hour processing window before a retry completes.
+    retentionSeconds: 172_800,
   });
 }
 
@@ -137,7 +138,7 @@ export async function processCollectionJob(
 
   if (deliveryCount > 1 && job.status === "running") {
     const finishedAt = new Date().toISOString();
-    const errorSummary = "Verzameling afgebroken door een time-out.";
+    const errorSummary = "Vorige poging afgebroken door een time-out; batch wordt hervat.";
     const { error: runError } = await admin
       .from("collection_runs")
       .update({ finished_at: finishedAt, error_summary: errorSummary })
@@ -145,18 +146,6 @@ export async function processCollectionJob(
       .eq("collection_area_id", job.collection_area_id)
       .is("finished_at", null);
     if (runError) throw runError;
-
-    const { error: updateError } = await admin
-      .from("collection_jobs")
-      .update({
-        status: "failed",
-        attempts: deliveryCount,
-        finished_at: finishedAt,
-        error_summary: errorSummary,
-      })
-      .eq("id", job.id);
-    if (updateError) throw updateError;
-    return;
   }
 
   const [{ data: account, error: accountError }, { data: area, error: areaError }] = await Promise.all([

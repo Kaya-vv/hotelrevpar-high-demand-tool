@@ -34,6 +34,45 @@ export type Database = {
   };
   public: {
     Tables: {
+      anthropic_batch_cache: {
+        Row: {
+          batch_id: string | null;
+          cache_key: string;
+          created_at: string;
+          error: string | null;
+          expires_at: string;
+          owner_token: string;
+          results: Json | null;
+          status: string;
+          updated_at: string;
+          usage_reported: boolean;
+        };
+        Insert: {
+          batch_id?: string | null;
+          cache_key: string;
+          created_at?: string;
+          error?: string | null;
+          expires_at: string;
+          owner_token: string;
+          results?: Json | null;
+          status: string;
+          updated_at?: string;
+          usage_reported?: boolean;
+        };
+        Update: {
+          batch_id?: string | null;
+          cache_key?: string;
+          created_at?: string;
+          error?: string | null;
+          expires_at?: string;
+          owner_token?: string;
+          results?: Json | null;
+          status?: string;
+          updated_at?: string;
+          usage_reported?: boolean;
+        };
+        Relationships: [];
+      };
       account_event_areas: {
         Row: {
           account_id: string;
@@ -336,6 +375,45 @@ export type Database = {
             referencedColumns: ["id"];
           }
         ];
+      };
+      claude_market_cache: {
+        Row: {
+          cache_key: string;
+          created_at: string;
+          discovery_model: string;
+          expires_at: string;
+          model: string;
+          radius_km: number;
+          result: Json;
+          search_location: string;
+          window_end: string;
+          window_start: string;
+        };
+        Insert: {
+          cache_key: string;
+          created_at?: string;
+          discovery_model: string;
+          expires_at: string;
+          model: string;
+          radius_km: number;
+          result: Json;
+          search_location: string;
+          window_end: string;
+          window_start: string;
+        };
+        Update: {
+          cache_key?: string;
+          created_at?: string;
+          discovery_model?: string;
+          expires_at?: string;
+          model?: string;
+          radius_km?: number;
+          result?: Json;
+          search_location?: string;
+          window_end?: string;
+          window_start?: string;
+        };
+        Relationships: [];
       };
       collection_runs: {
         Row: {

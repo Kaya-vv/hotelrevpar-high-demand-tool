@@ -70,7 +70,7 @@ describe("collection jobs", () => {
     expect(run).not.toHaveBeenCalled();
   });
 
-  it("closes a timed-out run on redelivery without running collection again", async () => {
+  it("closes a timed-out run and resumes its cached batch on redelivery", async () => {
     const jobUpdates: Array<Record<string, unknown>> = [];
     const jobQuery = selectable({
       id: "job-1",
@@ -93,22 +93,33 @@ describe("collection jobs", () => {
     const runQuery = {
       update: vi.fn().mockReturnValue(runUpdate),
     };
+    const accountQuery = selectable({ id: "account-1" });
+    const areaQuery = selectable({ id: "area-1" });
     adminHolder.current = {
-      from: vi.fn((table: string) => table === "collection_jobs" ? jobQuery : runQuery),
+      from: vi.fn((table: string) => table === "collection_jobs"
+        ? jobQuery
+        : table === "collection_runs"
+          ? runQuery
+          : table === "accounts"
+            ? accountQuery
+            : areaQuery),
     };
-    const run = vi.fn();
+    const run = vi.fn().mockResolvedValue({ runId: "run-2", status: "completed" });
 
     await processCollectionJob({ jobId: "job-1" }, 2, run);
 
-    expect(run).not.toHaveBeenCalled();
+    expect(run).toHaveBeenCalledWith({
+      accountId: "account-1",
+      areaId: "area-1",
+      trigger: "manual",
+    });
     expect(runQuery.update).toHaveBeenCalledWith(expect.objectContaining({
-      error_summary: "Verzameling afgebroken door een time-out.",
+      error_summary: "Vorige poging afgebroken door een time-out; batch wordt hervat.",
     }));
-    expect(jobUpdates).toEqual([expect.objectContaining({
-      status: "failed",
-      attempts: 2,
-      error_summary: "Verzameling afgebroken door een time-out.",
-    })]);
+    expect(jobUpdates).toEqual([
+      expect.objectContaining({ status: "running", attempts: 2 }),
+      expect.objectContaining({ status: "succeeded", collection_run_id: "run-2" }),
+    ]);
   });
 
   it("records a failed attempt and rethrows so Vercel can retry it", async () => {
