@@ -1020,6 +1020,42 @@ describe("source adapters", () => {
     expect(triageRequest?.[0].model).toBe("claude-haiku-4-5-20251001");
   });
 
+  it("retries an agenda page that answered without fetching it", async () => {
+    const agendaUrl = "https://www.rai.nl/en/rai-events";
+    const official = "https://show.ibc.org";
+    const create = vi.fn();
+    queueClaudeSearches(create, [], [agendaUrl]);
+    // Production: the RAI calendar was harvested, its fetch was skipped, and every RAI trade
+    // fair including IBC went with it. Agenda pages are channels, so one miss is not a drop.
+    create.mockResolvedValueOnce({
+      content: [{ type: "text", text: JSON.stringify({ candidates: [], agendaUrls: [] }) }],
+      usage: { input_tokens: 100, output_tokens: 20 },
+    });
+    create.mockResolvedValueOnce(
+      agendaResponse(agendaUrl, [
+        discoveredCandidate({ title: "IBC2026", city: "Amsterdam", venue: "RAI", officialUrl: official }),
+      ]),
+    );
+    create.mockResolvedValueOnce(
+      verificationResponse(official, [verifiedEvent({ sourceUrl: official, title: "IBC2026", impactPoints: 60 })]),
+    );
+
+    const result = await collectClaude({
+      ...claudeWindow,
+      location: "Amsterdam",
+      radiusKm: 15,
+      model: "claude-test",
+      client: { messages: { create } } as unknown as Anthropic,
+      triage: async () => new Map<number, string>(),
+    });
+
+    const retry = create.mock.calls[13][0].messages[0].content;
+    expect(retry).toContain("Je vorige antwoord gebruikte geen web_fetch");
+    expect(retry).toContain(agendaUrl);
+    expect(result.candidates.map((candidate) => candidate.title)).toEqual(["IBC2026"]);
+    expect(result.usage.failedFetches).toBe(0);
+  });
+
   it("shares a city result whenever every month/category slice was searched", () => {
     // Every production run failed between two and eight page fetches, so a zero-failure gate
     // meant no city result was ever shared and the saving never materialised.

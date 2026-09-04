@@ -529,9 +529,12 @@ async function collectClaudeFresh(
     city: input.location,
     timezone: "Europe/Amsterdam",
   };
+  // 50 was reached inside the resolution phase of a 100-candidate run, so every verification
+  // drop after it vanished and the audit list read as though nothing failed there. A run cannot
+  // exceed 152 candidates (12 searches x 6 + 8 agendas x 10), so 200 covers the worst case.
   const drops: DiscoveryDrop[] = [];
   const recordDrop = (title: string, stage: DiscoveryDrop["stage"], reason: string) => {
-    if (drops.length < 50) drops.push({ title, stage, reason });
+    if (drops.length < 200) drops.push({ title, stage, reason });
   };
 
   const searches: Anthropic.Message[] = [];
@@ -635,35 +638,56 @@ async function collectClaudeFresh(
 
   const agendaMessages: Anthropic.Message[] = [];
   let failedFetches = 0;
+  const agendaRequest = (url: string, retry: boolean): MessageRequest => ({
+    options: verificationRequestOptions,
+    params: {
+      model: discoveryModel,
+      max_tokens: 2_500,
+      ...(discoveryModel.startsWith("claude-sonnet-5")
+        ? { thinking: { type: "disabled" as const } }
+        : {}),
+      tools: [{
+        type: "web_fetch_20260318",
+        name: "web_fetch",
+        allowed_callers: ["direct"],
+        max_uses: 1,
+        max_content_tokens: 6_000,
+        citations: { enabled: false },
+        response_inclusion: "full",
+      }],
+      output_config: { format: zodOutputFormat(discoverySchema) },
+      messages: [{
+        role: "user",
+        content: `${retry ? "Je vorige antwoord gebruikte geen web_fetch en is daarom verworpen. Haal de pagina eerst op met web_fetch en antwoord pas daarna. " : ""}Open deze agendapagina en noteer welke evenementen tussen ${input.start} en ${input.end} binnen ${input.radiusKm} km van ${input.location} plaatsvinden. Geef per evenement de naam, begindatum en einddatum als YYYY-MM-DD, de plaats, de locatie en de officiële pagina waarnaar de agenda linkt als die op de pagina staat; gebruik anders null. Verzin geen URL's. Geef maximaal tien evenementen die aannemelijk extra hotelovernachtingen veroorzaken en sla markten, wekelijkse activiteiten en kleine lokale programmering over. Geef een lege lijst agendaUrls. Pagina:\n${url}`,
+      }],
+    } satisfies MessageCreateParamsNonStreaming,
+  });
+  const agendaFetched = (result: PromiseSettledResult<Anthropic.Message>) =>
+    result.status === "fulfilled" &&
+    (result.value.usage.server_tool_use?.web_fetch_requests ?? 0) >= 1;
   const agendaResults = await requestMessages(
     client,
     "agenda",
-    agendaTargets.map((url) => ({
-      options: verificationRequestOptions,
-      params: {
-        model: discoveryModel,
-        max_tokens: 2_500,
-        ...(discoveryModel.startsWith("claude-sonnet-5")
-          ? { thinking: { type: "disabled" as const } }
-          : {}),
-        tools: [{
-          type: "web_fetch_20260318",
-          name: "web_fetch",
-          allowed_callers: ["direct"],
-          max_uses: 1,
-          max_content_tokens: 6_000,
-          citations: { enabled: false },
-          response_inclusion: "full",
-        }],
-        output_config: { format: zodOutputFormat(discoverySchema) },
-        messages: [{
-          role: "user",
-          content: `Open deze agendapagina en noteer welke evenementen tussen ${input.start} en ${input.end} binnen ${input.radiusKm} km van ${input.location} plaatsvinden. Geef per evenement de naam, begindatum en einddatum als YYYY-MM-DD, de plaats, de locatie en de officiële pagina waarnaar de agenda linkt als die op de pagina staat; gebruik anders null. Verzin geen URL's. Geef maximaal tien evenementen die aannemelijk extra hotelovernachtingen veroorzaken en sla markten, wekelijkse activiteiten en kleine lokale programmering over. Geef een lege lijst agendaUrls. Pagina:\n${url}`,
-        }],
-      } satisfies MessageCreateParamsNonStreaming,
-    })),
+    agendaTargets.map((url) => agendaRequest(url, false)),
     batching,
   );
+  // An agenda page is a channel, not one event: rai.nl/en/rai-events carries every RAI trade
+  // fair. Losing it to a single skipped fetch costs a month of business demand, so it gets the
+  // same one retry that verification has always had.
+  const agendaRetryIndexes = agendaResults.flatMap((result, index) =>
+    agendaFetched(result) ? [] : [index],
+  );
+  if (agendaRetryIndexes.length) {
+    const retries = await requestMessages(
+      client,
+      "agenda",
+      agendaRetryIndexes.map((index) => agendaRequest(agendaTargets[index], true)),
+      batching,
+    );
+    retries.forEach((retry, offset) => {
+      agendaResults[agendaRetryIndexes[offset]] = retry;
+    });
+  }
   for (let index = 0; index < agendaResults.length; index += 1) {
     const result = agendaResults[index];
     try {
