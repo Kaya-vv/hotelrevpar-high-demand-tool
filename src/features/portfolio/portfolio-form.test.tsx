@@ -61,7 +61,7 @@ describe("PortfolioForm", () => {
     );
 
     expect(screen.getByText("Dutch Design Week")).toBeVisible();
-    expect(screen.getByRole("button", { name: "Open vraagmomenten" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Kalender" })).toBeVisible();
     expect(screen.queryByRole("button", { name: "Alle hotels bijwerken" })).not.toBeInTheDocument();
   });
 });

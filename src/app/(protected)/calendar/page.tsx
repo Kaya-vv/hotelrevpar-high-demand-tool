@@ -94,7 +94,7 @@ export default async function CalendarPage({
     <div>
       <div className="page-title-row">
         <header className="page-title">
-          <span className="eyebrow">Vraagmomenten</span>
+          <span className="eyebrow">Kalender</span>
           <h1>{selectedHotel?.name ?? "Hoge-vraagmomenten"}</h1>
           <p>Alle relevante momenten met hun verwachte hotelvraag en score.</p>
         </header>

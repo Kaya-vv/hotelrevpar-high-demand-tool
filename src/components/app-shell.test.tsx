@@ -23,7 +23,7 @@ describe("AppShell", () => {
     );
 
     expect(screen.getByRole("navigation")).not.toHaveTextContent("Dashboard");
-    expect(screen.getByRole("navigation")).toHaveTextContent("Vraagmomenten");
+    expect(screen.getByRole("navigation")).toHaveTextContent("Kalender");
     expect(screen.getByRole("navigation")).not.toHaveTextContent(
       "Te beoordelen"
     );

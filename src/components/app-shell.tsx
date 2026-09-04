@@ -33,7 +33,7 @@ export function AppShell({
         <Link
           className="brand"
           href="/calendar"
-          aria-label="DemandRadar vraagmomenten"
+          aria-label="DemandRadar kalender"
         >
           <Image
             src="/DemandRadar-Logo.png"

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const mainLinks = [
-  ["/calendar", "Vraagmomenten"],
+  ["/calendar", "Kalender"],
   ["/portfolio", "Hotels"],
   ["/export", "Exporteren"],
   ["/account", "Account"],

@@ -262,7 +262,7 @@ export function PortfolioForm({
                     <input type="hidden" name="hotelId" value={hotel.id} />
                     <input type="hidden" name="destination" value="/calendar" />
                     <button className="primary" type="submit">
-                      Open vraagmomenten
+                      Kalender
                     </button>
                   </form>
                   <HotelDialog
