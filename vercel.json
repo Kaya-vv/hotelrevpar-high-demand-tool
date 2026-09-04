@@ -3,7 +3,7 @@
   "regions": ["dub1"],
   "functions": {
     "src/app/api/queues/collect-hotel/route.ts": {
-      "maxDuration": 800,
+      "maxDuration": 1800,
       "experimentalTriggers": [
         {
           "type": "queue/v2beta",

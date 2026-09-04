@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { processCollectionJob, type CollectionJobMessage } from "@/features/collection/jobs";
 
-export const maxDuration = 800;
+export const maxDuration = 1800;
 
 const messageSchema = z.object({ jobId: z.uuid() });
 
