@@ -32,7 +32,7 @@ const errorText = (error: unknown) => error instanceof Error ? error.message : S
 const NO_PAGE = "No fetched official page";
 
 function fetchTarget(lead: Lead) {
-  return [lead.url, lead.officialPage].find((url) => url && url !== lead.blockedPage) ?? null;
+  return [lead.url, lead.officialPage].find((url) => url && /^https?:\/\//i.test(url) && url !== lead.blockedPage) ?? null;
 }
 
 function targetWasRejected(message: Anthropic.Message, target: string | null) {
@@ -81,7 +81,7 @@ export function isAggregatorUrl(value: string) {
  * still always a URL the search returned, so nothing invented can reach a fetch.
  */
 export function repairObservedUrl(value: string | null, observed: string[]) {
-  if (!value) return null;
+  if (!value || !/^https?:\/\//i.test(value)) return null;
   if (observedUrl(value, observed)) return new URL(value).href;
   let repaired: string | null = null;
   for (const candidate of observed) {
@@ -148,11 +148,21 @@ export function selectResolveLeads(leads: Lead[], now: Date, bootstrap: boolean)
     .slice(0, RESOLVE_SLOTS * (bootstrap ? 2 : 1));
 }
 
-// This account's own editions first, then whatever has consumed the least budget so far.
+// Known demand first, then portfolio origin and prior effort. This never scores a future edition.
 function queueOrder(left: Lead, right: Lead) {
-  return Number(right.origin === "portfolio") - Number(left.origin === "portfolio")
+  return (right.historicalDemandPoints ?? 0) - (left.historicalDemandPoints ?? 0)
+    || researchDuration(right) - researchDuration(left)
+    || Number(right.origin === "portfolio") - Number(left.origin === "portfolio")
     || (left.attempts ?? 0) - (right.attempts ?? 0)
     || left.nextCheck.localeCompare(right.nextCheck);
+}
+
+// Among previously high-demand series, a dated multi-day edition is a stronger research target
+// than a single show. Exclude whole seasons, and never infer a future demand score from duration.
+function researchDuration(lead: Lead) {
+  if ((lead.historicalDemandPoints ?? 0) < 45 || !lead.lastKnownEdition) return 0;
+  const days = (Date.parse(lead.lastKnownEdition.end) - Date.parse(lead.lastKnownEdition.start)) / day + 1;
+  return days >= 1 && days <= 31 ? days : 0;
 }
 
 /** Static half of the fetch prompt. Byte-identical across a pass so the prefix can be cached. */
@@ -257,12 +267,13 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
     const existing = state.leads.find((lead) => lead.key === seedKey || labelKey(lead.title) === labelKey(seed.title));
     if (!existing) {
       state.leads.push({ key: seedKey, title: seed.title, url: seed.url, kind: "event", group: 0,
-        origin: "portfolio", anchor: seed.lastEditionEnd, attempts: 0, checkedAt: null,
+        origin: "portfolio", historicalDemandPoints: seed.historicalDemandPoints, anchor: seed.lastEditionEnd, attempts: 0, checkedAt: null,
         nextCheck: seed.lastEditionStart ? now.toISOString() : endedAt > now.toISOString() ? endedAt : now.toISOString(), outcome: "pending", editions: [], notes: [],
         ...(seed.lastEditionStart ? { lastKnownEdition: { start: seed.lastEditionStart, end: seed.lastEditionEnd, sourceUrl: seed.url }, officialPage: seed.url } : {}) });
       continue;
     }
     existing.origin = "portfolio";
+    if (seed.historicalDemandPoints != null) existing.historicalDemandPoints = seed.historicalDemandPoints;
     if (!existing.checkedAt) existing.url ??= existing.officialPage ?? seed.url;
     if (seed.lastEditionStart) rememberEdition(existing, { start: seed.lastEditionStart, end: seed.lastEditionEnd, sourceUrl: seed.url });
     if (!existing.anchor || existing.anchor < seed.lastEditionEnd) existing.anchor = seed.lastEditionEnd;

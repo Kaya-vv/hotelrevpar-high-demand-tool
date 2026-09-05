@@ -1,0 +1,772 @@
+[
+  {
+    "ai_impact_points": null,
+    "checked_at": "2026-09-05 20:45:57.779+00",
+    "event_id": "event-1",
+    "extracted_end_at": "2026-11-04 22:00:00+00",
+    "extracted_start_at": "2026-11-04 20:00:00+00",
+    "public_source_url": "https://www.psv.nl",
+    "source_url": "https://api.football-data.org/v4/matches/575390",
+    "title": "PSV - Club Brugge (Champions League)"
+  },
+  {
+    "ai_impact_points": 45,
+    "checked_at": "2026-09-03 17:31:48.007+00",
+    "event_id": "event-2",
+    "extracted_end_at": "2026-11-21 23:59:00+00",
+    "extracted_start_at": "2026-11-20 15:00:00+00",
+    "public_source_url": "https://www.klokgebouw.nl/agenda/revolution-calling-20-11",
+    "source_url": "https://www.klokgebouw.nl/agenda/revolution-calling-20-11",
+    "title": "Revolution Calling"
+  },
+  {
+    "ai_impact_points": 35,
+    "checked_at": "2026-09-03 17:31:49.098+00",
+    "event_id": "event-3",
+    "extracted_end_at": "2026-11-22 23:00:00+00",
+    "extracted_start_at": "2026-11-22 13:00:00+00",
+    "public_source_url": "https://www.klokgebouw.nl/agenda/tributeland-2026",
+    "source_url": "https://www.klokgebouw.nl/agenda/tributeland-2026",
+    "title": "Tributeland"
+  },
+  {
+    "ai_impact_points": 45,
+    "checked_at": "2026-09-03 17:31:46.881+00",
+    "event_id": "event-4",
+    "extracted_end_at": "2026-11-15 01:00:00+00",
+    "extracted_start_at": "2026-11-14 13:00:00+00",
+    "public_source_url": "https://www.klokgebouw.nl/agenda/helldorado-2026",
+    "source_url": "https://www.klokgebouw.nl/agenda/helldorado-2026",
+    "title": "Helldorado"
+  },
+  {
+    "ai_impact_points": 45,
+    "checked_at": "2026-09-05 20:45:43.655+00",
+    "event_id": "event-4",
+    "extracted_end_at": "2026-11-15 01:00:00+00",
+    "extracted_start_at": "2026-11-14 13:00:00+00",
+    "public_source_url": "https://www.klokgebouw.nl/agenda/helldorado-2026",
+    "source_url": "https://www.klokgebouw.nl/agenda/helldorado-2026",
+    "title": "Helldorado"
+  },
+  {
+    "ai_impact_points": 45,
+    "checked_at": "2026-09-03 17:31:56.859+00",
+    "event_id": "event-5",
+    "extracted_end_at": "2026-10-10 23:59:59+00",
+    "extracted_start_at": "2026-10-08 00:00:00+00",
+    "public_source_url": "https://www.omroepbrabant.nl/nieuws/6016585/vergunning-voor-bmx-wedstrijd-in-valkenswaard-verleend",
+    "source_url": "https://www.omroepbrabant.nl/nieuws/6016585/vergunning-voor-bmx-wedstrijd-in-valkenswaard-verleend",
+    "title": "KNWU BMX Nationale Wedstrijd"
+  },
+  {
+    "ai_impact_points": 45,
+    "checked_at": "2026-09-03 17:31:50.539+00",
+    "event_id": "event-6",
+    "extracted_end_at": "2026-09-27 02:00:00+00",
+    "extracted_start_at": "2026-09-26 20:00:00+00",
+    "public_source_url": "https://feelthevibe.nl/en/urbn-indoor-festival/",
+    "source_url": "https://feelthevibe.nl/en/urbn-indoor-festival/",
+    "title": "URBN indoor festival"
+  },
+  {
+    "ai_impact_points": 45,
+    "checked_at": "2026-09-04 10:51:35.69+00",
+    "event_id": "event-6",
+    "extracted_end_at": "2026-09-27 00:00:00+00",
+    "extracted_start_at": "2026-09-26 18:00:00+00",
+    "public_source_url": "https://feelthevibe.nl/en/urbn-indoor-festival/",
+    "source_url": "https://feelthevibe.nl/en/urbn-indoor-festival/",
+    "title": "URBN indoor festival"
+  },
+  {
+    "ai_impact_points": 45,
+    "checked_at": "2026-09-05 20:45:43.896+00",
+    "event_id": "event-6",
+    "extracted_end_at": "2026-09-27 02:00:00+00",
+    "extracted_start_at": "2026-09-26 20:00:00+00",
+    "public_source_url": "https://feelthevibe.nl/en/urbn-indoor-festival/",
+    "source_url": "https://feelthevibe.nl/en/urbn-indoor-festival/",
+    "title": "URBN indoor festival"
+  },
+  {
+    "ai_impact_points": 35,
+    "checked_at": "2026-09-03 17:31:40.671+00",
+    "event_id": "event-7",
+    "extracted_end_at": "2026-10-03 17:00:00+00",
+    "extracted_start_at": "2026-10-03 10:00:00+00",
+    "public_source_url": "https://www.klokgebouw.nl/agenda/iam-expat-fair-2026",
+    "source_url": "https://www.klokgebouw.nl/agenda/iam-expat-fair-2026",
+    "title": "IamExpat Fair"
+  },
+  {
+    "ai_impact_points": 35,
+    "checked_at": "2026-09-05 20:45:45.921+00",
+    "event_id": "event-7",
+    "extracted_end_at": "2026-10-03 17:00:00+00",
+    "extracted_start_at": "2026-10-03 10:00:00+00",
+    "public_source_url": "https://www.klokgebouw.nl/agenda/iam-expat-fair-2026",
+    "source_url": "https://www.klokgebouw.nl/agenda/iam-expat-fair-2026",
+    "title": "IamExpat Fair"
+  },
+  {
+    "ai_impact_points": 45,
+    "checked_at": "2026-09-03 17:31:29.943+00",
+    "event_id": "event-8",
+    "extracted_end_at": "2026-09-13 18:00:00+00",
+    "extracted_start_at": "2026-09-12 11:00:00+00",
+    "public_source_url": "https://makerdays.nl/",
+    "source_url": "https://makerdays.nl/",
+    "title": "Maker Days Eindhoven"
+  },
+  {
+    "ai_impact_points": 45,
+    "checked_at": "2026-09-03 17:32:00.531+00",
+    "event_id": "event-8",
+    "extracted_end_at": "2026-09-13 16:00:00+00",
+    "extracted_start_at": "2026-09-12 09:00:00+00",
+    "public_source_url": "https://makerdays.nl/",
+    "source_url": "https://makerdays.nl/",
+    "title": "Maker Days Eindhoven"
+  },
+  {
+    "ai_impact_points": 35,
+    "checked_at": "2026-09-05 20:45:46.405+00",
+    "event_id": "event-9",
+    "extracted_end_at": "2026-10-31 23:59:00+00",
+    "extracted_start_at": "2026-10-31 16:00:00+00",
+    "public_source_url": "https://www.klokgebouw.nl/agenda/danny-vera-2026",
+    "source_url": "https://www.klokgebouw.nl/agenda/danny-vera-2026",
+    "title": "Danny Vera Beggin' For More Trouble Part 2"
+  },
+  {
+    "ai_impact_points": 35,
+    "checked_at": "2026-09-05 20:45:46.898+00",
+    "event_id": "event-10",
+    "extracted_end_at": "2026-11-14 00:00:00+00",
+    "extracted_start_at": "2026-11-13 20:00:00+00",
+    "public_source_url": "https://www.klokgebouw.nl/agenda/de-avond-van-2026",
+    "source_url": "https://www.klokgebouw.nl/agenda/de-avond-van-2026",
+    "title": "De Avond van - Edwin Evers Band"
+  },
+  {
+    "ai_impact_points": 35,
+    "checked_at": "2026-09-05 20:45:47.4+00",
+    "event_id": "event-11",
+    "extracted_end_at": "2026-10-11 14:30:00+00",
+    "extracted_start_at": "2026-10-09 20:00:00+00",
+    "public_source_url": "https://www.parktheater.nl/programma/titanique-9hd2",
+    "source_url": "https://www.parktheater.nl/programma/titanique-9hd2",
+    "title": "Titanique"
+  },
+  {
+    "ai_impact_points": 35,
+    "checked_at": "2026-09-04 10:51:36.971+00",
+    "event_id": "event-11",
+    "extracted_end_at": "2026-10-09 23:00:00+00",
+    "extracted_start_at": "2026-10-09 20:00:00+00",
+    "public_source_url": "https://www.parktheater.nl/programma/titanique-9hd2",
+    "source_url": "https://www.parktheater.nl/programma/titanique-9hd2",
+    "title": "Titanique"
+  },
+  {
+    "ai_impact_points": 45,
+    "checked_at": "2026-09-03 17:31:55.627+00",
+    "event_id": "event-12",
+    "extracted_end_at": "2026-11-14 22:00:00+00",
+    "extracted_start_at": "2026-11-07 17:30:00+00",
+    "public_source_url": "https://gloweindhoven.nl/praktisch/",
+    "source_url": "https://gloweindhoven.nl/praktisch/",
+    "title": "GLOW Eindhoven 2026 – CONNECT"
+  },
+  {
+    "ai_impact_points": 45,
+    "checked_at": "2026-09-05 20:45:44.128+00",
+    "event_id": "event-12",
+    "extracted_end_at": "2026-11-14 22:00:00+00",
+    "extracted_start_at": "2026-11-07 17:30:00+00",
+    "public_source_url": "https://gloweindhoven.nl/praktisch/",
+    "source_url": "https://gloweindhoven.nl/praktisch/",
+    "title": "GLOW Eindhoven 2026 – CONNECT"
+  },
+  {
+    "ai_impact_points": null,
+    "checked_at": "2026-09-05 20:45:57.565+00",
+    "event_id": "event-13",
+    "extracted_end_at": "2026-09-10 18:45:00+00",
+    "extracted_start_at": "2026-09-10 16:45:00+00",
+    "public_source_url": "https://www.psv.nl",
+    "source_url": "https://api.football-data.org/v4/matches/575336",
+    "title": "PSV - Shaktar (Champions League)"
+  },
+  {
+    "ai_impact_points": 35,
+    "checked_at": "2026-09-04 10:51:35.869+00",
+    "event_id": "event-14",
+    "extracted_end_at": "2026-09-20 01:00:00+00",
+    "extracted_start_at": "2026-09-19 17:00:00+00",
+    "public_source_url": "https://feelthevibe.nl/fuego/",
+    "source_url": "https://feelthevibe.nl/fuego/",
+    "title": "Fuego"
+  },
+  {
+    "ai_impact_points": 35,
+    "checked_at": "2026-09-05 20:45:47.645+00",
+    "event_id": "event-14",
+    "extracted_end_at": "2026-09-20 01:00:00+00",
+    "extracted_start_at": "2026-09-19 17:00:00+00",
+    "public_source_url": "https://feelthevibe.nl/fuego/",
+    "source_url": "https://feelthevibe.nl/fuego/",
+    "title": "Fuego"
+  },
+  {
+    "ai_impact_points": 35,
+    "checked_at": "2026-09-05 20:45:47.961+00",
+    "event_id": "event-15",
+    "extracted_end_at": "2026-10-11 15:00:00+00",
+    "extracted_start_at": "2026-10-11 10:00:00+00",
+    "public_source_url": "https://eerselpostelrally.nl/",
+    "source_url": "https://eerselpostelrally.nl/",
+    "title": "Historische Eersel Postel Rally"
+  },
+  {
+    "ai_impact_points": 35,
+    "checked_at": "2026-09-05 20:45:44.881+00",
+    "event_id": "event-16",
+    "extracted_end_at": "2026-09-06 16:00:00+00",
+    "extracted_start_at": "2026-09-06 09:45:00+00",
+    "public_source_url": "https://www.eindhovensport.nl/sporten/sporten-in-eindhoven/sportkalender/high-tech-triathlon",
+    "source_url": "https://www.eindhovensport.nl/sporten/sporten-in-eindhoven/sportkalender/high-tech-triathlon",
+    "title": "High Tech Triathlon"
+  },
+  {
+    "ai_impact_points": 35,
+    "checked_at": "2026-09-05 20:45:45.413+00",
+    "event_id": "event-17",
+    "extracted_end_at": "2026-09-20 23:59:59+00",
+    "extracted_start_at": "2026-09-19 00:00:00+00",
+    "public_source_url": "https://www.eindhovensport.nl/sporten/sporten-in-eindhoven/sportkalender/all-terrain-challenge",
+    "source_url": "https://www.eindhovensport.nl/sporten/sporten-in-eindhoven/sportkalender/all-terrain-challenge",
+    "title": "All Terrain Challenge"
+  },
+  {
+    "ai_impact_points": 35,
+    "checked_at": "2026-09-05 20:45:45.706+00",
+    "event_id": "event-18",
+    "extracted_end_at": "2026-09-26 20:00:00+00",
+    "extracted_start_at": "2026-09-26 11:00:00+00",
+    "public_source_url": "https://www.klokgebouw.nl/agenda/whiskey-proeverij-2026",
+    "source_url": "https://www.klokgebouw.nl/agenda/whiskey-proeverij-2026",
+    "title": "Whisky Event Eindhoven"
+  },
+  {
+    "ai_impact_points": 35,
+    "checked_at": "2026-09-05 20:45:46.659+00",
+    "event_id": "event-19",
+    "extracted_end_at": "2026-11-07 23:00:00+00",
+    "extracted_start_at": "2026-11-07 13:00:00+00",
+    "public_source_url": "https://www.klokgebouw.nl/agenda/snakepit-2026",
+    "source_url": "https://www.klokgebouw.nl/agenda/snakepit-2026",
+    "title": "Snakepit"
+  },
+  {
+    "ai_impact_points": 35,
+    "checked_at": "2026-09-05 20:45:47.149+00",
+    "event_id": "event-20",
+    "extracted_end_at": "2026-09-05 23:30:00+00",
+    "extracted_start_at": "2026-09-05 16:00:00+00",
+    "public_source_url": "https://www.dynamo-eindhoven.nl/evenement/maatfest-2026/",
+    "source_url": "https://www.dynamo-eindhoven.nl/evenement/maatfest-2026/",
+    "title": "Maatfest 2026"
+  },
+  {
+    "ai_impact_points": 35,
+    "checked_at": "2026-09-04 10:51:36.072+00",
+    "event_id": "event-20",
+    "extracted_end_at": "2026-09-05 23:30:00+00",
+    "extracted_start_at": "2026-09-05 15:30:00+00",
+    "public_source_url": "https://www.dynamo-eindhoven.nl/evenement/maatfest-2026/",
+    "source_url": "https://www.dynamo-eindhoven.nl/evenement/maatfest-2026/",
+    "title": "Maatfest 2026"
+  },
+  {
+    "ai_impact_points": 45,
+    "checked_at": "2026-09-03 17:31:34.148+00",
+    "event_id": "event-21",
+    "extracted_end_at": "2026-09-20 23:59:00+00",
+    "extracted_start_at": "2026-09-18 00:00:00+00",
+    "public_source_url": "https://CORSOENCULTUURFESTIVAL.NL",
+    "source_url": "https://CORSOENCULTUURFESTIVAL.NL",
+    "title": "Corso & Cultuur Festival Valkenswaard"
+  },
+  {
+    "ai_impact_points": 35,
+    "checked_at": "2026-09-05 20:45:51.092+00",
+    "event_id": "event-21",
+    "extracted_end_at": "2026-09-20 23:59:00+00",
+    "extracted_start_at": "2026-09-18 00:00:00+00",
+    "public_source_url": "https://www.corsoencultuurfestival.nl/",
+    "source_url": "https://www.corsoencultuurfestival.nl/",
+    "title": "Corso & Cultuur Festival Valkenswaard"
+  },
+  {
+    "ai_impact_points": 45,
+    "checked_at": "2026-09-03 17:31:33.021+00",
+    "event_id": "event-22",
+    "extracted_end_at": "2026-10-25 23:59:00+00",
+    "extracted_start_at": "2026-10-17 00:00:00+00",
+    "public_source_url": "https://www.klokgebouw.nl/agenda/dutch-design-week-2026",
+    "source_url": "https://www.klokgebouw.nl/agenda/dutch-design-week-2026",
+    "title": "Dutch Design Week 2026"
+  },
+  {
+    "ai_impact_points": 45,
+    "checked_at": "2026-09-04 10:51:36.537+00",
+    "event_id": "event-22",
+    "extracted_end_at": "2026-10-25 23:59:00+00",
+    "extracted_start_at": "2026-10-17 00:00:00+00",
+    "public_source_url": "https://ddw.nl/en",
+    "source_url": "https://ddw.nl/en",
+    "title": "Dutch Design Week 2026"
+  },
+  {
+    "ai_impact_points": 45,
+    "checked_at": "2026-09-05 20:45:44.624+00",
+    "event_id": "event-22",
+    "extracted_end_at": "2026-10-25 23:59:00+00",
+    "extracted_start_at": "2026-10-17 00:00:00+00",
+    "public_source_url": "https://ddw.nl/en",
+    "source_url": "https://ddw.nl/en",
+    "title": "Dutch Design Week 2026"
+  },
+  {
+    "ai_impact_points": 45,
+    "checked_at": "2026-09-05 20:45:51.395+00",
+    "event_id": "event-22",
+    "extracted_end_at": "2026-10-25 23:59:00+00",
+    "extracted_start_at": "2026-10-17 00:00:00+00",
+    "public_source_url": "https://ddw.nl/en",
+    "source_url": "https://ddw.nl/en",
+    "title": "Dutch Design Week 2026"
+  },
+  {
+    "ai_impact_points": 45,
+    "checked_at": "2026-09-05 20:45:45.151+00",
+    "event_id": "event-23",
+    "extracted_end_at": "2026-09-14 17:00:00+00",
+    "extracted_start_at": "2026-09-14 10:00:00+00",
+    "public_source_url": "https://www.eindhovensport.nl/sporten/sporten-in-eindhoven/sportkalender/otten-innovation-cup",
+    "source_url": "https://www.eindhovensport.nl/sporten/sporten-in-eindhoven/sportkalender/otten-innovation-cup",
+    "title": "Otten Innovation Cup"
+  },
+  {
+    "ai_impact_points": null,
+    "checked_at": "2026-09-05 20:45:42.329+00",
+    "event_id": "event-24",
+    "extracted_end_at": "2026-10-25 22:59:00+00",
+    "extracted_start_at": "2026-10-17 00:00:00+00",
+    "public_source_url": "https://www.rijksoverheid.nl/onderwerpen/schoolvakanties/overzicht-schoolvakanties-per-schooljaar/overzicht-schoolvakanties-2026-2027",
+    "source_url": "https://www.rijksoverheid.nl/onderwerpen/schoolvakanties/overzicht-schoolvakanties-per-schooljaar/overzicht-schoolvakanties-2026-2027",
+    "title": "Herfstvakantie"
+  },
+  {
+    "ai_impact_points": null,
+    "checked_at": "2026-09-05 20:45:42.714+00",
+    "event_id": "event-25",
+    "extracted_end_at": "2026-09-24 17:30:00+00",
+    "extracted_start_at": "2026-09-24 17:30:00+00",
+    "public_source_url": "https://www.ticketmaster.nl/event/derek-ogilvie-up-close-and-personal-tickets/1366321406?language=en-us",
+    "source_url": "https://www.ticketmaster.nl/event/derek-ogilvie-up-close-and-personal-tickets/1366321406?language=en-us",
+    "title": "Derek Ogilvie - Up Close and Personal"
+  },
+  {
+    "ai_impact_points": null,
+    "checked_at": "2026-09-05 20:45:42.963+00",
+    "event_id": "event-26",
+    "extracted_end_at": "2026-10-16 11:30:00+00",
+    "extracted_start_at": "2026-10-16 11:30:00+00",
+    "public_source_url": "https://www.ticketmaster.nl/event/derek-ogilvie-up-close-and-personal-tickets/285983337?language=en-us",
+    "source_url": "https://www.ticketmaster.nl/event/derek-ogilvie-up-close-and-personal-tickets/285983337?language=en-us",
+    "title": "Derek Ogilvie - Up Close and Personal"
+  },
+  {
+    "ai_impact_points": null,
+    "checked_at": "2026-09-05 20:45:43.265+00",
+    "event_id": "event-26",
+    "extracted_end_at": "2026-10-16 17:30:00+00",
+    "extracted_start_at": "2026-10-16 17:30:00+00",
+    "public_source_url": "https://www.ticketmaster.nl/event/derek-ogilvie-up-close-and-personal-tickets/1111565722?language=en-us",
+    "source_url": "https://www.ticketmaster.nl/event/derek-ogilvie-up-close-and-personal-tickets/1111565722?language=en-us",
+    "title": "Derek Ogilvie - Up Close and Personal"
+  },
+  {
+    "ai_impact_points": 35,
+    "checked_at": "2026-09-05 20:45:52.103+00",
+    "event_id": "event-27",
+    "extracted_end_at": "2026-12-01 17:00:00+00",
+    "extracted_start_at": "2026-12-01 10:00:00+00",
+    "public_source_url": "https://mikrocentrum.nl/en/sheet-metal/",
+    "source_url": "https://mikrocentrum.nl/en/sheet-metal/",
+    "title": "Sheet Metal Event"
+  },
+  {
+    "ai_impact_points": 35,
+    "checked_at": "2026-09-05 20:45:49.085+00",
+    "event_id": "event-28",
+    "extracted_end_at": "2026-11-27 21:00:00+00",
+    "extracted_start_at": "2026-11-27 20:00:00+00",
+    "public_source_url": "https://feverup.com/m/126104",
+    "source_url": "https://feverup.com/m/126104",
+    "title": "Candlelight: Het beste van Ludovico Einaudi"
+  },
+  {
+    "ai_impact_points": 35,
+    "checked_at": "2026-09-05 20:45:48.191+00",
+    "event_id": "event-29",
+    "extracted_end_at": "2026-09-06 19:30:00+00",
+    "extracted_start_at": "2026-09-06 18:00:00+00",
+    "public_source_url": "https://feverup.com/nl/eindhoven/candlelight",
+    "source_url": "https://feverup.com/nl/eindhoven/candlelight",
+    "title": "Candlelight: Een tribute aan Hans Zimmer"
+  },
+  {
+    "ai_impact_points": 35,
+    "checked_at": "2026-09-05 20:45:49.354+00",
+    "event_id": "event-29",
+    "extracted_end_at": "2026-09-06 17:00:00+00",
+    "extracted_start_at": "2026-09-06 16:00:00+00",
+    "public_source_url": "https://feverup.com/m/131194",
+    "source_url": "https://feverup.com/m/131194",
+    "title": "Candlelight: Een tribute aan Hans Zimmer"
+  },
+  {
+    "ai_impact_points": 35,
+    "checked_at": "2026-09-05 20:45:49.6+00",
+    "event_id": "event-30",
+    "extracted_end_at": "2026-09-06 19:15:00+00",
+    "extracted_start_at": "2026-09-06 18:15:00+00",
+    "public_source_url": "https://feverup.com/m/286516",
+    "source_url": "https://feverup.com/m/286516",
+    "title": "Candlelight: Coldplay & Ed Sheeran"
+  },
+  {
+    "ai_impact_points": 35,
+    "checked_at": "2026-09-05 20:45:49.853+00",
+    "event_id": "event-31",
+    "extracted_end_at": "2026-11-06 21:15:00+00",
+    "extracted_start_at": "2026-11-06 20:15:00+00",
+    "public_source_url": "https://feverup.com/m/653965",
+    "source_url": "https://feverup.com/m/653965",
+    "title": "Candlelight: Tribute aan ABBA"
+  },
+  {
+    "ai_impact_points": 35,
+    "checked_at": "2026-09-05 20:45:50.584+00",
+    "event_id": "event-32",
+    "extracted_end_at": "2026-09-05 21:00:00+00",
+    "extracted_start_at": "2026-09-05 14:00:00+00",
+    "public_source_url": "https://www.thisiseindhoven.com/nl/alle-evenementen/woensel-westival",
+    "source_url": "https://www.thisiseindhoven.com/nl/alle-evenementen/woensel-westival",
+    "title": "Woensel Westival"
+  },
+  {
+    "ai_impact_points": 35,
+    "checked_at": "2026-09-05 20:45:50.32+00",
+    "event_id": "event-33",
+    "extracted_end_at": "2026-10-16 20:15:00+00",
+    "extracted_start_at": "2026-10-16 19:15:00+00",
+    "public_source_url": "https://feverup.com/m/147331",
+    "source_url": "https://feverup.com/m/147331",
+    "title": "Candlelight: Coldplay & Imagine Dragons"
+  },
+  {
+    "ai_impact_points": 45,
+    "checked_at": "2026-09-05 20:45:51.859+00",
+    "event_id": "event-34",
+    "extracted_end_at": "2026-09-17 23:59:00+00",
+    "extracted_start_at": "2026-09-16 00:00:00+00",
+    "public_source_url": "https://www.microledconnect.com/",
+    "source_url": "https://www.microledconnect.com/",
+    "title": "AR/VR Connect 2026"
+  },
+  {
+    "ai_impact_points": 35,
+    "checked_at": "2026-09-05 20:45:52.597+00",
+    "event_id": "event-35",
+    "extracted_end_at": "2026-09-25 19:30:00+00",
+    "extracted_start_at": "2026-09-24 19:00:00+00",
+    "public_source_url": "https://www.tue.nl/en/our-university/calendar-and-events/24-09-2026-momentum",
+    "source_url": "https://www.tue.nl/en/our-university/calendar-and-events/24-09-2026-momentum",
+    "title": "MomenTUm"
+  },
+  {
+    "ai_impact_points": 45,
+    "checked_at": "2026-09-05 20:45:52.852+00",
+    "event_id": "event-36",
+    "extracted_end_at": "2026-09-17 23:59:00+00",
+    "extracted_start_at": "2026-09-16 00:00:00+00",
+    "public_source_url": "https://www.microledconnect.com/microled2026",
+    "source_url": "https://www.microledconnect.com/microled2026",
+    "title": "MicroLED Connect Conference & Exhibition 2026"
+  },
+  {
+    "ai_impact_points": 35,
+    "checked_at": "2026-09-05 20:45:50.836+00",
+    "event_id": "event-37",
+    "extracted_end_at": "2026-09-05 23:00:00+00",
+    "extracted_start_at": "2026-09-05 14:00:00+00",
+    "public_source_url": "https://www.thisiseindhoven.com/nl/evenementen/stook-september",
+    "source_url": "https://www.thisiseindhoven.com/nl/evenementen/stook-september",
+    "title": "STOOK"
+  },
+  {
+    "ai_impact_points": 35,
+    "checked_at": "2026-09-05 20:45:51.619+00",
+    "event_id": "event-38",
+    "extracted_end_at": "2026-10-11 22:30:00+00",
+    "extracted_start_at": "2026-09-18 19:00:00+00",
+    "public_source_url": "https://www.thisiseindhoven.com/nl/evenementen/lichtjesroute",
+    "source_url": "https://www.thisiseindhoven.com/nl/evenementen/lichtjesroute",
+    "title": "Lichtjesroute 2026"
+  },
+  {
+    "ai_impact_points": 45,
+    "checked_at": "2026-09-05 20:45:44.392+00",
+    "event_id": "event-39",
+    "extracted_end_at": "2026-10-11 23:59:00+00",
+    "extracted_start_at": "2026-10-10 00:00:00+00",
+    "public_source_url": "https://asmlmarathoneindhoven.nl/",
+    "source_url": "https://asmlmarathoneindhoven.nl/",
+    "title": "ASML Marathon Eindhoven"
+  },
+  {
+    "ai_impact_points": 35,
+    "checked_at": "2026-09-05 20:45:50.09+00",
+    "event_id": "event-40",
+    "extracted_end_at": "2026-11-20 19:00:00+00",
+    "extracted_start_at": "2026-11-20 18:00:00+00",
+    "public_source_url": "https://feverup.com/m/697467",
+    "source_url": "https://feverup.com/m/697467",
+    "title": "Candlelight: Tribute aan Michael Jackson"
+  },
+  {
+    "ai_impact_points": 35,
+    "checked_at": "2026-09-03 17:31:59.262+00",
+    "event_id": "event-41",
+    "extracted_end_at": "2026-10-25 16:30:00+00",
+    "extracted_start_at": "2026-10-25 08:30:00+00",
+    "public_source_url": "https://credionclassic.nl/",
+    "source_url": "https://credionclassic.nl/",
+    "title": "Credion Classic Scherpenheuvel-Hapert"
+  },
+  {
+    "ai_impact_points": 35,
+    "checked_at": "2026-09-04 10:51:37.811+00",
+    "event_id": "event-41",
+    "extracted_end_at": "2026-10-25 18:00:00+00",
+    "extracted_start_at": "2026-10-25 08:30:00+00",
+    "public_source_url": "https://credionclassic.nl/",
+    "source_url": "https://credionclassic.nl/",
+    "title": "Credion Classic Scherpenheuvel-Hapert"
+  },
+  {
+    "ai_impact_points": null,
+    "checked_at": "2026-09-05 20:45:54.215+00",
+    "event_id": "event-42",
+    "extracted_end_at": "2027-02-14 23:59:59+00",
+    "extracted_start_at": "2027-02-13 00:00:00+00",
+    "public_source_url": "https://arteindhoven.nl/",
+    "source_url": "https://arteindhoven.nl/",
+    "title": "Art Eindhoven 2027"
+  },
+  {
+    "ai_impact_points": null,
+    "checked_at": "2026-09-05 20:45:55.105+00",
+    "event_id": "event-42",
+    "extracted_end_at": "2027-02-14 23:59:59+00",
+    "extracted_start_at": "2027-02-13 00:00:00+00",
+    "public_source_url": "https://www.klokgebouw.nl/agenda",
+    "source_url": "https://www.klokgebouw.nl/agenda",
+    "title": "Art Eindhoven 2027"
+  },
+  {
+    "ai_impact_points": null,
+    "checked_at": "2026-09-05 20:45:55.767+00",
+    "event_id": "event-42",
+    "extracted_end_at": "2027-02-14 23:59:59+00",
+    "extracted_start_at": "2027-02-13 00:00:00+00",
+    "public_source_url": "https://www.klokgebouw.nl/agenda",
+    "source_url": "https://www.klokgebouw.nl/agenda",
+    "title": "Art Eindhoven 2027"
+  },
+  {
+    "ai_impact_points": 45,
+    "checked_at": "2026-09-05 20:45:54.418+00",
+    "event_id": "event-43",
+    "extracted_end_at": "2027-05-22 23:59:59+00",
+    "extracted_start_at": "2027-05-21 00:00:00+00",
+    "public_source_url": "https://www.effenaar.nl/fuzzclub-2027",
+    "source_url": "https://www.effenaar.nl/fuzzclub-2027",
+    "title": "Fuzz Club Festival 2027"
+  },
+  {
+    "ai_impact_points": null,
+    "checked_at": "2026-09-05 20:45:54.627+00",
+    "event_id": "event-44",
+    "extracted_end_at": "2026-12-27 23:59:59+00",
+    "extracted_start_at": "2026-12-27 00:00:00+00",
+    "public_source_url": "https://www.klokgebouw.nl/agenda",
+    "source_url": "https://www.klokgebouw.nl/agenda",
+    "title": "Liquicity Winterfestival"
+  },
+  {
+    "ai_impact_points": null,
+    "checked_at": "2026-09-05 20:45:54.853+00",
+    "event_id": "event-45",
+    "extracted_end_at": "2026-12-31 23:59:59+00",
+    "extracted_start_at": "2026-12-31 00:00:00+00",
+    "public_source_url": "https://www.klokgebouw.nl/agenda",
+    "source_url": "https://www.klokgebouw.nl/agenda",
+    "title": "VERKNIPT NYE EINDHOVEN"
+  },
+  {
+    "ai_impact_points": null,
+    "checked_at": "2026-09-05 20:45:55.334+00",
+    "event_id": "event-46",
+    "extracted_end_at": "2027-03-20 23:59:59+00",
+    "extracted_start_at": "2027-03-19 00:00:00+00",
+    "public_source_url": "https://www.klokgebouw.nl/agenda",
+    "source_url": "https://www.klokgebouw.nl/agenda",
+    "title": "DansSalon 2027"
+  },
+  {
+    "ai_impact_points": null,
+    "checked_at": "2026-09-05 20:45:56.009+00",
+    "event_id": "event-46",
+    "extracted_end_at": "2027-03-20 23:59:59+00",
+    "extracted_start_at": "2027-03-19 00:00:00+00",
+    "public_source_url": "https://www.klokgebouw.nl/agenda",
+    "source_url": "https://www.klokgebouw.nl/agenda",
+    "title": "DansSalon 2027"
+  },
+  {
+    "ai_impact_points": 45,
+    "checked_at": "2026-09-05 20:45:56.689+00",
+    "event_id": "event-47",
+    "extracted_end_at": "2027-06-06 23:59:59+00",
+    "extracted_start_at": "2027-06-03 00:00:00+00",
+    "public_source_url": "https://www.knzb.nl/nieuws/wedstrijdkalender-2026-2027-bekend",
+    "source_url": "https://www.knzb.nl/nieuws/wedstrijdkalender-2026-2027-bekend",
+    "title": "NK lange baan (Open Nederlandse Kampioenschappen lange baan / European Swimming Trials)"
+  },
+  {
+    "ai_impact_points": 35,
+    "checked_at": "2026-09-05 20:45:56.905+00",
+    "event_id": "event-48",
+    "extracted_end_at": "2027-07-01 23:59:59+00",
+    "extracted_start_at": "2026-09-01 00:00:00+00",
+    "public_source_url": "https://mge.nl/",
+    "source_url": "https://mge.nl/",
+    "title": "Klassiek seizoen 26-27 (Muziekgebouw Eindhoven)"
+  },
+  {
+    "ai_impact_points": 45,
+    "checked_at": "2026-09-05 20:45:55.536+00",
+    "event_id": "event-49",
+    "extracted_end_at": "2027-04-16 23:59:59+00",
+    "extracted_start_at": "2027-04-15 00:00:00+00",
+    "public_source_url": "https://www.klokgebouw.nl/agenda",
+    "source_url": "https://www.klokgebouw.nl/agenda",
+    "title": "Playgrounds 2027"
+  },
+  {
+    "ai_impact_points": null,
+    "checked_at": "2026-09-05 20:45:56.225+00",
+    "event_id": "event-49",
+    "extracted_end_at": "2027-04-16 23:59:59+00",
+    "extracted_start_at": "2027-04-15 00:00:00+00",
+    "public_source_url": "https://www.klokgebouw.nl/agenda",
+    "source_url": "https://www.klokgebouw.nl/agenda",
+    "title": "Playgrounds 2027"
+  },
+  {
+    "ai_impact_points": 35,
+    "checked_at": "2026-09-05 20:45:56.468+00",
+    "event_id": "event-50",
+    "extracted_end_at": "2027-06-03 23:59:59+00",
+    "extracted_start_at": "2027-06-03 00:00:00+00",
+    "public_source_url": "https://pluggedfestival.nl/",
+    "source_url": "https://pluggedfestival.nl/",
+    "title": "Plugged Festival"
+  },
+  {
+    "ai_impact_points": null,
+    "checked_at": "2026-09-05 20:45:57.106+00",
+    "event_id": "event-51",
+    "extracted_end_at": "2027-06-10 23:59:59+00",
+    "extracted_start_at": "2027-06-10 00:00:00+00",
+    "public_source_url": "https://mge.nl/",
+    "source_url": "https://mge.nl/",
+    "title": "Gipsy Kings"
+  },
+  {
+    "ai_impact_points": null,
+    "checked_at": "2026-09-05 20:45:57.344+00",
+    "event_id": "event-52",
+    "extracted_end_at": "2027-03-11 23:59:59+00",
+    "extracted_start_at": "2027-03-11 00:00:00+00",
+    "public_source_url": "https://mge.nl/",
+    "source_url": "https://mge.nl/",
+    "title": "Angélique Kidjo & Metropole Orkest"
+  },
+  {
+    "ai_impact_points": null,
+    "checked_at": "2026-09-05 20:45:53.081+00",
+    "event_id": "event-53",
+    "extracted_end_at": "2027-01-27 23:59:59+00",
+    "extracted_start_at": "2027-01-27 00:00:00+00",
+    "public_source_url": "https://www.psv.nl/en/match-center",
+    "source_url": "https://www.psv.nl/en/match-center",
+    "title": "PSV - VfB Stuttgart (UEFA Champions League)"
+  },
+  {
+    "ai_impact_points": null,
+    "checked_at": "2026-09-05 20:45:53.548+00",
+    "event_id": "event-54",
+    "extracted_end_at": "2027-02-14 23:59:59+00",
+    "extracted_start_at": "2027-02-14 00:00:00+00",
+    "public_source_url": "https://www.psv.nl/en/match-center",
+    "source_url": "https://www.psv.nl/en/match-center",
+    "title": "PSV - FC Twente (Eredivisie)"
+  },
+  {
+    "ai_impact_points": null,
+    "checked_at": "2026-09-05 20:45:53.322+00",
+    "event_id": "event-55",
+    "extracted_end_at": "2027-01-24 23:59:59+00",
+    "extracted_start_at": "2027-01-24 00:00:00+00",
+    "public_source_url": "https://www.psv.nl/en/match-center",
+    "source_url": "https://www.psv.nl/en/match-center",
+    "title": "PSV - ADO Den Haag (Eurojackpot KNVB Cup)"
+  },
+  {
+    "ai_impact_points": null,
+    "checked_at": "2026-09-05 20:45:53.766+00",
+    "event_id": "event-56",
+    "extracted_end_at": "2026-12-20 23:59:59+00",
+    "extracted_start_at": "2026-12-20 00:00:00+00",
+    "public_source_url": "https://www.psv.nl/en/match-center",
+    "source_url": "https://www.psv.nl/en/match-center",
+    "title": "PSV - PEC Zwolle (Eredivisie)"
+  },
+  {
+    "ai_impact_points": null,
+    "checked_at": "2026-09-05 20:45:53.967+00",
+    "event_id": "event-57",
+    "extracted_end_at": "2027-02-21 23:59:59+00",
+    "extracted_start_at": "2027-02-21 00:00:00+00",
+    "public_source_url": "https://www.psv.nl/en/match-center",
+    "source_url": "https://www.psv.nl/en/match-center",
+    "title": "PSV - FC Twente (Eredivisie, second listing Feb 21)"
+  }
+]

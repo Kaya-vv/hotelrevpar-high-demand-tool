@@ -133,7 +133,7 @@ export function createCollectionRepository(): CollectionRepository {
           links.map((link) => link.event_id),
           (ids) => supabase
             .from("event_sources")
-            .select("event_id, source_url, public_source_url, extracted_start_at, extracted_end_at, checked_at")
+            .select("event_id, source_url, public_source_url, extracted_start_at, extracted_end_at, checked_at, ai_impact_points")
             .eq("primary_source_confirmed", true)
             .in("event_id", ids),
         )
@@ -193,7 +193,7 @@ export function createCollectionRepository(): CollectionRepository {
           const lastEditionStart = confirmedSources.find((source) => source.event_id === row.eventId
             && (source.public_source_url ?? source.source_url) === row.url
             && (source.extracted_end_at ?? source.extracted_start_at).slice(0, 10) === row.lastEditionEnd)?.extracted_start_at?.slice(0, 10);
-          return title ? [{ title, url: row.url, lastEditionStart, lastEditionEnd: row.lastEditionEnd }] : [];
+          return title ? [{ title, url: row.url, lastEditionStart, lastEditionEnd: row.lastEditionEnd, historicalDemandPoints: row.historicalDemandPoints }] : [];
         }),
         // Retain source history after an edition ends to discover future programmes.
         // These seed agendas only: checking old editions against a future window must not invalidate them.

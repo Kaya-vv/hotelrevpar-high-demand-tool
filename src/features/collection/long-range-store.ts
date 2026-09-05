@@ -4,7 +4,7 @@ import type { Json } from "@/lib/supabase/database.types";
 
 export const LONG_RANGE_VERSION = 2;
 /** Editions this account already confirmed, used to seed leads without paying for a search. */
-export type LongRangeSeed = { title: string; url: string; lastEditionStart?: string; lastEditionEnd: string };
+export type LongRangeSeed = { title: string; url: string; lastEditionStart?: string; lastEditionEnd: string; historicalDemandPoints?: number };
 export type SeriesEdition = { start: string; end: string; sourceUrl: string };
 export type ProjectedEdition = {
   status: "projected";
@@ -30,6 +30,8 @@ export type Lead = {
   group: number;
   /** Set only for leads seeded from an edition this account owns; they outrank discovery leads. */
   origin?: "portfolio";
+  /** Public historical assessment, used for research priority only, never future demand scoring. */
+  historicalDemandPoints?: number;
   /** End date of the most recent known edition. Drives the anniversary check window. */
   anchor?: string;
   attempts?: number;

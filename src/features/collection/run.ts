@@ -116,25 +116,29 @@ export function selectClaudeRefreshUrls(
  * confirms one, and `public_source_url` is that page — `source_url` would be the provider's API.
  */
 export function selectLongRangeSeeds(
-  rows: (ClaudeSourceRow & { event_id: string; public_source_url?: string | null })[],
+  rows: (ClaudeSourceRow & { event_id: string; public_source_url?: string | null; ai_impact_points?: number | null })[],
   now = new Date(),
   limit = 12,
 ) {
   const day = 86_400_000;
   const floor = new Date(now.getTime() - 200 * day).toISOString().slice(0, 10);
   const ceiling = `${now.getUTCFullYear()}-12-31`;
-  const byEvent = new Map<string, { eventId: string; url: string; lastEditionEnd: string }>();
+  const byEvent = new Map<string, { eventId: string; url: string; lastEditionEnd: string; historicalDemandPoints?: number }>();
   for (const row of rows) {
     const url = row.public_source_url ?? row.source_url;
+    if (!/^https?:\/\//i.test(url)) continue;
     const lastEditionEnd = (row.extracted_end_at ?? row.extracted_start_at).slice(0, 10);
     if (lastEditionEnd < floor || lastEditionEnd > ceiling) continue;
     const stored = byEvent.get(row.event_id);
-    if (!stored || stored.lastEditionEnd < lastEditionEnd) {
-      byEvent.set(row.event_id, { eventId: row.event_id, url, lastEditionEnd });
+    if (!stored || stored.lastEditionEnd < lastEditionEnd || (stored.lastEditionEnd === lastEditionEnd && (row.ai_impact_points ?? 0) > (stored.historicalDemandPoints ?? 0))) {
+      byEvent.set(row.event_id, { eventId: row.event_id, url, lastEditionEnd,
+        ...(row.ai_impact_points != null ? { historicalDemandPoints: row.ai_impact_points } : {}) });
     }
   }
   return [...byEvent.values()]
-    .sort((left, right) => right.lastEditionEnd.localeCompare(left.lastEditionEnd))
+    // Historical demand guides research effort only; future editions still need their own assessment.
+    .sort((left, right) => (right.historicalDemandPoints ?? 0) - (left.historicalDemandPoints ?? 0)
+      || right.lastEditionEnd.localeCompare(left.lastEditionEnd))
     .slice(0, limit);
 }
 
