@@ -5,7 +5,7 @@ import { collectClaudeCalendar } from "./claude";
 import { LongRangeLeaseError, longRangeMarketKey, type Lead, type LongRangeState, type LongRangeStore } from "../long-range-store";
 
 const now = new Date("2026-09-05T12:00:00Z");
-const input = { start: "2026-12-05", end: "2027-12-31", location: "Eindhoven", radiusKm: 25, now, model: "claude-sonnet-5" };
+const input = { pageFetcher: false as const, start: "2026-12-05", end: "2027-12-31", location: "Eindhoven", radiusKm: 25, now, model: "claude-sonnet-5" };
 const url = "https://organizer.example/future";
 const event = (overrides = {}) => ({
   sourceUrl: url, title: "Annual Arts Week", category: "culture", venue: "City venue", latitude: 51.44, longitude: 5.48,
@@ -41,6 +41,29 @@ const toolNames = (call: { tools: { name: string }[] }[]) => call[0].tools.map((
 
 describe("long-range source leads", () => {
   afterEach(() => vi.unstubAllEnvs());
+
+  it("shares the eight follow-up slots between exploration and explicit evidence fetches", async () => {
+    const about = "https://organizer.example/about";
+    const create = vi.fn().mockImplementation(async (request) => {
+      const prompt = request.messages[0].content[1].text;
+      if (prompt.includes("Call web_fetch on it now")) return { ...response([event({ sourceUrl: about })]), content: [
+        { type: "web_fetch_tool_result", content: { type: "web_fetch_result", url: about } },
+        { type: "text", text: JSON.stringify({ events: [event({ sourceUrl: about })], reason: "Fetched evidence" }) },
+      ] };
+      if (prompt.includes("Then read a SECOND page")) return { ...response(), content: [
+        { type: "web_fetch_tool_result", content: { type: "web_fetch_result", url } },
+        { type: "web_search_tool_result", content: [{ url: about }] },
+        { type: "text", text: JSON.stringify({ events: [event({ sourceUrl: about })], reason: "Cited but not fetched" }) },
+      ] };
+      return response();
+    });
+    const memory = memoryStore(warmState(Array.from({ length: 9 }, (_, index) => lead({ key: `lead-${index}`, title: `Series ${index}` })),
+      { lastSweepAt: "2026-08-01T00:00:00Z" }));
+    const result = await collectLongRange({ ...input, store: memory.store, client: client(create) });
+    expect(result.usage.deepRequests + result.usage.evidenceRequests).toBe(8);
+    expect(result.usage.evidenceRequests).toBe(4);
+    expect(result.requests).toBe(17);
+  });
 
   it("uses a known edition as an internal announcement target before it ends, without publishing the estimate", async () => {
     const memory = memoryStore(warmState([]));

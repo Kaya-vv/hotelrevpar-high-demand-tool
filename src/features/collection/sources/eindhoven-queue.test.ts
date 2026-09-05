@@ -38,7 +38,7 @@ it.each([false, true])("selects the benchmark from the saved queue without relyi
       { type: "text", text: JSON.stringify({ events: [], reason: "Offline old-edition fixture" }) },
     ], usage: { input_tokens: 0, output_tokens: 0, server_tool_use: { web_fetch_requests: 1 } } };
   });
-  const result = await collectLongRange({ start: "2026-12-05", end: "2027-12-31", location: "Eindhoven", radiusKm: 25,
+  const result = await collectLongRange({ pageFetcher: false, start: "2026-12-05", end: "2027-12-31", location: "Eindhoven", radiusKm: 25,
     now, seeds, store, model: "claude-sonnet-5", batching: { enabled: false },
     client: { messages: { create } } as unknown as Anthropic, geocode: async () => { throw new Error("Network disabled"); } });
   const ddwRequests = create.mock.calls.map(([request]) => JSON.stringify(request.messages)).filter((text) => text.includes(`Lead: ${target}`));
