@@ -190,7 +190,10 @@ export function createCollectionRepository(): CollectionRepository {
         })),
         longRangeSeeds: seedRows.flatMap((row) => {
           const title = seedTitles.find((event) => event.id === row.eventId)?.title;
-          return title ? [{ title, url: row.url, lastEditionEnd: row.lastEditionEnd }] : [];
+          const lastEditionStart = confirmedSources.find((source) => source.event_id === row.eventId
+            && (source.public_source_url ?? source.source_url) === row.url
+            && (source.extracted_end_at ?? source.extracted_start_at).slice(0, 10) === row.lastEditionEnd)?.extracted_start_at?.slice(0, 10);
+          return title ? [{ title, url: row.url, lastEditionStart, lastEditionEnd: row.lastEditionEnd }] : [];
         }),
         // Retain source history after an edition ends to discover future programmes.
         // These seed agendas only: checking old editions against a future window must not invalidate them.

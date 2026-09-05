@@ -109,8 +109,8 @@ export function selectClaudeRefreshUrls(
 
 /**
  * Editions this account already confirmed are the cheapest long-range leads there are: the official
- * URL is stored and the end date says when next year's announcement is due. The `+14` day ceiling
- * deliberately includes editions about to finish; the collector refuses to fetch them before they end.
+ * URL is stored. Include confirmed editions through this calendar year so next year's announcement
+ * can be checked before the current edition finishes. Separate event identities may share a calendar URL.
  *
  * Not Claude-specific. An edition PredictHQ found keeps an official page once the evidence reviewer
  * confirms one, and `public_source_url` is that page — `source_url` would be the provider's API.
@@ -122,19 +122,18 @@ export function selectLongRangeSeeds(
 ) {
   const day = 86_400_000;
   const floor = new Date(now.getTime() - 200 * day).toISOString().slice(0, 10);
-  const ceiling = new Date(now.getTime() + 14 * day).toISOString().slice(0, 10);
-  const byUrl = new Map<string, { eventId: string; url: string; lastEditionEnd: string }>();
+  const ceiling = `${now.getUTCFullYear()}-12-31`;
+  const byEvent = new Map<string, { eventId: string; url: string; lastEditionEnd: string }>();
   for (const row of rows) {
     const url = row.public_source_url ?? row.source_url;
     const lastEditionEnd = (row.extracted_end_at ?? row.extracted_start_at).slice(0, 10);
     if (lastEditionEnd < floor || lastEditionEnd > ceiling) continue;
-    // One URL can carry several editions; the anchor has to be the most recent of them.
-    const stored = byUrl.get(url);
+    const stored = byEvent.get(row.event_id);
     if (!stored || stored.lastEditionEnd < lastEditionEnd) {
-      byUrl.set(url, { eventId: row.event_id, url, lastEditionEnd });
+      byEvent.set(row.event_id, { eventId: row.event_id, url, lastEditionEnd });
     }
   }
-  return [...byUrl.values()]
+  return [...byEvent.values()]
     .sort((left, right) => right.lastEditionEnd.localeCompare(left.lastEditionEnd))
     .slice(0, limit);
 }

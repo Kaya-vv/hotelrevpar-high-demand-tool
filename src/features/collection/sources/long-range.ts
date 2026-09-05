@@ -6,6 +6,7 @@ import type { EventCandidate } from "@/features/events/types";
 import { normalizeText } from "@/features/events/normalize";
 import type { CollectionWindow, SourceResult } from "../types";
 import { CLAUDE_ASSESSMENT_VERSION } from "../anthropic-batches";
+import { projectEditions, projectionInstructions, rememberEdition } from "../series-projections";
 import { createLongRangeStore, LONG_RANGE_VERSION, LongRangeLeaseError, longRangeMarketKey, type Lead, type LongRangeSeed, type LongRangeStore } from "../long-range-store";
 import { claudeProviderEventId, DEFAULT_TRIAGE_MODEL, fetchedUrls, geocodeVenue, observedUrl, outputSchema, requestMessages, sourceUrls, usageEvent, type Batching, type ClaudeUsageEvent } from "./claude";
 
@@ -27,8 +28,19 @@ const day = 86_400_000;
 const later = (now: Date, days: number) => new Date(now.getTime() + days * day).toISOString();
 const labelKey = (title: string) => normalizeText(title.replace(/\([^)]*\)/g, "")).replace(/\b20\d{2}\b/g, "").trim();
 const errorText = (error: unknown) => error instanceof Error ? error.message : String(error);
-/** The model answered but no page was retrieved — a blocked host, not a transport failure. */
+/** No successful fetch was recorded; this alone says nothing about whether the URL is blocked. */
 const NO_PAGE = "No fetched official page";
+
+function fetchTarget(lead: Lead) {
+  return [lead.url, lead.officialPage].find((url) => url && url !== lead.blockedPage) ?? null;
+}
+
+function targetWasRejected(message: Anthropic.Message, target: string | null) {
+  return message.content.some((block) => block.type === "web_fetch_tool_result"
+    && block.content.type === "web_fetch_tool_result_error" && block.content.error_code === "url_not_allowed"
+    && message.content.some((call) => call.type === "server_tool_use" && call.id === block.tool_use_id
+      && call.name === "web_fetch" && (call.input as { url?: string } | null)?.url === target));
+}
 
 const FETCH_SLOTS = 18;    // leads fetched per 28-day sweep
 const CALENDAR_SLOTS = 6;  // reserved inside FETCH_SLOTS for calendar hubs
@@ -120,7 +132,7 @@ export function selectDueLeads(leads: Lead[], now: Date, bootstrap: boolean) {
   // Cold-starting a city is a one-time cost, and the trial showed that leaving 30 leads unchecked
   // for two months is a worse failure than the extra spend.
   const scale = bootstrap ? 2 : 1;
-  const due = leads.filter((lead) => lead.url && Date.parse(lead.nextCheck) <= now.getTime());
+  const due = leads.filter((lead) => fetchTarget(lead) && Date.parse(lead.nextCheck) <= now.getTime());
   const calendars = due.filter((lead) => lead.kind === "calendar")
     .sort(queueOrder).slice(0, CALENDAR_SLOTS * scale);
   const events = due.filter((lead) => lead.kind !== "calendar")
@@ -131,7 +143,7 @@ export function selectDueLeads(leads: Lead[], now: Date, bootstrap: boolean) {
 
 /** Leads that cannot be fetched until a search finds their owner. Reserved slots of their own. */
 export function selectResolveLeads(leads: Lead[], now: Date, bootstrap: boolean) {
-  return leads.filter((lead) => !lead.url && Date.parse(lead.nextCheck) <= now.getTime())
+  return leads.filter((lead) => !fetchTarget(lead) && Date.parse(lead.nextCheck) <= now.getTime())
     .sort(queueOrder)
     .slice(0, RESOLVE_SLOTS * (bootstrap ? 2 : 1));
 }
@@ -155,7 +167,7 @@ export function longRangeVerificationInstructions(input: CollectionWindow & { lo
  */
 function deepInstruction(lead: Lead, year: string) {
   let host = "";
-  try { host = new URL(lead.url!).hostname; } catch { host = ""; }
+  try { host = new URL(fetchTarget(lead)!).hostname; } catch { host = ""; }
   const target = lead.kind === "calendar"
     ? "an entry on this calendar whose date, year or host city was incomplete on the overview"
     : `a later edition of ${lead.title}`;
@@ -242,21 +254,30 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
     // Start after the full last day, not at midnight on an edition that is still running.
     const endedAt = new Date(Date.parse(`${seed.lastEditionEnd}T00:00:00Z`) + day).toISOString();
     const seedKey = createHash("sha256").update(labelKey(seed.title)).digest("hex");
-    const existing = state.leads.find((lead) => lead.key === seedKey || lead.url === seed.url);
+    const existing = state.leads.find((lead) => lead.key === seedKey || labelKey(lead.title) === labelKey(seed.title));
     if (!existing) {
       state.leads.push({ key: seedKey, title: seed.title, url: seed.url, kind: "event", group: 0,
         origin: "portfolio", anchor: seed.lastEditionEnd, attempts: 0, checkedAt: null,
-        nextCheck: endedAt > now.toISOString() ? endedAt : now.toISOString(), outcome: "pending", editions: [], notes: [] });
+        nextCheck: seed.lastEditionStart ? now.toISOString() : endedAt > now.toISOString() ? endedAt : now.toISOString(), outcome: "pending", editions: [], notes: [],
+        ...(seed.lastEditionStart ? { lastKnownEdition: { start: seed.lastEditionStart, end: seed.lastEditionEnd, sourceUrl: seed.url }, officialPage: seed.url } : {}) });
       continue;
     }
     existing.origin = "portfolio";
-    existing.url ??= seed.url;
+    if (!existing.checkedAt) existing.url ??= existing.officialPage ?? seed.url;
+    if (seed.lastEditionStart) rememberEdition(existing, { start: seed.lastEditionStart, end: seed.lastEditionEnd, sourceUrl: seed.url });
     if (!existing.anchor || existing.anchor < seed.lastEditionEnd) existing.anchor = seed.lastEditionEnd;
     // Only re-open a lead we have not looked at since this edition ended. Without this guard every
     // cron run in the weeks after an edition would re-fetch the same page.
-    if (existing.outcome !== "confirmed" && (!existing.checkedAt || existing.checkedAt < endedAt)) {
+    if (!seed.lastEditionStart && existing.outcome !== "confirmed" && (!existing.checkedAt || existing.checkedAt < endedAt)) {
       existing.nextCheck = endedAt > now.toISOString() ? endedAt : now.toISOString();
     }
+  }
+
+  for (const lead of state.leads) {
+    if (lead.kind === "event" && lead.outcome !== "conflict") for (const edition of lead.editions) {
+      if (labelKey(edition.title) === labelKey(lead.title)) rememberEdition(lead, { start: edition.startAt.slice(0, 10), end: edition.endAt.slice(0, 10), sourceUrl: edition.sourceUrl! });
+    }
+    lead.projections = projectEditions(lead, input.start, input.end);
   }
 
   const discoveryDue = (!state.discoveredAt || now.getTime() - Date.parse(state.discoveredAt) >= 30 * day)
@@ -331,7 +352,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
   const due = sweepDue
     ? selectDueLeads(state.leads, now, bootstrap)
     : state.leads
-        .filter((lead) => lead.origin === "portfolio" && lead.url
+        .filter((lead) => lead.origin === "portfolio" && fetchTarget(lead)
           && Date.parse(lead.nextCheck) <= now.getTime())
         .sort((a, b) => a.nextCheck.localeCompare(b.nextCheck))
         .slice(0, SEED_SLOTS);
@@ -342,7 +363,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
     params: kind === "resolve" ? {
       model: resolutionModel, max_tokens: 4000,
       tools: [resolveTool], output_config: { format: zodOutputFormat(resolutionSchema) },
-      messages: [{ role: "user" as const, content: `Use web_search, at most TWICE, to find the official page of this event series. Start with the query "${lead.title} ${input.location} ${input.end.slice(0, 4)} officiële website". If no organiser, venue, club or federation page for this series appears in those results, search once more with a different phrasing before giving up. Copy the URL literally from a search result; a path you assemble yourself is rejected, so return the exact result URL even when a deeper page probably exists. The HOST VENUE counts as official: when the series has no site of its own, return the venue's page for this series, or the venue's own domain. Prefer a future-dates/about or announcement page, but ACCEPT the official homepage even when its search snippet only mentions an older/current edition. Future dates are NOT required in search snippets; they will be checked by fetching the page next. Never return a tourist listing, aggregator, ticket shop, festival directory, news site or wiki, even when it ranks above the owner. Return url=null only if no official event-owner or host-venue URL was observed, and a short reason. Do not fetch or verify dates in this step.` }],
+      messages: [{ role: "user" as const, content: `Use web_search, at most TWICE, to find the official page of this event series. ${projectionInstructions(lead)} Start with the query "${lead.title} ${input.location} ${input.end.slice(0, 4)} officiële website". If no organiser, venue, club or federation page for this series appears in those results, search once more with a different phrasing before giving up. Copy the URL literally from a search result; a path you assemble yourself is rejected, so return the exact result URL even when a deeper page probably exists. The HOST VENUE counts as official: when the series has no site of its own, return the venue's page for this series, or the venue's own domain. Prefer a future-dates/about or announcement page, but ACCEPT the official homepage even when its search snippet only mentions an older/current edition. Future dates are NOT required in search snippets; they will be checked by fetching the page next. Never return a tourist listing, aggregator, ticket shop, festival directory, news site or wiki, even when it ranks above the owner. Return url=null only if no official event-owner or host-venue URL was observed, and a short reason. Do not fetch or verify dates in this step.` }],
     } : {
       model, max_tokens: 4000,
       ...(model.startsWith("claude-sonnet-5") ? { thinking: { type: "disabled" as const } } : {}),
@@ -353,7 +374,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
       // Lead-specific text goes last so every fetch in a pass shares a byte-identical cacheable prefix.
       messages: [{ role: "user" as const, content: [
         { type: "text" as const, text: longRangeVerificationInstructions(input), cache_control: { type: "ephemeral" as const } },
-        { type: "text" as const, text: `Lead: ${lead.title}\nFirst fetch this observed official source: ${lead.url}${kind === "deep" ? `\n${deepInstruction(lead, input.end.slice(0, 4))}` : ""}` },
+        { type: "text" as const, text: `Lead: ${lead.title}\n${projectionInstructions(lead)}\nFirst fetch this observed official source: ${fetchTarget(lead)}${kind === "deep" ? `\n${deepInstruction(lead, String(lead.projections?.[0]?.year ?? input.end.slice(0, 4)))}` : ""}` },
       ] }],
     },
   });
@@ -383,7 +404,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
       return [candidate];
     });
     if (editions.length) {
-      if (lead.kind === "event") lead.url = editions[0].sourceUrl;
+      const ownEdition = editions.find((edition) => labelKey(edition.title) === labelKey(lead.title));
       const sameEditionDates = (a: EventCandidate, b: EventCandidate) => labelKey(a.title) === labelKey(b.title) && a.startAt === b.startAt && a.endAt === b.endAt;
       // Several editions can legitimately share a series and year. A date is ambiguous only when
       // it is new AND replaces a stored edition absent from this response. Exact repeats and an
@@ -393,12 +414,18 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
           && old.startAt.slice(0, 4) === event.startAt.slice(0, 4)
           && !editions.some((current) => sameEditionDates(old, current))));
       lead.outcome = conflicts.length || lead.outcome === "conflict" ? "conflict" : "confirmed";
+      if (lead.outcome !== "conflict" && lead.kind === "event" && ownEdition) {
+        rememberEdition(lead, { start: ownEdition.startAt.slice(0, 10), end: ownEdition.endAt.slice(0, 10), sourceUrl: ownEdition.sourceUrl! });
+        lead.officialPage = ownEdition.sourceUrl!;
+        lead.url = lead.officialPage;
+      }
       // Provider IDs omit end dates; preserve both pieces of evidence for an end-only conflict.
       lead.editions = [...new Map([...lead.editions, ...editions].map((event) => [`${event.providerEventId}|${event.endAt}`, event])).values()];
       if (conflicts.length) lead.notes.push("Conflicting dates retained for review; editions withheld.");
       // The next announcement window is measured from the latest edition we now know about.
       const latest = lead.editions.map((event) => event.endAt.slice(0, 10)).sort().at(-1);
       if (latest && (!lead.anchor || lead.anchor < latest)) lead.anchor = latest;
+      lead.projections = projectEditions(lead, input.start, input.end);
     } else if (!lead.editions.length) lead.outcome = "unannounced";
     return editions.length > 0;
   };
@@ -409,15 +436,21 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
     if (!lead.editions.length) drops.push({ title: lead.title, stage: "verification", reason: lead.notes.join(" ") });
   };
 
-  // Round A fetches every lead that already has a URL and resolves a capped number that do not.
-  // Round B reads a second page: for an event lead only when the first page was empty, for a
-  // calendar hub always, since a hub's overview entries point at the detail page that has the year.
+  // Resolve and fetch first, then share the deeper-page slots across both paths. Capture queue
+  // priority before attempts change so resolving a missing URL does not penalize that lead.
+  const deepPriority = new Map([...due, ...toResolve].sort(queueOrder).map((lead, index) => [lead.key, index]));
+  const deepCandidates: Job[] = [];
   let pending: Job[] = [
     ...due.map((lead): Job => ({ lead, kind: "fetch" })),
     ...toResolve.map((lead): Job => ({ lead, kind: "resolve" })),
   ];
-  let deepBudget = DEEP_SLOTS * scale;
-  for (let round = 0; round < 2 && pending.length; round++) {
+  for (let round = 0; round < 3; round++) {
+    if (round === 2) {
+      deepCandidates.sort((a, b) => deepPriority.get(a.lead.key)! - deepPriority.get(b.lead.key)!);
+      pending = deepCandidates.slice(0, DEEP_SLOTS * scale);
+      for (const job of deepCandidates.slice(DEEP_SLOTS * scale)) finalize(job.lead);
+    }
+    if (!pending.length) continue;
     const results = await requestMessages(client, "verification", pending.map(makeRequest), batching);
     requests += pending.length;
     for (const job of pending) usage[`${job.kind}Requests`] = (usage[`${job.kind}Requests`] ?? 0) + 1;
@@ -436,7 +469,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
           const resolved = parseMessage(result.value, resolutionSchema);
           lead.notes = [resolved.reason];
           const resolvedUrl = repairObservedUrl(resolved.url, sourceUrls(result.value));
-          if (resolvedUrl && !isAggregatorUrl(resolvedUrl)) {
+          if (resolvedUrl && resolvedUrl !== lead.blockedPage && !isAggregatorUrl(resolvedUrl)) {
             lead.url = resolvedUrl;
             lead.outcome = "pending";
             if (round === 0) { next.push({ lead, kind: "fetch" }); continue; }
@@ -444,25 +477,25 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
             lead.outcome = "unannounced";
             // Without this the drop reads as "no official page exists" when the model in fact named
             // one and had its URL refused as unobserved or as an aggregator.
-            if (resolved.url) lead.notes.push(`Refused URL ${resolved.url}: not observed in the search results, or a known aggregator.`);
+            if (resolved.url) lead.notes.push(`Refused URL ${resolved.url}: not observed in the search results, a known aggregator, or previously rejected by the fetch tool.`);
           }
         } else {
+          if (targetWasRejected(result.value, fetchTarget(lead))) {
+            lead.blockedPage = fetchTarget(lead)!;
+            if (lead.url === lead.blockedPage) lead.url = null;
+          }
           found = applyResult(lead, result.value);
-          // A lead whose fetch threw never reached a page, so a second page is not the missing
-          // piece; it waits for the resolver on a later pass instead.
+          // A failed first fetch waits until its next due check instead of spending a deep slot.
           const deepen = job.kind === "fetch" && (lead.kind === "calendar" || !found);
-          if (deepen && round === 0 && deepBudget > 0) {
-            deepBudget--;
-            next.push({ lead, kind: "deep" });
+          if (deepen) {
+            deepCandidates.push({ lead, kind: "deep" });
             continue;
           }
         }
       } catch (error) {
         lead.outcome = "failed";
         lead.notes = [errorText(error)];
-        // `url_not_allowed` (robots.txt) makes a URL permanently unfetchable, and keeping it would
-        // burn a fetch slot every sweep while hiding the lead from the resolver.
-        if (job.kind !== "resolve" && lead.notes[0] === NO_PAGE) lead.url = null;
+        // Missing tool calls and transient fetch failures retain the target for the next due check.
       }
       finalize(lead);
     }
@@ -484,9 +517,25 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
     state.lastPassAt = now.toISOString();
     if (sweepDue) state.lastSweepAt = now.toISOString();
   }
+  // Calendar hubs can confirm several unrelated series sharing one URL. Keep each series' own
+  // announcement target without replacing the hub or borrowing another event's dates.
+  for (const candidate of candidates) {
+    const key = createHash("sha256").update(labelKey(candidate.title)).digest("hex");
+    let series = state.leads.find((lead) => lead.kind === "event" && labelKey(lead.title) === labelKey(candidate.title));
+    if (!series && candidate.sourceUrl && state.leads.length < LEAD_CAP) {
+      series = { key, title: candidate.title, url: candidate.sourceUrl, kind: "event", group: 0,
+        outcome: "confirmed", editions: [candidate], notes: [], nextCheck: later(now, 90), checkedAt: now.toISOString() };
+      state.leads.push(series);
+    }
+    if (series && candidate.sourceUrl && series.outcome !== "conflict") {
+      rememberEdition(series, { start: candidate.startAt.slice(0, 10), end: candidate.endAt.slice(0, 10), sourceUrl: candidate.sourceUrl });
+      series.projections = projectEditions(series, input.start, input.end);
+    }
+  }
   await store.save(key, state);
   const deferred = state.leads.filter((lead) => Date.parse(lead.nextCheck) <= now.getTime()).length;
   usage.discovered = discovered;
+  usage.projectedEditions = state.leads.reduce((total, lead) => total + (lead.projections?.length ?? 0), 0);
   usage.datesConfirmed = candidates.length;
   usage.demandAccepted = candidates.filter((event) => (event.aiImpactPoints ?? 0) >= 45).length;
   usage.unresolved = unresolved;

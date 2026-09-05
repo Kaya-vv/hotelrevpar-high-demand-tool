@@ -42,6 +42,48 @@ const toolNames = (call: { tools: { name: string }[] }[]) => call[0].tools.map((
 describe("long-range source leads", () => {
   afterEach(() => vi.unstubAllEnvs());
 
+  it("uses a known edition as an internal announcement target before it ends, without publishing the estimate", async () => {
+    const memory = memoryStore(warmState([]));
+    const create = vi.fn().mockResolvedValue(response());
+    const seeds = [{ title: "Annual Arts Week", url, lastEditionStart: "2026-10-17", lastEditionEnd: "2026-10-25" }];
+    const result = await collectLongRange({ ...input, seeds, store: memory.store, client: client(create) });
+    expect(result.candidates).toEqual([]);
+    expect(memory.state().leads[0].projections?.[0]).toMatchObject({ start: "2027-10-17", end: "2027-10-25", status: "projected" });
+    expect(JSON.stringify(create.mock.calls[0][0].messages)).toContain("edition year(s) 2027");
+    expect(JSON.stringify(create.mock.calls[0][0].messages)).not.toContain("2027-10-17");
+    expect((await collectLongRange({ ...input, seeds, store: memory.store, client: client(create) })).requests).toBe(0);
+  });
+
+  it("keeps the successful detail page sticky across seeds, refreshes and a later fetch failure", async () => {
+    const about = "https://organizer.example/about";
+    const edition = event({ sourceUrl: about });
+    const confirmed = { ...response([edition]), content: [
+      { type: "web_fetch_tool_result", content: { type: "web_fetch_result", url: about } },
+      { type: "text", text: JSON.stringify({ events: [edition], reason: "Official future dates" }) },
+    ] };
+    const memory = memoryStore(warmState());
+    const create = vi.fn().mockResolvedValueOnce(confirmed).mockResolvedValue({
+      ...response(), content: [{ type: "text", text: JSON.stringify({ events: [], reason: "Fetch failed" }) }],
+    });
+    await collectLongRange({ ...input, store: memory.store, client: client(create) });
+    const seeds = [{ title: "Annual Arts Week", url, lastEditionStart: "2027-05-21", lastEditionEnd: "2027-05-23" }];
+    const later = new Date("2026-12-05T12:00:00Z");
+    memory.state().discoveredAt = later.toISOString();
+    await collectLongRange({ ...input, now: later, seeds, store: memory.store, client: client(create) });
+    expect(JSON.stringify(create.mock.calls[1][0].messages)).toContain(`First fetch this observed official source: ${about}`);
+    expect(memory.state().leads[0]).toMatchObject({ officialPage: about, url: about, outcome: "failed" });
+    expect((await collectLongRange({ ...input, now: later, seeds, store: memory.store, client: client(create) })).requests).toBe(0);
+    // Also recover rows whose target was cleared by the old implementation.
+    memory.state().leads[0].url = null;
+    const nextDue = new Date(memory.state().leads[0].nextCheck);
+    memory.state().discoveredAt = nextDue.toISOString();
+    create.mockResolvedValue(confirmed);
+    const refreshed = await collectLongRange({ ...input, now: nextDue, seeds, store: memory.store, client: client(create) });
+    expect(refreshed.usage.resolveRequests ?? 0).toBe(0);
+    expect(JSON.stringify(create.mock.calls.at(-1)![0].messages)).toContain(`First fetch this observed official source: ${about}`);
+    expect(memory.state().leads[0]).toMatchObject({ officialPage: about, url: about, outcome: "confirmed" });
+  });
+
   it.each(["", "  \n"])("falls back from blank optional model settings (%j)", async (blank) => {
     vi.stubEnv("ANTHROPIC_DISCOVERY_MODEL", blank);
     vi.stubEnv("ANTHROPIC_TRIAGE_MODEL", blank);
@@ -178,6 +220,35 @@ describe("long-range source leads", () => {
     expect(memory.state().leads[0].attempts).toBe(2);
   });
 
+  it("resolves a lead, reads its current edition, then confirms a future edition on a deeper page", async () => {
+    const create = vi.fn().mockResolvedValueOnce(resolution(url))
+      .mockResolvedValueOnce(response([event({ startAt: "2026-05-21", endAt: "2026-05-23" })]))
+      .mockResolvedValueOnce(response([event()]));
+    const memory = memoryStore(warmState([lead({ url: null })]));
+    const result = await collectLongRange({ ...input, store: memory.store, client: client(create) });
+    expect(create).toHaveBeenCalledTimes(3);
+    expect(result.usage).toMatchObject({ resolveRequests: 1, fetchRequests: 1, deepRequests: 1, datesConfirmed: 1 });
+    expect(create.mock.calls[2][0].messages[0].content[1].text).toContain("Then read a SECOND page");
+    expect(memory.state().leads[0].outcome).toBe("confirmed");
+    expect((await collectLongRange({ ...input, store: memory.store, client: client(create) })).requests).toBe(0);
+  });
+
+  it("shares the existing deeper-page cap with newly resolved leads using their original queue priority", async () => {
+    const known = Array.from({ length: 9 }, (_, i) => lead({ key: `known-${i}`, title: `Known ${i}`, url: `https://organizer.example/${i}`, attempts: 3 }));
+    const fresh = lead({ key: "new", title: "New Arts Week", url: null });
+    const create = vi.fn().mockImplementation((request) => Promise.resolve(
+      request.tools[0].name === "web_search" ? resolution(url) : response(),
+    ));
+    const memory = memoryStore(warmState([...known, fresh], { lastSweepAt: "2026-08-01T12:00:00Z" }));
+    const result = await collectLongRange({ ...input, store: memory.store, client: client(create) });
+    expect(result.usage).toMatchObject({ resolveRequests: 1, fetchRequests: 10, deepRequests: 8 });
+    expect(create).toHaveBeenCalledTimes(19);
+    const deep = create.mock.calls.filter(([request]) => request.messages[0].content[1]?.text?.includes("Then read a SECOND page"));
+    expect(deep).toHaveLength(8);
+    expect(deep[0][0].messages[0].content[1].text).toContain("New Arts Week");
+    expect(memory.state().leads.every((item) => item.checkedAt === now.toISOString())).toBe(true);
+  });
+
   it("sends a calendar hub one level deeper even after it produced editions", async () => {
     const detail = event({ title: "Masters championship", startAt: "2027-05-06T00:00:00Z", endAt: "2027-05-09T00:00:00Z" });
     const create = vi.fn().mockResolvedValueOnce(response([event()])).mockResolvedValueOnce(response([detail]));
@@ -272,13 +343,35 @@ describe("long-range source leads", () => {
   });
 
   it("drops a URL the fetcher cannot read so the resolver can replace it", async () => {
-    const blocked = { ...response(), content: [{ type: "text", text: JSON.stringify({ events: [], reason: "url_not_allowed" }) }] };
+    const blocked = { ...response(), content: [
+      { type: "server_tool_use", id: "fetch-1", name: "web_fetch", input: { url } },
+      { type: "web_fetch_tool_result", tool_use_id: "fetch-1", content: { type: "web_fetch_tool_result_error", error_code: "url_not_allowed" } },
+      { type: "text", text: JSON.stringify({ events: [], reason: "Fetch rejected" }) },
+    ] };
     const create = vi.fn().mockResolvedValue(blocked);
-    const memory = memoryStore(warmState());
+    const memory = memoryStore(warmState([lead({ officialPage: url })]));
     const result = await collectLongRange({ ...input, store: memory.store, client: client(create) });
     expect(result.error).toContain("No fetched official page");
     expect(create).toHaveBeenCalledTimes(1);
-    expect(memory.state().leads[0]).toMatchObject({ outcome: "failed", url: null });
+    expect(memory.state().leads[0]).toMatchObject({ outcome: "failed", url: null, officialPage: url, blockedPage: url });
+    const nextDue = new Date(memory.state().leads[0].nextCheck);
+    expect(selectDueLeads(memory.state().leads, nextDue, false)).toEqual([]);
+    expect(selectResolveLeads(memory.state().leads, nextDue, false)).toHaveLength(1);
+    memory.state().discoveredAt = nextDue.toISOString();
+    create.mockResolvedValue(resolution(url));
+    await collectLongRange({ ...input, now: nextDue, store: memory.store, client: client(create) });
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(memory.state().leads[0].url).toBeNull();
+  });
+
+  it("does not treat a model's textual claim of a blocked URL as a tool rejection", async () => {
+    const create = vi.fn().mockResolvedValue({ ...response(), content: [
+      { type: "text", text: JSON.stringify({ events: [], reason: "url_not_allowed" }) },
+    ] });
+    const memory = memoryStore(warmState([lead({ officialPage: url })]));
+    await collectLongRange({ ...input, store: memory.store, client: client(create) });
+    expect(memory.state().leads[0]).toMatchObject({ url, officialPage: url });
+    expect(memory.state().leads[0].blockedPage).toBeUndefined();
   });
 
   it("keeps the experimental future collector disabled and schedules near-term independently when enabled", async () => {

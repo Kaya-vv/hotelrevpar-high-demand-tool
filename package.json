@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:replay": "vitest run src/features/collection/sources/long-range.replay.test.ts",
     "test:watch": "vitest"
   },
   "dependencies": {

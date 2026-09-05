@@ -4,11 +4,28 @@ import type { Json } from "@/lib/supabase/database.types";
 
 export const LONG_RANGE_VERSION = 2;
 /** Editions this account already confirmed, used to seed leads without paying for a search. */
-export type LongRangeSeed = { title: string; url: string; lastEditionEnd: string };
+export type LongRangeSeed = { title: string; url: string; lastEditionStart?: string; lastEditionEnd: string };
+export type SeriesEdition = { start: string; end: string; sourceUrl: string };
+export type ProjectedEdition = {
+  status: "projected";
+  year: number;
+  start: string;
+  end: string;
+  confidence: "low";
+  method: "annual-calendar-estimate";
+  basedOn: SeriesEdition;
+};
 export type Lead = {
   key: string;
   title: string;
   url: string | null;
+  /** Last page that actually confirmed this series; retained even if a later fetch fails. */
+  officialPage?: string;
+  /** Explicitly rejected fetch target; preserve the official page as evidence, not a retry target. */
+  blockedPage?: string;
+  lastKnownEdition?: SeriesEdition;
+  /** Internal research targets only. Never returned as EventCandidates. */
+  projections?: ProjectedEdition[];
   kind: "event" | "calendar";
   group: number;
   /** Set only for leads seeded from an edition this account owns; they outrank discovery leads. */

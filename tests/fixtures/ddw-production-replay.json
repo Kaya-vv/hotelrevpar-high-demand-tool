@@ -1,0 +1,198 @@
+{
+  "description": "Actual production DDW responses from 2026-09-05. Offline orchestration regression only; no third-page response was recorded.",
+  "runId": "eb5c26fa-563a-411b-b496-623a739cb16a",
+  "entries": [
+    {
+      "contains": "Dutch Design Week",
+      "message": {
+        "content": [
+          {
+            "id": "srvtoolu_01Fue9ymJVaHZujzZrFxQVAC",
+            "input": {
+              "query": "Dutch Design Week Eindhoven 2027 officiële website"
+            },
+            "name": "web_search",
+            "type": "server_tool_use"
+          },
+          {
+            "caller": {
+              "type": "direct"
+            },
+            "content": [
+              {
+                "encrypted_content": "EuAQCioIExgCIiQxMjFkZmRmYS03N2E3LTRiZWUtODQ5YS00N2FjMTA4YWRiMzYSDA0uCHoL42DqdKjshxoM+k+g2VfCDO/iLTl5IjD7F94xdb+ZGbIkL7qzNyhRpKO6yNqZFpvbaumIOb0UcXY+1JqKQipEp4VOxb6MAGkq4w/W47pU7SuOAMvnA4AP+rCNbOAHrl4rSFxKjWFVIs3ynihPcKBzWFU/8ozl4VZADYttm0my9OYCQLLIEWbEQX1My14YJolY+0jzJvLuQtGY92qHcusE6YeKMd2uh9iNlj9m5R9seYKveyE4KopNVxW5UK4Hpka/4Vi174v7YVGJAJD8n9MDJ4TJ2yKaU7MBgChctSJgZZuhRnWWdrrHyf+0sy/37UT0P3qiM5pQCWIBO+LI4gcLBpWbD5eUguDzOYj5T6UsD6c7dN9T+vydZVZWXRAgU1EBOjtTnq5hAID2nydZ/+AjceVqp2Ha4Wtbjx9gW4UO8Wyplf7PxWPdv7U8kxzsO3/5C4Rq/QWoIUZbBCxvYYGYpnM656seZRuudgc92gPLfKUVwmAHMKdV7QWJIUzT44Ernp4FfjWFpnNsXfrUJIPkGnuQ7ZEijBtH5c07RuBtiDY605F4/4IcOk8mQ424iBhuUq/ZGwxxPByeYJeaOhCVT3GuL55CWdfMj2EKUWDvN53H3SDKrbKmmqnpN+Rfr6qFCa04q+Q3j7k0SbWsDN0Y35gbRGdoP4V67/B7HSSYdMxYPK3n1M9m63hl/BbEx+36LG3qXk3PH/b8CoQbRQHqQUqQgC/aSd5zKsoG4Z0kSJdxPfF3S5SS408SzkCm8Z5Z0JZF5YA8xRh2hAUef/9GbF5EEga1upCprNKgp6ecqKuk9CDUE+IgCaBoGYuZha0EZtV5NfPUS8zH2lQ2fzsiTBAdYWihUcogpgKKSw6EzkcVuHk9T6z5uyomMdu79EM/tMx8BYrGdsbjmXtNGD6gZtST9fPGl88vITCo5A1a1wxYSxGKDEvJz9t2J2QkGW4aAbLWemaoc1twcqyEkmtRn0VaB3cDAdN3Dpgd0ItluMH4weAUp0yDbHwIk49XIr5J/bwnEwU1f4i6QdpYfiAU/8v+qt0+nC6N18m6D2O5m0UalFJwgsrtF9VzaK8jPyAvg2tb1CiQMWU/5wQZwU7+0xzB0bHQCG8dwhEoVQGmEuMaatBSguO7FpGdCGEcCrTtlTQnieRl/k38LbmN+peVJi6+CMJRAsGOh6CASofSZNnh+P6a/A5jHoVsqtmbtcCWHlT4CjAQk9nc0i1BCfHRwQm5qUmjZyoDeiRAGy5keKCwuZQ+T0AbuYNFCQiHMyVImwGIZFKqtwfAEp5tz9UiDvbqJkPMOmIwusY6crlkEqcrqcKkVeKc6rim540pgK5T9lOXo/GG1cRb43ebi/NkLSQMGNVdh8m+57VqDZRS6woxP2rsTxn7cJUbdZbgeXmJluXwDmQ+N2/R0Hqxml+eKS1QgUqdbkunwhvkj6ykF7aXoQ9P+PJpz7pZzDSEfYVV8NEPJmjGW0Tx0ikzz82OhTKoZt6EhNh8iRx9wB7Pv4MIm/56G0Bvwc7c9rmFUUr2tPx2LCgfNJBZC9SgwZnIKIaSdKwJVUX+XI7TYa26Ppg1IAl0Ca/ojJ8LobEE/jothIxBXM/fYEWNa+NJgxyXBUvVGhxLU8m6zFN/aiGZZcxkL5A0JrnG9GfvO7SZ3elyZ3ngW7XKrvTqVdHlbV0HmgC3orpyDtMz5qR6/qR/sUOeX6J5dCBGXErzUfHMjrUVxQQeuHIOlQQ/0htwa/T5jkWfTpZYmO8qcBiJ7oe4Ub67mijOXJvqWvQ6yZXmQQtRGrXxoIkZiUYgLhxrzDOcKdRfPogX2e47sfh3cYbwBg00BuCjaFVxrTiw3D7V6Wc0KwXJUjnnYbhj5ZRPkagZwq6XmUBPbSCohDUvTuf08JOYQgcgrOT6SYz3/0nSx5yc85/gWitzySY1D8hT5zrgWSepb/Fbhfgb6s63V7vcG6UkJjY6EBH+4oZEnbdPENF7ajKPGEfKBnYrS4xTA4+jvwcUueFD74OcQefBWUU4Nwa1u3sd+CBq0jv25g2RiGlz6yQ35toMVvW/I7v/biwtzzQao3jox1Nq66UuJQfs5IXPID2TdsZVO1vQB6+4PSkRtTKAkCjjC0VXCvpo4wv506QIYmeQZLylej7HuCZnrQ2aUqmD1dCrGa1gguuhrDq42AaN07DTMWOPMnGbhtml9OjRFD0Tjo+Ev5hvZNOfXNuryDBe+z3Ro4bmhpv/TVoErOxSqHieKt01aEmRs6F+mb3wIRXMUP3Xt8T/NQOQ9SfdBzbguqHDqR/x/GIxCNHLAfmjFT0pQAc2DOzrU/O7hITZSJtlGixm7fF2HM3WM3CGMph95OHioWp5n9jZtTEBRREUmO9+sWfOSEMtJXnMWQhgLfq9ays4h42cMBLoTr7gwd78ZW5GM93O+DOsFMw4cYOSWBoFFv11fblL1vmrhd23t1uUSa1RMIA4/ijIq6/mR5vX1cL1ltoSxQKx5GQG/s/eFIK/jPy+wsYB/FrNtFQs3uyuIcurVQgd3j3hLEwb0Ad3elNwmzPCb9VjjT735OPFlCfBR87UFju88pfCPUZvxOfrcejmN3KO2LA6nOco9UO4a0dHwCFcQsgAFwhie2ylIrfb0WvSLYEqf8QwQGk1yXeYblRmtaR6yVVgZJkjnWB2uw+ezWcRbvgs5tDR+GKLmPl7pzZ1YOA8j0My7Npd8klRAfCjnJ3iL78NzWMY36JzhAquqOE+Yy1prhu+/1mQUe10G+mnISk9kJl6TdYXP1LRmQUdO/xwBUkYAw==",
+                "page_age": null,
+                "title": "Dutch Design Week",
+                "type": "web_search_result",
+                "url": "https://en.wikipedia.org/wiki/Dutch_Design_Week"
+              },
+              {
+                "encrypted_content": "EuICCioIExgCIiQxMjFkZmRmYS03N2E3LTRiZWUtODQ5YS00N2FjMTA4YWRiMzYSDOECo49/Qp9mYMOPsBoMvlpy7r13/ThMfd6MIjCzEOMeErB3808eHjtyY0GscMK8r75ht17f5RdoR/7DFPBzPIrlFLICBHzgULTYi78q5QFqdp2xF4875reXyUIIabSpjAy+ve47csxJHZausYys2klbpaA+rokOSlgqbMlXMliFmmLWsS/cMevifiy5xVNegI1YLvoznO1/cvkrbPbSfb84DPP2DJyhUfJcLU5xQRfHjmslUFa4m/966yXJwMxPztOxfBspbrHekykOSgXy/edRbIvi7rX63fYrBmb4lJw22EpKL0ifAPU2c8tOQD2FxSF+PHjXagl2lOlbaP5V0/4b0e6ZrFu3gZ3CvposaWL1asnGC51tCHKqiWtH/KT/tI4ZpfSQNpGMKHMWtoxV5lQeWnaDGAM=",
+                "page_age": null,
+                "title": "Dutch Design Week 2026 - Eindhoven",
+                "type": "web_search_result",
+                "url": "https://ddw.nl/nl/home"
+              },
+              {
+                "encrypted_content": "Ep4GCioIExgCIiQxMjFkZmRmYS03N2E3LTRiZWUtODQ5YS00N2FjMTA4YWRiMzYSDBRrlYsehjPC1Hvc7hoMcn7mBV2jjfmvLVI9IjAiKm1+f70xmYtJz2Hqspm4kmjbd165c8U5xKk0WJiZGWWdpNgRotJuJmkev9BD4VwqoQXE/pTUY0mLjcp+NLFL5xliONt3o2sHjbMvR97m5NqCmi454Vn+ph/GnT/pvPYY63Nk/B6paZItrG381ofxbXsJ30l0E4J5zcyQg+EnWnvW4w+MQM3vq9gYmMCcvgtOP5SCEnl86ic+0HiOlsp7wgKFXLVqobtU/U30qTUB0FDWPPoKYs69+lkuPFfzzEoOml1R3IvcjUmQ70EwPDX+h0FNvS60qYwxZPZUBexLup0nrCmvHuO0O5dOouPOdDfDQOWU7FNaV/p5khDmpXMHPVvmhkRwU8gNDsgV1Uy45YPUggAdi0X2jxTncSsOYkyXdoGV9p5tsNDdrAJqzMy6IWypVmztOJnBj+wNZpkhLhuz1TkWM4E+XqxO4CrtnlSlmLAbabTx/lUzbUiXteZI/yY3LIva244VxgVKGWFH01rrrPxrPQX27PIWN4tdq3m+btnR7U8n2ntUbtPQF6og91BSA41bCW4jm984SjkF88/Fo8pscqy4x5YJjZeG37nnHtoF+EJPoM8GHBuCg+Vhdacdn9oeG62+XYhLO4IkfNwWCVzThXP8p5dCOEgQgLZQdQu6/J91HfxZ5ePa0vO7pf0US1uKq8gbhP4+IHYw8hIRvXYD72URJCPuk3buBYBYc8crVYtQR2Ned+j2Uf5DicxGmS+AVqGG7E7tIZVy3bCl8r3/pCzTeDipS/uVtElP2mMnSgmdiULZmmMpH8/tryOIZ1gZ+qTsgssF+qtIDZIn+XYmLnX7/DnWGujjp2r32KkyGAuJX5Q9wdWd1e9FHf7ZZ9duew4mGDIeJL6HuYXjXkA/sAm+yQvOdjOpTHKZQIRibHNDJ4xrcFQ6RaPqYhxe4pHc3sE7THZ0OWvKzgd9zW5P+FxZd+8SxNe6w3x+E9sMGAM=",
+                "page_age": "February 24, 2026",
+                "title": "Dutch Design Week 2026 v.a. zaterdag 17 oktober | Centrum Eindhoven",
+                "type": "web_search_result",
+                "url": "https://www.wattedoenin.nl/evenementen/dutch-design-week/"
+              },
+              {
+                "encrypted_content": "Ep4FCioIExgCIiQxMjFkZmRmYS03N2E3LTRiZWUtODQ5YS00N2FjMTA4YWRiMzYSDOkHmcaNvlQHje65kRoMOCNzqjGuWiPPRNWlIjDwNf3PweIGxvttJhI/H5BC/OJPnDGXfxo4TlbX7vEP8UgNgPkpQ5jjHe0HUpmX4G4qoQTJzkINvDGB93vrmv+t2DPoeI2CUhfnypBlZE9gwV+PUTP/637mXvbOw3TJwmNuwxd+4/7sogjWRquDtII4KHBSApQfPKOxjokekRRsC2sEUdaoQQpE2nkWvv+0qLQK3e9zneed8/ZwDfcRwLva3h5uKIEDST8roCqFEuNU6LRDsIUkcsGmrxln7ByeZEb33IyWBSTwcCF1RM8PVLue3/B+XP0HXWcSnBRguMvWWSxLeGUGMEMU9ni2Bhdm4N5xa14ByhlM3kYUxJp/cC8zowa3oixJI7dc5u+hlA5XHkb6jI3qLvA1UW7txBHTVLqiKvSr8BiB78771qWQ/W1hqfiMAOKvwhXDbNtmTKzsRaUTXRyZYpRK6qBQuLfw0ymefZkvekGtFU1yG+rB7fYkSXtANhS/TOtTKJnYdunGlb7kwX6uHa3568qDWaFM4umUHe1J58DcrWlBgMvyojpLH5F7EiwUxjO6tkvqKYvPCo73VG35pL1CRjGiUq1LN3hEKRZT9GO+vu6cPy6WXSU9g7eGT4wnS+BfKs5nvEemvJQVePTef9D3ElRW4gUHZ00fxIZIrC9RsnajOePVj+o56r18RS9C3g2LFyXHOOyuerLs8PAiDwa/tA4vl4dPSuo7eUNivoabq4pI3qivPRu2ucyE864yEKNzHWsunKBa6JyCEpOgybu3engzMfn65tM8EZwxmhlhUTFtLt7jGRlMiDH2bhgD",
+                "page_age": null,
+                "title": "About DDW | Dutch Design Week",
+                "type": "web_search_result",
+                "url": "https://ddw.nl/en/about-ddw"
+              },
+              {
+                "encrypted_content": "EpsLCioIExgCIiQxMjFkZmRmYS03N2E3LTRiZWUtODQ5YS00N2FjMTA4YWRiMzYSDF7OlXnsVar4VdVjMRoM75gAntjBSqCOHZUnIjCuyY41kGwK+ShtYPxX8TRFlMvqFvbfiSGCYGb9OFbhjhssWOYhBU5k8zH8m0oUcoUqngqbRtAeUNfoDk+NVdQ/NLSM6I8zy4Jx0labzx+YVDyLq9+m/cB/aoMCTmscHLWMS2rx3JcHu31lYzVyk3pbx4lNCJZf/jvf6Tbfajm8xr6tkePqg9HEW1I+848FMJc+PLESY38VYK6gpvCaIS0808MWHkpEhT30hH3ES0tFFYeWFHgjl5CZ37p/mA5wtOAD4vgM+2iNjz4gW0td3pvZo6LRSEdzYhEPrl6eDBvHjZ7TbVzCcn7O6wg7nESnmWWCGfo+468FvlJBZ/L0/k7Hwbs2Z+XW3KJc+lpRy0D4lzR1od+3kF7/xVNLW3I9fCP3F9/9espiJ3aUHPbtYKBc3xU01czGqLX4rsjVrs+P7UyGOpZTPCCrZ1hKzfw0M1kmMiG+G8J/woy6caG/Jkg8nDPQLzBhLHHiTDfFB2Ya3Lm+I0N3Is2qo5zQErNxKByABbm182sr4ftscQAsGugN1JGM8yai/bt3IFESMeqBeK43a0y6XRWDTm3wKHG/NL6a4FadwUEPjjNOO9RkYIJBbXCQD1PCEjwDmoYGD/b4KbFqFLKLLqlIeUKEggoZA+HXUE7tol+ZQIoIBv+JMPZuKan0jpYhqwGivlMHNsJRxcVfSr6rRj+8vgoU6GabJny4XPv1ny+cwWnWpsrSvUxy5hXUmdnQgTuC8xcz4h/fEmnBkfqYYdMY/s2xw1cBCLSKrWMmkfRQP4OQFhJ5nB2VSFabvdj3I6jEZLSa0kA5vhgsSMJtUUsCTGH+ezjOIYahTjGIzpXdNFpMuJ08iKPtqmOe0LelcX4xhwXU6xKjga74B7hnfI063Zw5PRyo5Pw2Fuxymn99PzL1q6u1IHVZVPJEDPSsEIf6wOKD2WfhgJLZgKPxi0eB9M2ubkipeRa6Ve3JsOVo8B0cZs/xQvfS2mhNduAz8cqv0lEc4BQydn/NisAx80Zz4nwdaySX/FCSkYi1XnC41cI62KEgZhB+qM8ufmqOrXmY68DJaXUQLeaV+b9AenB5YCeG0VBT4ir9M3Ksm7RNv6b4u4frq+UO1ibv2K6K858FJZZH4dmiHYTrkO/PbrzPrW77tN9tlTec1rtYNeihnT0xufjCHHdmTZ+NE1FWcM4Qa53hLeg0+Tj7PpaxPZILtlcSbQjIlGaRI15QMHb2PtPMfEYNz2BsTY8zJDJVgO7ES6v8G8rVAEsOYlN5tUD31FViqVpWzJFcxGjU865fqEB9uxkMQLLLQlydhP3TDJMh77fBPgNury9WVtFD71fDrbXCLA3VlEwKilgsvIP84pAhjbGH9dpwJWhKD71IR5Csn5M6JB1HXfIeFtrnaqpDXTPKZ1WvMgSGF5ZzbOrbFmslfLf9MNoN+VUvCEqwewUJ1XuMRhPF/3xc3/2fOULYnvQkfVMVYBxSz6t0ETRP0fc/+xv6A/ND1GOcU19IfcYa3NrESKRiZT7AXFFB7tQoZJa8w8azdSmeq8YiqzXkbppubfmzrI5qjCmULY+sHCR1cak6qmM1j8vqsAfDW/iDMVNZKbU0Ff3UiNbhPtNTA/W096HEGflpWDX+qFVLgt4iH1Dst5w2/XJ1wg8na0uOdk9eFSNgsYiPd6vUpXQvryhrfMtKkW8EtdM+Dxbbq0XeMoMTBVHocZgVnRbfNFkiLNIpJHC1dRX9JKVObvztkbU5GLmXtPh+jqRAYcpwsMVMUyb9Kmy/YUkSqOQ89KrHTCNCS25BNJvW9i2HCETc8aGe3lYHAWqYXhgD",
+                "page_age": "November 5, 2025",
+                "title": "Dutch Design Week - Holland.com",
+                "type": "web_search_result",
+                "url": "https://www.holland.com/be_nl/toerisme/ontdek-nederland/bezoek-de-steden/eindhoven/de-dutch-design-week"
+              },
+              {
+                "encrypted_content": "EpkDCioIExgCIiQxMjFkZmRmYS03N2E3LTRiZWUtODQ5YS00N2FjMTA4YWRiMzYSDPOColfI+3wAH/vozxoMsXeuU7lwqt8o367qIjDMSCotRWeKMCP4WJOAF2uA8sUqVW/voIk3VEIISdwECsJuxl/ZanzvskAiID1XsCEqnAIA8SOKO4In2ldc2Z6Zwh19S9mfRuFLaeK3m+aS0IDTRi9mUXdi1Gi400tz2jv6QV1rF6GSjgZbNgTFUXCRlFgn/oS125agk3VQE8lDejJ4763DsK5XFpoKShFbDQNf816bztP5RKJappihXUxXlM/hGAmGn+XLUohka3VcNZY7RJ9SFxdiU9BigEczeytROz6vkp1Cru2uFCCqJwM35aPOUKGlQbEl+ZqwrTYnvma0s09IdvsMzrND1vwG1ipLD9Gfk0/LPr1ff59EENcPWrnCR0BtuNOC1/AIbM4Fgk4bZPc3Rv9z4iA9dO18AItYYMtNhTh1wjbKGMfbfvFnApF7mp/qbgpbyDqnfLOuoLJ4HnINC76+Iea+Ig39qxgD",
+                "page_age": "March 13, 2025",
+                "title": "DDW - Dutch Design Foundation",
+                "type": "web_search_result",
+                "url": "https://www.dutchdesignfoundation.com/ddw/"
+              },
+              {
+                "encrypted_content": "EqkCCioIExgCIiQxMjFkZmRmYS03N2E3LTRiZWUtODQ5YS00N2FjMTA4YWRiMzYSDEKDnoSRDdSlC76DVRoMYrUfiulyRukLIqR/IjD1maq7OWWqM5IwduSc8mrsa8CCMKVIvBaxfH94B9qqRKIjk3zOHG3wkz7RvIGywqUqrAHPcQkOxSOwaVtPx5xB4vCJWO+a+k4GD4SEE9NZpLeLywP3nqR8CMYlXryQgB0YZInlWNfUYaccnKqGdOTFtzsjrxi+bZLvT/HJN9divgWKhrXXvIocO4Il5UugVxS30dFzak10Pnz/OFjnLAcmYDonIAUiwLENxqJXyOCMKVkZ09ZmH0XUz8kVN2IU2Ek729FbRIDV1FzGYjv9Si5dmA+13vNMzX7js4W3ULjYGAM=",
+                "page_age": null,
+                "title": "Locaties - Deelnemen | Dutch Design Week",
+                "type": "web_search_result",
+                "url": "https://ddw.nl/nl/deelnemen/locaties"
+              },
+              {
+                "encrypted_content": "ErMCCioIExgCIiQxMjFkZmRmYS03N2E3LTRiZWUtODQ5YS00N2FjMTA4YWRiMzYSDFrlwr+UFPwySr2YQhoMketM4UxSUlGoBUpqIjA5a8TGolZUq7v2zowyCfEv7+3itc3Cb4Nv1TQCoCmK6kY+EQhwEioe6UYXWIPCoTEqtgFWqSTuwmC6OFl1TGumPtVCYs5bNbNSL2XmEoGgV/jphwXFgQv0AaIGCSdz27L7v3GLHLhi6J1WWE8F/t7iWGcu6aU5eiLmkJ8UlS3ciyA0UyXyIOXBQpMVO3N8QCBW2z0h1BeUtTvGhA3NSjz96yW5ReYNFqS9RlKayUjx3Y87n1ArTPXPo/mRBdLIEmj4BSXlprzJMt3Hp4wEw7LsXF6XIz1hpV/uu1juRwaxXwi3Du2zvxigTxgD",
+                "page_age": null,
+                "title": "Programme | Dutch Design Week",
+                "type": "web_search_result",
+                "url": "https://ddw.nl/en/programme"
+              },
+              {
+                "encrypted_content": "EtsBCioIExgCIiQxMjFkZmRmYS03N2E3LTRiZWUtODQ5YS00N2FjMTA4YWRiMzYSDP0VdYoeposAysV+0hoMKgdzh3ln26ou+vf8IjAA7MO75BKNM2WHnhUn6eGbtsdBklTJFeGftGNJ0QQTsvp/iREpCnr4QQiKffRUdd0qXzr5DO0gsTmVoCcDKSN2pivR9PwXuGc1Ef1QQIiWftUR7Rjf/gPY25FWUrwsVNmJwpF6xkzYYyJxM3omUTN01/yAXJK5y7xhrvZT6faPq9M8Dmaz0vWWXpY8/TEkmvmbGAM=",
+                "page_age": null,
+                "title": "Dutch Design Week",
+                "type": "web_search_result",
+                "url": "https://ddw.nl/en"
+              },
+              {
+                "encrypted_content": "EtILCioIExgCIiQxMjFkZmRmYS03N2E3LTRiZWUtODQ5YS00N2FjMTA4YWRiMzYSDN8vzt16lZCBnblYOBoMraomZVbQIGJVAo7dIjDYy16ruLUZM7xHyx82JT/eFUeZyYz518fsv1eTEcp4FNe2rVOYKLaK7IjcuEgwiasq1Qp73OM9+O3UJVOIqK5UKWhVyuWrdRkRYttcmISI6FArLhaXA516Jp/KKDBJsePCm1+mV37kLsKli8dINp+zJD+LUB77CGlS6hljeN1BC8z3/euxsEEIBlq9PXbhiQJPIhMCzVSoiR4nM8Gj8b/oVLKswgDYh1rDqwP38KOf3c8hTrEuQku5OglTpkf6IdK/hvtQvTyUho1yvQBckQeyUYzkBLwGhirkkK7yFZg/l/8ZZw3QweZQbOrSg7k2mxmPj7UwUmXox4d53hlDKqhrefoPnZ5s3MX1XS3GOklbcZ4UXiSzxF0Q/Za8P7mtevg5jc8qCOSvmp67+1/1sbWRTZEmtFBeXrCMIMmjZ494eDB4iFwj1dI3yxP/3lZTC8p5whBz9xhHUYhnuLa2VB0IiDBmbp2NIpWHq2F0b0pt8in/GAJgObIEutzw67QJDsldahmG1a3Qk+vP5N6E9fHtx6IKf1VW/TdxFCGY38c4AsXjCsMDJwpVgzW7O60GcyV4gVIO3nHRK4lWhKaI9DgnI1yLGHyvObq4AX0sHGnq61RH1UUnUl/1+avQh2V0au4DeYMN4gKN6A3FFqL7sHPaKXr2DsjHrVmnGcZapApQUiXAOko8xVmgV+9TAl1qQSyQldzH9TEMkGlvNNIWoC1iQKpHsq0VGysW85sQ1eQ31ERIqWEEUuvo3ymfqiZhxGROLPfrIrdjuFZo+Io2XUkpBTy7wYLiec93sugbV2IebWXRCuLnNwePnr9dN5HOw7skyo/sZi5IvF5BR4Qm9YeyHw2Li1aFYDrG+izC2MuvGa+DKoHmNw6YVZ2C/NihOeCAadyjNQsSTdnbXhCR7Cy4dTLbTk8afHYSDmmquQx2FD0O2zUn9JWDFi+ixsOP7ovp4i6f5wYfdOX3HPn3Ix7ot42syGNj6Ez1Lu2TQxWCC9NGTEP0Q4dyeShPef9sPaJoRF+HnsBPsB0/f97DPsFjTr6svjCH5QWF12BK8jS1Dy03jkG8MA8UYnJpdxL7nwmMIxV40k5XtkNZjTwm9Uuy8nYNcQ0qUPIGs0pB/zzwVTVpVD3n4AWKWyHsMp+PlgWNBz80z6r20icUAqAnDdSjqldjFNydiglRQXo09n3vp4EuSahFpwzrw7DRlppVMnfHFlFC2PeTtuxshw1IaRcFJutwgRQfPWSMQT6tXvMOhbZUMHGhge/S8zsdYMMPbgYc42oPIPuujDiaixLvdJOXcLuKgwsmJhitt00li1llRw8OQVINVtFAkfrpPBzEBAcOufE2AetYoG7l6NlGONDVE3RTSxHZFmUWX1Y2gIPA1Knt5l5xSi4UlEQxbzq/zr1Vfn5tKwY72xV6NuY3p8MY1BzgNPeCF0RtVjLdwvjmt2+rqjBkmF7dbdKxq6fY2YWxZt1CNC+tvoB4MFHeqW03z/sqHFlnSO0fhrFL5ku1I2fWTF4PJjtd28RvO9dxj+huL8uYd9JPpYxMAi6Uz2rMVzmuySziVrxBJHVoTLnCk3IeNPAp0yt+aNql2dW0y4fTcUeWykcdcSYhSIpBsjMr5dcYBChDYDtELWkLXTgNZjD3PSUT1PWT+nUj3WG2Drbq7m3QZDeiFFU+war2MNIP5cMqrxpJQoJUOhp+15EiQOiojS89B+vlGmxL+Fl0wlhjpbhXZgwRtSVczAfmy7q6YrhwPvljQ7nA8AgZaeX8oQUmSh7GcHnd0C9tdM3rdCkeAMKS3vJyMejmqlfAVqHsrR504y3vXrRp72Bal2PIhzU6KDbE01T5oQTXEJiCPpM3wUBFagcFftpKaq82D/zgJEu2BA2X77EYAw==",
+                "page_age": null,
+                "title": "Dutch Design Week 2021",
+                "type": "web_search_result",
+                "url": "https://www.archdaily.com/967768/dutch-design-week-2021?video=true"
+              }
+            ],
+            "tool_use_id": "srvtoolu_01Fue9ymJVaHZujzZrFxQVAC",
+            "type": "web_search_tool_result"
+          },
+          {
+            "text": "{\"url\": \"https://ddw.nl/en\", \"reason\": \"Official Dutch Design Week website organized by Dutch Design Foundation. Primary authoritative source for the event series with annual editions including 2027.\"}",
+            "type": "text"
+          }
+        ],
+        "id": "msg_011CekrCbkrsy4teDtjpq1SA",
+        "model": "claude-haiku-4-5-20251001",
+        "role": "assistant",
+        "stop_details": null,
+        "stop_reason": "end_turn",
+        "stop_sequence": null,
+        "type": "message",
+        "usage": {
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 0,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "inference_geo": "not_available",
+          "input_tokens": 8391,
+          "output_tokens": 115,
+          "server_tool_use": {
+            "web_fetch_requests": 0,
+            "web_search_requests": 1
+          },
+          "service_tier": "batch"
+        }
+      },
+      "tool": "web_search"
+    },
+    {
+      "contains": "Dutch Design Week",
+      "message": {
+        "content": [
+          {
+            "id": "srvtoolu_01D6utGBKHgdBG6sGkZwNxkG",
+            "input": {
+              "url": "https://ddw.nl/en"
+            },
+            "name": "web_fetch",
+            "type": "server_tool_use"
+          },
+          {
+            "caller": {
+              "type": "direct"
+            },
+            "content": {
+              "content": {
+                "citations": {
+                  "enabled": false
+                },
+                "source": {
+                  "data": "---\nmeta-viewport: width=device-width, initial-scale=1\ntitle: Dutch Design Week\n---\n[Skip to main content](#main-content)[https://www.googletagmanager.com/ns.html?id=GTM-M3Q4M9T](https://www.googletagmanager.com/ns.html?id=GTM-M3Q4M9T)\n\n17-25 October 2026 eindhoven dutch design week, 17-25 oktober 2026 eindhoven\n\n[English](https://ddw.nl/set-locale/en) | [Dutch](https://ddw.nl/set-locale/nl)\n\n[English](https://ddw.nl/set-locale/en) | [Dutch](https://ddw.nl/set-locale/nl)\n\n[Login](https://ddw.nl/auth/login) [Login for participants](https://site.ddw.nl/my-ddw)\n\n- [Programme](https://ddw.nl/en/programme)\n- [News](https://ddw.nl/en/updates)\n- [Plan your visit](https://ddw.nl/plan-your-visit)\n\n[Get tickets](https://ddw.nl/en/tickets)\n\n×\n\n[Programme](https://ddw.nl/en/programme)\n\n[Events](https://ddw.nl/en/programme/activities-and-events)\n\n[Mission Days 2026](https://ddw.nl/en/main-menu-programme/mission-days-2026)\n\n[DDW Young & Education](https://ddw.nl/en/main-menu-programme/ddw-young-education)\n\n[Locations](https://ddw.nl/en/locations)\n\n[Food & Drinks](https://ddw.nl/food-and-drinks)\n\n[Map](https://ddw.nl/en/map)\n\n[Press](https://ddw.nl/en/press)\n\n[Frequently asked questions](https://ddw.nl/en/faq)\n\n[Design Tours](https://ddw.nl/en/tours)\n\n[Become a partner](https://site.ddw.nl/en/partners)\n\n[Contact](https://ddw.nl/en/contact)\n\n[English](https://ddw.nl/set-locale/en) | [Dutch](https://ddw.nl/set-locale/nl)\n\n[I want to volunteer](https://site.ddw.nl/en/volunteers) [I want to become a Design Guide](https://site.ddw.nl/en/design-guide) [Login for participants](https://site.ddw.nl/my-ddw)\n\n 17-25  \nOctober  \nEindhoven\n\ndutch  \ndesign  \nweek\n\n# Nine-days bursting with creativity, mind-blowing ideas, and celebrations\n\n[Get tickets](https://ddw.nl/en/tickets)\n\n## DDW26 Mobile App\n\ndownload the app and discover the festival\n\n[Android](https://play.google.com/store/apps/details?id=nl.ddw.app) [iOS](https://apps.apple.com/nl/app/dutch-design-week/id6636546800)\n\n## Browse programme\n\nWant to discover what's on?\n\n[Dive into the programme](https://ddw.nl/en/programme)\n\n![](https://ddw.ams3.cdn.digitaloceanspaces.com/thumbs/tours-1-1819b_1920x1080.jpg)\n\n## Get your Design Tour\n\nDiscover the latest innovations, together with colleagues or relations.\n\n[Book a tour](https://ddw.nl/en/tours)\n\n## News\n\n[See all](https://ddw.nl/en/updates)\n\n[01 September 2026 Emma van der Leest and Anab Jain Beacons of DDW26](https://ddw.nl/en/updates/design-pionieers-emma-van-der-leest-and-anab-jain-are-the-beacons-van-ddw) [14 August 2026 Open Call | Forward Furniture 2026](https://ddw.nl/en/updates/open-call-forward-furniture-26-eng) [10 August 2026 Become a Design Guide](https://ddw.nl/en/updates/become-a-design-guide) [23 July 2026 The theme of Dutch Design Week](https://ddw.nl/en/updates/the-theme-of-dutch-design-week) [20 November 2025 SECRID DESIGN LIVE TALK: How do we navigate ownership in design?](https://ddw.nl/en/updates/secrid-design-live-talk) [15 October 2025 Your Last Chance to join Mission Days](https://ddw.nl/en/updates/register-mission-days) [14 October 2025 A sustainable Dutch Design Week](https://ddw.nl/en/updates/sustainable-ddw) [12 October 2025 Discover Dutch Design Week with kids](https://ddw.nl/en/updates/dutchdesignweek-with-children) [11 October 2025 Off the beaten track during Dutch Design Week](https://ddw.nl/en/updates/off-the-beaten-track-ddw) [09 October 2025 Discover new locations during Dutch Design Week](https://ddw.nl/en/updates/new-locations)\n\nPause partner animation\n\n[![Polestar](https://s3.amazonaws.com/ddw2025test/images/partners/polestar-wordmark-pos-bb121-300x-6a7b0a5fafb41.png)](https://site.ddw.nl/Polestar)\n\n[![Dutch Design Foundation](https://s3.amazonaws.com/ddw2025test/images/partners/ddf-68b1ca0d2ce2c.png)](https://www.dutchdesignfoundation.com/about/)\n\n[![Ministerie van OCW](https://s3.amazonaws.com/ddw2025test/images/partners/ocw-68b1bf2542e00.png)](https://site.ddw.nl/ministry-of-education-culture-and-science)\n\n[![Gemeente Eindhoven](https://s3.amazonaws.com/ddw2025test/images/partners/6-gemeente-eindhoven-zw-liggend-68b1c3965d368.png)](https://site.ddw.nl/en/gemeente-eindhoven)\n\n[![Provincie Noord-Brabant](https://s3.amazonaws.com/ddw2025test/images/partners/prnb-68b1c00cf0e80.png)](https://site.ddw.nl/en/Brabant)\n\n[![Brabant C](https://s3.amazonaws.com/ddw2025test/images/partners/brabant-c-68c06a19c3bdb.png)](https://site.ddw.nl/brabant-c)\n\n[![VPRO](https://s3.amazonaws.com/ddw2025test/images/partners/vpro-68b1c9bb263fa.png)](https://site.ddw.nl/partners-3/partner-overview/vpro)\n\n[![Fonds 21](https://s3.amazonaws.com/ddw2025test/images/partners/fonds-21-68b1c347e28c9.png)](https://site.ddw.nl/partners-3/partner-overview/fonds-21)\n\n[![Stir](https://s3.amazonaws.com/ddw2025test/images/partners/stir-68e775d64579a.png)](https://site.ddw.nl/partners-3/partner-overview/stir)\n\n[![](https://s3.amazonaws.com/ddw2025test/images/partners/polestar-wordmark-pos-bb121-300x-6a7b0a5fafb41.png)](https://site.ddw.nl/Polestar)\n\n[![](https://s3.amazonaws.com/ddw2025test/images/partners/ddf-68b1ca0d2ce2c.png)](https://www.dutchdesignfoundation.com/about/)\n\n[![](https://s3.amazonaws.com/ddw2025test/images/partners/ocw-68b1bf2542e00.png)](https://site.ddw.nl/ministry-of-education-culture-and-science)\n\n[![](https://s3.amazonaws.com/ddw2025test/images/partners/6-gemeente-eindhoven-zw-liggend-68b1c3965d368.png)](https://site.ddw.nl/en/gemeente-eindhoven)\n\n[![](https://s3.amazonaws.com/ddw2025test/images/partners/prnb-68b1c00cf0e80.png)](https://site.ddw.nl/en/Brabant)\n\n[![](https://s3.amazonaws.com/ddw2025test/images/partners/brabant-c-68c06a19c3bdb.png)](https://site.ddw.nl/brabant-c)\n\n[![](https://s3.amazonaws.com/ddw2025test/images/partners/vpro-68b1c9bb263fa.png)](https://site.ddw.nl/partners-3/partner-overview/vpro)\n\n[![](https://s3.amazonaws.com/ddw2025test/images/partners/fonds-21-68b1c347e28c9.png)](https://site.ddw.nl/partners-3/partner-overview/fonds-21)\n\n[![](https://s3.amazonaws.com/ddw2025test/images/partners/stir-68e775d64579a.png)](https://site.ddw.nl/partners-3/partner-overview/stir)\n\nDutch Design Week  \n17-25 October\n\n[https://www.instagram.com/dutchdesignweek/](https://www.instagram.com/dutchdesignweek/) [https://www.facebook.com/112104042181681](https://www.facebook.com/112104042181681) [https://nl.linkedin.com/company/dutch-design-week](https://nl.linkedin.com/company/dutch-design-week)\n\n[Terms and conditions](https://s3.amazonaws.com/ddw2025test/downloads/files/o1fHjhRprk6rmNSSViJ8tSLrSzfLOHXC1PETS87G.pdf)\n\nDutch Design Week (DDW) returns to the essence of design in 2026. Under the theme R.A.W. (Rebel Authentic Worth), DDW embraces the unpolished, exploratory and experimental. A place where designers challenge existing ideas, explore new possibilities and reveal how change takes shape. For nine days, DDW brings together the full breadth of design.\n\n- [Programme](https://ddw.nl/en/programme)\n- [Tickets](https://ddw.nl/en/tickets)\n- [Map](https://ddw.nl/en/map)\n- [News](https://ddw.nl/en/updates)\n- [Frequently Asked Questions](https://ddw.nl/en/faq)\n- [Design Tours](https://ddw.nl/en/tours)\n\n- [Newsletter](https://ddw.nl/en/newsletter)\n- [Press](https://ddw.nl/en/press)\n- [Participants](https://site.ddw.nl/participants)\n- [Partners](https://www.dutchdesignfoundation.com/partners/)\n- [Contact](https://ddw.nl/en/contact)\n\n## We use cookies\n\nThis website uses cookies in order to enhance the overall user experience.\n\nOnly essentials\n\nAccept all\n\n[Customise](#cookies-policy-customize)\n\n**Essential cookies**\n\nThere are some cookies that we have to include in order for certain web pages to function. For this reason, they do not require your consent.\n\n- ddw_cookie_consent\n\n    1 year 1 month 1 day\n\n    Used to store the user's cookie consent preferences.\n\n- ddw_session\n\n    2 hours\n\n    Used to identify the user's browsing session.\n\n- XSRF-TOKEN\n\n    2 hours\n\n    Used to secure both the user and our website against cross-site request forgery attacks.\n\n[More details](#cookies-policy-essentials)\n\n**Analytics cookies**\n\nWe use these for internal research on how we can improve the service we provide for all our users. These cookies assess how you interact with our website.\n\n- ga4\n\n    2 months 4 days\n\n    Google Analytics 4 (non-essential)\n\n[More details](#cookies-policy-analytics)\n\n**Marketing**\n\nUsed to show relevant ads and measure campaign performance (Google Ads, Meta Pixel, etc.).\n\n- google_ads\n\n    2 months 4 days\n\n    Google Ads global site tag for remarketing and conversions.\n\n- tiktok_pixel\n\n    2 months 4 days\n\n    TikTok Pixel for ads & attribution.\n\n- meta_pixel\n\n    2 months 4 days\n\n    Meta Pixel for ads & attribution.\n\n[More details](#cookies-policy-marketing)\n\nSave",
+                  "media_type": "text/plain",
+                  "type": "text"
+                },
+                "title": "Dutch Design Week",
+                "type": "document"
+              },
+              "retrieved_at": "2026-09-05T20:16:29.242+02:00",
+              "type": "web_fetch_result",
+              "url": "https://ddw.nl/en"
+            },
+            "tool_use_id": "srvtoolu_01D6utGBKHgdBG6sGkZwNxkG",
+            "type": "web_fetch_tool_result"
+          },
+          {
+            "text": "{\"events\":[{\"sourceUrl\":\"https://ddw.nl/en\",\"title\":\"Dutch Design Week 2026\",\"category\":\"festival\",\"venue\":null,\"latitude\":null,\"longitude\":null,\"regionScope\":\"city\",\"startAt\":\"2026-10-17\",\"endAt\":\"2026-10-25\",\"status\":\"active\",\"ownerType\":\"organizer\",\"evidenceText\":\"17-25 October 2026 eindhoven dutch design week, 17-25 oktober 2026 eindhoven; Dutch Design Week (DDW) returns to the essence of design in 2026... For nine days, DDW brings together the full breadth of design.\",\"attendance\":null,\"venueCapacity\":null,\"impactPoints\":null,\"overnightAudience\":null,\"titleConfirmed\":true,\"dateConfirmed\":true,\"locationConfirmed\":true}],\"reason\":\"The official DDW site (ddw.nl/en) confirms only one upcoming edition within the requested window: Dutch Design Week 2026, held 17-25 October 2026 in Eindhoven. No other future editions or dates beyond 2026 are listed on this page, and no additional festival/conference/championship programme data appeared on the fetched page to justify further entries within 25 km of Eindhoven for the 2026-12-05 to 2027-12-31 window. Per instructions, only two pages may be fetched and no further exploration was pursued beyond the single observed official link already provided, so only this confirmed edition is returned.\"}",
+            "type": "text"
+          }
+        ],
+        "id": "msg_011CekrNQbRnB25ZF3V1tZgt",
+        "model": "claude-sonnet-5",
+        "role": "assistant",
+        "stop_details": null,
+        "stop_reason": "end_turn",
+        "stop_sequence": null,
+        "type": "message",
+        "usage": {
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 0,
+            "ephemeral_5m_input_tokens": 4307
+          },
+          "cache_creation_input_tokens": 4307,
+          "cache_read_input_tokens": 6912,
+          "inference_geo": "global",
+          "input_tokens": 37,
+          "output_tokens": 540,
+          "output_tokens_details": {
+            "thinking_tokens": 0
+          },
+          "server_tool_use": {
+            "web_fetch_requests": 1,
+            "web_search_requests": 0
+          },
+          "service_tier": "batch"
+        }
+      },
+      "tool": "web_fetch"
+    }
+  ]
+}

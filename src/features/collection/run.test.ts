@@ -119,16 +119,24 @@ it("seeds long-range leads from recently ended editions only", () => {
     source("https://venue.nl/about-to-end", "2026-09-12"),
     source("https://venue.nl/next-season", "2026-11-01"),
     source("https://venue.nl/ancient", "2025-01-01"),
-    { ...source("https://venue.nl/just-ended", "2026-08-01"), event_id: "duplicate" },
+    source("https://venue.nl/just-ended", "2026-08-01"),
     // A PredictHQ row: the fetchable page is the reviewed public URL, never the provider API.
     { ...source("https://api.predicthq.com/v1/events/x", "2026-09-02"), public_source_url: "https://marathon.nl/" },
   ], new Date("2026-09-05T12:00:00Z"));
 
   expect(seeds).toEqual([
+    { eventId: "event-https://venue.nl/next-season", url: "https://venue.nl/next-season", lastEditionEnd: "2026-11-01" },
     { eventId: "event-https://venue.nl/about-to-end", url: "https://venue.nl/about-to-end", lastEditionEnd: "2026-09-12" },
     { eventId: "event-https://api.predicthq.com/v1/events/x", url: "https://marathon.nl/", lastEditionEnd: "2026-09-02" },
     { eventId: "event-https://venue.nl/just-ended", url: "https://venue.nl/just-ended", lastEditionEnd: "2026-09-01" },
   ]);
+});
+
+it("retains distinct event identities that share one official calendar page", () => {
+  const source = { source_url: "https://venue.example/calendar", extracted_start_at: "2026-10-17T00:00:00Z",
+    extracted_end_at: "2026-10-25T00:00:00Z", checked_at: "2026-09-05T00:00:00Z" };
+  expect(selectLongRangeSeeds([{ ...source, event_id: "arts" }, { ...source, event_id: "science" }],
+    new Date("2026-09-05T12:00:00Z")).map((seed) => seed.eventId)).toEqual(["arts", "science"]);
 });
 
 function repository(overrides: Partial<CollectionRepository> = {}): CollectionRepository {
