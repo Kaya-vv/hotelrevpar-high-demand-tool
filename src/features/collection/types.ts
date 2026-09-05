@@ -17,5 +17,7 @@ export type SourceResult = {
   usage: Record<string, number>;
   invalidatedUrls?: string[];
   funnel?: DiscoveryFunnel;
+  error?: string;
+  quarantinedProviderEventIds?: string[];
 };
 

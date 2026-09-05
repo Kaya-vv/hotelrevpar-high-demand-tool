@@ -149,6 +149,7 @@ export type ClaudeMarketInput = {
   model: string;
   discoveryModel: string;
   knownUrls: string[];
+  discoveryMode?: "long_range";
 };
 
 export function claudeMarketCacheKey(input: ClaudeMarketInput) {
@@ -162,6 +163,7 @@ export function claudeMarketCacheKey(input: ClaudeMarketInput) {
       radiusKm: input.radiusKm,
       model: input.model,
       discoveryModel: input.discoveryModel,
+      discoveryMode: input.discoveryMode,
     }))
     .digest("hex");
 }

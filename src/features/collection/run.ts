@@ -11,7 +11,7 @@ import {
 import type { EventCandidate, SourceName } from "@/features/events/types";
 
 import {
-  collectClaude,
+  collectClaudeCalendar,
   triagePredictHqCandidates,
   verifyPredictHqCandidates,
   type ClaudeUsageEvent,
@@ -22,6 +22,7 @@ import { collectPredictHq } from "./sources/predicthq";
 import { collectRijksoverheid } from "./sources/rijksoverheid";
 import { collectTicketmaster } from "./sources/ticketmaster";
 import type { CollectionWindow, SourceResult } from "./types";
+import { LongRangeLeaseError, type LongRangeSeed } from "./long-range-store";
 
 export type CollectionAreaContext = {
   id: string;
@@ -47,6 +48,9 @@ export type CollectionContext = {
   hotels: HotelContext[];
   window: CollectionWindow;
   knownClaudeUrls: string[];
+  longRangeSeeds?: LongRangeSeed[];
+  claudeAgendaSeedUrls?: string[];
+  runNearTermClaude?: boolean;
   knownEvents: { title: string; startDate: string; endDate: string | null }[];
 };
 
@@ -103,6 +107,38 @@ export function selectClaudeRefreshUrls(
   ].slice(0, limit);
 }
 
+/**
+ * Editions this account already confirmed are the cheapest long-range leads there are: the official
+ * URL is stored and the end date says when next year's announcement is due. The `+14` day ceiling
+ * deliberately includes editions about to finish; the collector refuses to fetch them before they end.
+ *
+ * Not Claude-specific. An edition PredictHQ found keeps an official page once the evidence reviewer
+ * confirms one, and `public_source_url` is that page — `source_url` would be the provider's API.
+ */
+export function selectLongRangeSeeds(
+  rows: (ClaudeSourceRow & { event_id: string; public_source_url?: string | null })[],
+  now = new Date(),
+  limit = 12,
+) {
+  const day = 86_400_000;
+  const floor = new Date(now.getTime() - 200 * day).toISOString().slice(0, 10);
+  const ceiling = new Date(now.getTime() + 14 * day).toISOString().slice(0, 10);
+  const byUrl = new Map<string, { eventId: string; url: string; lastEditionEnd: string }>();
+  for (const row of rows) {
+    const url = row.public_source_url ?? row.source_url;
+    const lastEditionEnd = (row.extracted_end_at ?? row.extracted_start_at).slice(0, 10);
+    if (lastEditionEnd < floor || lastEditionEnd > ceiling) continue;
+    // One URL can carry several editions; the anchor has to be the most recent of them.
+    const stored = byUrl.get(url);
+    if (!stored || stored.lastEditionEnd < lastEditionEnd) {
+      byUrl.set(url, { eventId: row.event_id, url, lastEditionEnd });
+    }
+  }
+  return [...byUrl.values()]
+    .sort((left, right) => right.lastEditionEnd.localeCompare(left.lastEditionEnd))
+    .slice(0, limit);
+}
+
 export type PersistResult = {
   state: "active" | "needs_review" | "excluded";
   duplicate: boolean;
@@ -141,6 +177,7 @@ export type CollectionRepository = {
     context: CollectionContext,
     sourceUrls: string[]
   ) => Promise<void>;
+  quarantineClaudeEditions: (context: CollectionContext, providerEventIds: string[]) => Promise<void>;
   shouldRunClaudeDiscovery: (context: CollectionContext) => Promise<boolean>;
   recalculateScores: (context: CollectionContext) => Promise<void>;
   recordUsage: (
@@ -238,11 +275,14 @@ function defaultCollectors(
       }),
     claude: (context) => {
       configured(process.env.ANTHROPIC_API_KEY, "Anthropic");
-      return collectClaude({
+      return collectClaudeCalendar({
         ...context.window,
         location: context.area.searchLocation,
         radiusKm: context.area.radiusKm,
         knownUrls: context.knownClaudeUrls,
+        longRangeSeeds: context.longRangeSeeds,
+        agendaSeedUrls: context.claudeAgendaSeedUrls,
+        runNearTerm: context.runNearTermClaude,
         knownEvents: context.knownEvents,
         onUsage: (usage) => onUsage("claude", usage),
       });
@@ -354,6 +394,11 @@ export async function runCollection(
         input.trigger === "cron" &&
         !(await repository.shouldRunClaudeDiscovery(context))
       ) {
+        if (process.env.LONG_RANGE_DISCOVERY === "enabled") {
+          context.runNearTermClaude = false;
+          sourcesToRun.push(source);
+          continue;
+        }
         sourceResults.claude = {
           state: "skipped",
           reason: "Claude discovery runs at most once every 30 days.",
@@ -377,6 +422,7 @@ export async function runCollection(
       const source = sourcesToRun[index];
       const result = settled[index];
       if (result.status === "rejected") {
+        if (result.reason instanceof LongRangeLeaseError) throw result.reason;
         failed = true;
         sourceResults[source] = errorState(result.reason);
         continue;
@@ -390,6 +436,9 @@ export async function runCollection(
           context,
           result.value.invalidatedUrls,
         );
+      }
+      if (source === "claude" && result.value.quarantinedProviderEventIds?.length) {
+        await repository.quarantineClaudeEditions(context, result.value.quarantinedProviderEventIds);
       }
       const missingLocationCount = result.value.candidates.filter(
         (event) =>
@@ -408,7 +457,8 @@ export async function runCollection(
       let provisionalCount = 0;
       let triageRequests = 0;
       let verificationRequests = 0;
-      let sourceError: string | null = null;
+      let sourceError: string | null = result.value.error ?? null;
+      if (sourceError) failed = true;
       const sourceUsage = { ...result.value.usage };
 
       if (source === "predicthq") {

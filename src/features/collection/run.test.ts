@@ -11,9 +11,11 @@ import {
   collectionWindow,
   runCollection,
   selectClaudeRefreshUrls,
+  selectLongRangeSeeds,
   type CollectionRepository,
 } from "./run";
 import { shouldRefreshCanonical, sourceChange } from "./source-change";
+import { LongRangeLeaseError } from "./long-range-store";
 
 const candidate: EventCandidate = {
   provider: "ticketmaster",
@@ -104,6 +106,31 @@ it("prioritizes visible events that need the current Claude assessment", () => {
   ]);
 });
 
+it("seeds long-range leads from recently ended editions only", () => {
+  const source = (source_url: string, end: string) => ({
+    event_id: `event-${source_url}`,
+    source_url,
+    extracted_start_at: `${end}T10:00:00Z`,
+    extracted_end_at: `${end}T20:00:00Z`,
+    checked_at: "2026-08-01T00:00:00Z",
+  });
+  const seeds = selectLongRangeSeeds([
+    source("https://venue.nl/just-ended", "2026-09-01"),
+    source("https://venue.nl/about-to-end", "2026-09-12"),
+    source("https://venue.nl/next-season", "2026-11-01"),
+    source("https://venue.nl/ancient", "2025-01-01"),
+    { ...source("https://venue.nl/just-ended", "2026-08-01"), event_id: "duplicate" },
+    // A PredictHQ row: the fetchable page is the reviewed public URL, never the provider API.
+    { ...source("https://api.predicthq.com/v1/events/x", "2026-09-02"), public_source_url: "https://marathon.nl/" },
+  ], new Date("2026-09-05T12:00:00Z"));
+
+  expect(seeds).toEqual([
+    { eventId: "event-https://venue.nl/about-to-end", url: "https://venue.nl/about-to-end", lastEditionEnd: "2026-09-12" },
+    { eventId: "event-https://api.predicthq.com/v1/events/x", url: "https://marathon.nl/", lastEditionEnd: "2026-09-02" },
+    { eventId: "event-https://venue.nl/just-ended", url: "https://venue.nl/just-ended", lastEditionEnd: "2026-09-01" },
+  ]);
+});
+
 function repository(overrides: Partial<CollectionRepository> = {}): CollectionRepository {
   return {
     startRun: vi.fn().mockResolvedValue("run-1"),
@@ -119,6 +146,7 @@ function repository(overrides: Partial<CollectionRepository> = {}): CollectionRe
     saveEvidenceReviews: vi.fn().mockResolvedValue(undefined),
     hideCandidates: vi.fn().mockResolvedValue(undefined),
     invalidateClaudeSources: vi.fn().mockResolvedValue(undefined),
+    quarantineClaudeEditions: vi.fn().mockResolvedValue(undefined),
     shouldRunClaudeDiscovery: vi.fn().mockResolvedValue(true),
     recalculateScores: vi.fn().mockResolvedValue(undefined),
     recordUsage: vi.fn().mockResolvedValue(undefined),
@@ -128,6 +156,19 @@ function repository(overrides: Partial<CollectionRepository> = {}): CollectionRe
 }
 
 describe("runCollection", () => {
+  it("persists successful horizon results while marking the failed horizon partial", async () => {
+    const repo = repository();
+    const result = await runCollection(
+      { accountId: "account-1", areaId: "area-1", trigger: "manual" },
+      { repository: repo, collectors: {
+        ticketmaster: vi.fn().mockResolvedValue({ source: "ticketmaster", candidates: [], requests: 0, usage: {} }),
+        claude: vi.fn().mockResolvedValue({ source: "claude", candidates: [{ ...candidate, provider: "claude" }], requests: 4, usage: {}, error: "longRange: search failed" }),
+      } },
+    );
+    expect(result.status).toBe("partial");
+    expect(result.sourceResults.claude).toMatchObject({ state: "partial", error: "longRange: search failed" });
+    expect(repo.persistCandidate).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ provider: "claude" }));
+  });
   it("invalidates a stored Claude page that verification identifies as an aggregator", async () => {
     const repo = repository();
     const invalidatedUrl = "https://eventseye.com/metstrade";
@@ -204,6 +245,16 @@ describe("runCollection", () => {
       { repository: repository({ startRun: vi.fn().mockRejectedValue(error) }), collectors: {} },
     );
     expect(result.status).toBe("already_running");
+  });
+
+  it("throws a busy market error so the queue retries instead of marking the job partial", async () => {
+    const repo = repository();
+    const busy = new LongRangeLeaseError();
+    await expect(runCollection(
+      { accountId: "account-1", areaId: "area-1", trigger: "manual" },
+      { repository: repo, collectors: { ticketmaster: vi.fn().mockRejectedValue(busy), claude: vi.fn().mockRejectedValue(busy) } },
+    )).rejects.toBe(busy);
+    expect(repo.finishRun).toHaveBeenCalled();
   });
 
   it("persists a repeated provider ID once per run", async () => {

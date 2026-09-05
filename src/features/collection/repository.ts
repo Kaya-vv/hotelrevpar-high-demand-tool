@@ -22,6 +22,7 @@ import {
   claudeDiscoveryDue,
   collectionWindow,
   selectClaudeRefreshUrls,
+  selectLongRangeSeeds,
   type CollectionContext,
   type CollectionRepository,
   type RunCollectionInput,
@@ -29,6 +30,7 @@ import {
   type StoredEvidenceReview,
 } from "./run";
 import { shouldRefreshCanonical, sourceChange } from "./source-change";
+import { longRangeWindow } from "./sources/claude";
 
 const structuredUpdateProviders = new Set(["rijksoverheid", "openholidays", "ticketmaster", "predicthq", "footballdata"]);
 const automatedSourceStates = new Set<EventCandidate["sourceState"]>(["cancelled", "postponed", "removed"]);
@@ -78,6 +80,7 @@ export function createCollectionRepository(): CollectionRepository {
       if (hotelResult.error) throw hotelResult.error;
       const hotel = hotelResult.data;
       const window = collectionWindow();
+      const futureWindow = longRangeWindow(window);
       const { data: linkData, error: linkError } = await supabase
         .from("account_event_areas")
         .select("event_id")
@@ -123,6 +126,23 @@ export function createCollectionRepository(): CollectionRepository {
           visibleEventIds.has(source.event_id) &&
           !currentAssessmentEventIds.has(source.event_id),
       }));
+      // Seeds come from every provider, not just Claude: the marathon may have entered the calendar
+      // through PredictHQ and still carry an official page the evidence reviewer confirmed.
+      const confirmedSources = links.length
+        ? await fetchInBatches(
+          links.map((link) => link.event_id),
+          (ids) => supabase
+            .from("event_sources")
+            .select("event_id, source_url, public_source_url, extracted_start_at, extracted_end_at, checked_at")
+            .eq("primary_source_confirmed", true)
+            .in("event_id", ids),
+        )
+        : [];
+      const seedRows = selectLongRangeSeeds(confirmedSources);
+      const seedTitles = seedRows.length
+        ? await fetchInBatches(seedRows.map((row) => row.eventId), (ids) =>
+          supabase.from("events").select("id, title").in("id", ids))
+        : [];
       const reassessmentDue = refreshSources.some((source) => source.needs_reassessment);
       // A third of every run's verification budget went to events this area already holds as
       // confirmed. Loading their identity lets discovery skip them and spend the slot on
@@ -135,7 +155,7 @@ export function createCollectionRepository(): CollectionRepository {
             .select("title, start_at, end_at")
             .eq("certainty", "confirmed")
             .in("id", ids)
-            .lte("start_at", `${window.end}T23:59:59Z`)
+            .lte("start_at", `${futureWindow.end}T23:59:59Z`)
             .gte("end_at", `${window.start}T00:00:00Z`),
         )
         : [];
@@ -168,6 +188,15 @@ export function createCollectionRepository(): CollectionRepository {
           startDate: event.start_at.slice(0, 10),
           endDate: event.end_at?.slice(0, 10) ?? null,
         })),
+        longRangeSeeds: seedRows.flatMap((row) => {
+          const title = seedTitles.find((event) => event.id === row.eventId)?.title;
+          return title ? [{ title, url: row.url, lastEditionEnd: row.lastEditionEnd }] : [];
+        }),
+        // Retain source history after an edition ends to discover future programmes.
+        // These seed agendas only: checking old editions against a future window must not invalidate them.
+        claudeAgendaSeedUrls: [...new Set(refreshSources
+          .sort((a, b) => a.checked_at.localeCompare(b.checked_at))
+          .map((source) => source.source_url))].slice(0, 8),
       } as CollectionContext;
     },
 
@@ -298,11 +327,26 @@ export function createCollectionRepository(): CollectionRepository {
         .eq("account_id", context.area.accountId)
         .eq("collection_area_id", context.area.id)
         .not("finished_at", "is", null)
-        .filter("source_results->claude->>state", "in", "(success,zero)")
+        // A failed distant source must not erase a successful near-term discovery. Legacy runs
+        // have no marker, so keep recognising their successful combined state.
+        .or("source_results->claude->usage->>nearTermSucceeded.eq.1,and(source_results->claude->usage->>nearTermSucceeded.is.null,source_results->claude->>state.in.(success,zero))")
+        .filter("source_results->claude->usage->>nearTermSkipped", "is", null)
         .order("finished_at", { ascending: false })
         .limit(1);
       if (error) throw error;
       return claudeDiscoveryDue(data[0]?.finished_at ?? null);
+    },
+
+    async quarantineClaudeEditions(context, providerEventIds) {
+      const sources = await fetchInBatches(providerEventIds, (ids) => supabase.from("event_sources")
+        .select("event_id").eq("provider", "claude").in("provider_event_id", ids));
+      const eventIds = [...new Set(sources.map((source) => source.event_id))];
+      for (let index = 0; index < eventIds.length; index += 50) {
+        const { error } = await supabase.from("account_events").update({ state: "needs_review", review_reason: "date_conflict" })
+          .eq("account_id", context.area.accountId).eq("state", "active")
+          .in("event_id", eventIds.slice(index, index + 50));
+        if (error) throw error;
+      }
     },
 
     async persistCandidate(context, candidate) {
@@ -502,7 +546,9 @@ export function createCollectionRepository(): CollectionRepository {
 
       const validation = validateCandidate(
         { ...candidate, primarySourceConfirmed },
-        context.window,
+        candidate.provider === "claude"
+          ? { start: context.window.start, end: longRangeWindow(context.window).end }
+          : context.window,
         conflict as Parameters<typeof validateCandidate>[2],
       );
       const { data: existingDecision, error: decisionReadError } = await supabase

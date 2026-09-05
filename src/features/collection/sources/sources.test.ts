@@ -10,9 +10,12 @@ import predictHqFixture from "../../../../tests/fixtures/predicthq.json";
 import rijksoverheidFixture from "../../../../tests/fixtures/rijksoverheid.json";
 import ticketmasterFixture from "../../../../tests/fixtures/ticketmaster.json";
 import type { BatchRow, BatchStore } from "../anthropic-batches";
+import { LongRangeLeaseError } from "../long-range-store";
 import {
   claudeProviderEventId,
   collectClaude,
+  collectClaudeCalendar,
+  longRangeWindow,
   marketResultIsShareable,
   triagePredictHqCandidates,
   triageExclusionAllowed,
@@ -27,6 +30,99 @@ import { collectTicketmaster } from "./ticketmaster";
 const jsonResponse = (value: unknown) =>
   new Response(JSON.stringify(value), { status: 200 });
 const window = { start: "2027-01-01", end: "2027-12-31" };
+
+it("covers the gap after ninety days through the end of next year, including August", () => {
+  expect(longRangeWindow({ start: "2026-09-05", end: "2026-12-04" })).toEqual({ start: "2026-12-05", end: "2027-12-31" });
+  expect(longRangeWindow({ start: "2026-12-01", end: "2027-03-01" })).toEqual({ start: "2027-03-02", end: "2027-12-31" });
+});
+
+it("retains the ninety-day results and reports a failed future sweep", async () => {
+  const collect = vi.fn()
+    .mockResolvedValueOnce({ source: "claude", candidates: [{ title: "Current event" }], requests: 12, usage: { inputTokens: 100 } })
+    .mockRejectedValueOnce(new Error("Future search failed"));
+  const result = await collectClaudeCalendar({ start: "2026-09-05", end: "2026-12-04", location: "Eindhoven", radiusKm: 25, longRangeEnabled: true }, collect, collect);
+  expect(collect.mock.calls[0][0]).toMatchObject({ start: "2026-09-05", end: "2026-12-04" });
+  expect(collect.mock.calls[1][0]).toMatchObject({ start: "2026-12-05", end: "2027-12-31" });
+  expect(result.candidates).toEqual([{ title: "Current event" }]);
+  expect(result.error).toContain("longRange: Future search failed");
+  expect(result.usage).toMatchObject({ inputTokens: 100, nearTerm_inputTokens: 100, nearTermSucceeded: 1, longRangeFailed: 1 });
+});
+
+it("does not mark skipped or unsuccessful near-term discovery as successful", async () => {
+  const empty = { source: "claude" as const, candidates: [], requests: 0, usage: {} };
+  const future = vi.fn().mockResolvedValue(empty);
+  const input = { start: "2026-09-05", end: "2026-12-04", location: "Eindhoven", radiusKm: 25, longRangeEnabled: true };
+  for (const near of [
+    vi.fn().mockRejectedValue(new Error("Near failed")),
+    vi.fn().mockResolvedValue({ ...empty, error: "One failed page" }),
+    vi.fn().mockResolvedValue({ ...empty, usage: { plannedSearches: 10, completedSearches: 9 } }),
+  ]) {
+    expect((await collectClaudeCalendar(input, near, future)).usage.nearTermSucceeded).toBe(0);
+  }
+  const skipped = await collectClaudeCalendar({ ...input, runNearTerm: false }, vi.fn(), future);
+  expect(skipped.usage.nearTermSucceeded).toBeUndefined();
+  expect(skipped.usage.nearTermSkipped).toBe(1);
+});
+
+it("propagates a busy market to the collection job retry path", async () => {
+  const near = vi.fn().mockResolvedValue({ source: "claude", candidates: [], requests: 0, usage: {} });
+  const future = vi.fn().mockRejectedValue(new LongRangeLeaseError());
+  await expect(collectClaudeCalendar({ start: "2026-09-05", end: "2026-12-04", location: "Eindhoven", radiusKm: 25, longRangeEnabled: true }, near, future)).rejects.toBeInstanceOf(LongRangeLeaseError);
+});
+
+it("discovers an unknown design event next August with four broad city searches", async () => {
+  const url = "https://organizer.example";
+  const create = vi.fn().mockResolvedValueOnce(discoveryResponse([
+    discoveredCandidate({ startDate: "2027-08-10", endDate: "2027-08-15", officialUrl: url }),
+  ]));
+  for (let i = 0; i < 3; i++) create.mockResolvedValueOnce(discoveryResponse());
+  create.mockResolvedValueOnce(verificationResponse(url, [verifiedEvent({ sourceUrl: url, startAt: "2027-08-10T10:00:00Z", endAt: "2027-08-15T20:00:00Z" })]));
+  const result = await collectClaude({
+    start: "2026-12-05", end: "2027-12-31", discoveryMode: "long_range", location: "Eindhoven", radiusKm: 25,
+    model: "claude-test", client: { messages: { create } } as unknown as Anthropic,
+    triage: async () => new Map(),
+  });
+  expect(result.usage.plannedSearches).toBe(4);
+  expect(result.candidates[0]).toMatchObject({ title: "Dutch Design Week", startAt: "2027-08-10T10:00:00Z" });
+  const prompts = create.mock.calls.slice(0, 4).map(([request]) => request.messages[0].content);
+  expect(prompts.every((prompt: string) => prompt.includes("Eindhoven") && prompt.includes("2027-12-31"))).toBe(true);
+  expect(prompts.join(" ")).toContain("design art culture fashion");
+  expect(prompts.join(" ")).toContain("trade fairs congresses conferences");
+  expect(prompts.join(" ")).not.toMatch(/ASML|Dutch Design Week/);
+});
+
+it("caps long-range verification even when discovery returns many official pages", async () => {
+  const create = vi.fn();
+  for (let group = 0; group < 4; group++) {
+    create.mockResolvedValueOnce(discoveryResponse(Array.from({ length: 4 }, (_, index) => {
+      const id = group * 4 + index;
+      return discoveredCandidate({ title: `Event${id}`, officialUrl: `https://event${id}.example` });
+    })));
+  }
+  create.mockResolvedValue(verificationResponse("https://event0.example", []));
+  const result = await collectClaude({
+    start: "2026-12-05", end: "2027-12-31", discoveryMode: "long_range", location: "Rotterdam", radiusKm: 25,
+    model: "claude-test", client: { messages: { create } } as unknown as Anthropic,
+    triage: async () => new Map(),
+  });
+  expect(create).toHaveBeenCalledTimes(4 + 12);
+  expect(result.funnel?.drops.filter((drop) => drop.reason.includes("Verificatiebudget"))).toHaveLength(4);
+});
+
+it("uses a completed edition's organiser homepage as discovery without invalidating its history", async () => {
+  const create = vi.fn();
+  for (let i = 0; i < 4; i++) create.mockResolvedValueOnce(discoveryResponse());
+  create.mockResolvedValueOnce(agendaResponse("https://organizer.example", []));
+  const result = await collectClaude({
+    start: "2026-12-05", end: "2027-12-31", discoveryMode: "long_range", location: "Eindhoven", radiusKm: 25,
+    agendaSeedUrls: ["https://organizer.example/edition-2026"],
+    model: "claude-test", client: { messages: { create } } as unknown as Anthropic,
+    triage: async () => new Map(),
+  });
+  expect(create).toHaveBeenCalledTimes(5);
+  expect(create.mock.calls[4][0].messages[0].content).toContain("https://organizer.example");
+  expect(result.invalidatedUrls ?? []).toEqual([]);
+});
 const claudeWindow = { start: "2027-08-01", end: "2027-10-30" };
 
 const fetchResult = (url: string) => ({

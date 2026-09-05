@@ -18,12 +18,13 @@ import {
   type BatchStore,
   type ClaudeMarketInput,
 } from "../anthropic-batches";
+import { LongRangeLeaseError, type LongRangeSeed } from "../long-range-store";
 
 const ownerTypes = ["organizer", "venue", "club", "federation", "ticket_provider", "university", "municipality", "event_owner"] as const;
 const searchRequestOptions = { timeout: 180_000, maxRetries: 1 } as const;
 const verificationRequestOptions = { timeout: 180_000, maxRetries: 0 } as const;
 const triageRequestOptions = { timeout: 90_000, maxRetries: 0 } as const;
-const DEFAULT_TRIAGE_MODEL = "claude-haiku-4-5-20251001";
+export const DEFAULT_TRIAGE_MODEL = "claude-haiku-4-5-20251001";
 // 40 verification slots with 20 of them reachable by name-search left 34 of 74 candidates
 // unlooked-at in run 80c59a07, and two thirds of the 90-day window unresolved. A run bills
 // roughly $0.30, so the ceiling was never the constraint the numbers implied.
@@ -41,7 +42,7 @@ export type ClaudeUsageEvent = {
 
 type UsageObserver = (usage: ClaudeUsageEvent) => void | Promise<void>;
 const unbilledMessages = new WeakSet<Anthropic.Message>();
-const outputSchema = z.object({
+export const outputSchema = z.object({
   events: z.array(
     z.object({
       sourceUrl: z.url(),
@@ -155,7 +156,7 @@ const evidenceReviewSchema = z.object({
   locationConfirmed: z.boolean(),
 });
 
-function sourceUrls(message: Anthropic.Message) {
+export function sourceUrls(message: Anthropic.Message) {
   const urls = new Set<string>();
   message.content.forEach((block) => {
     if (block.type === "web_search_tool_result" && Array.isArray(block.content)) {
@@ -173,7 +174,7 @@ function sourceUrls(message: Anthropic.Message) {
   return [...urls];
 }
 
-function fetchedUrls(message: Anthropic.Message) {
+export function fetchedUrls(message: Anthropic.Message) {
   return message.content.flatMap((block) =>
     block.type === "web_fetch_tool_result" && block.content.type === "web_fetch_result"
       ? [block.content.url]
@@ -200,7 +201,7 @@ function comparableUrl(value: string) {
   return `${url.hostname.replace(/^www\./, "")}${url.pathname.replace(/\/$/, "")}`.toLowerCase();
 }
 
-function observedUrl(value: string | null, observed: string[]) {
+export function observedUrl(value: string | null, observed: string[]) {
   if (!value) return false;
   try {
     const target = comparableUrl(value);
@@ -260,7 +261,7 @@ export function claudeProviderEventId(event: Pick<EventCandidate, "sourceUrl" | 
   return `claude:${createHash("sha256").update(identity).digest("hex").slice(0, 24)}`;
 }
 
-async function geocodeVenue(query: string) {
+export async function geocodeVenue(query: string) {
   try {
     const [suggestion] = await searchAddresses(query);
     if (!suggestion) return null;
@@ -280,7 +281,7 @@ async function requestPhase<T>(phase: "search" | "agenda" | "triage" | "verifica
   }
 }
 
-function usageEvent(message: Anthropic.Message, phase: ClaudeUsageEvent["phase"], model: string): ClaudeUsageEvent {
+export function usageEvent(message: Anthropic.Message, phase: ClaudeUsageEvent["phase"], model: string): ClaudeUsageEvent {
   const billed = !unbilledMessages.has(message);
   return {
     phase,
@@ -301,13 +302,13 @@ type MessageRequest = {
   options: { timeout: number; maxRetries: number };
 };
 
-type Batching = {
+export type Batching = {
   enabled: boolean;
   store?: BatchStore;
   wait?: (milliseconds: number) => Promise<void>;
 };
 
-async function requestMessages(
+export async function requestMessages(
   client: Anthropic,
   phase: "search" | "agenda" | "triage" | "verification",
   requests: MessageRequest[],
@@ -346,6 +347,17 @@ const searchGroups = [
   { focus: "grote concerten en meerdaagse entertainment-evenementen", query: (city: string, month: MonthLabel) => `concerten en shows ${city} ${month.nl}` },
   { focus: "bevestigde professionele sportwedstrijden en sporttoernooien", query: (city: string, month: MonthLabel) => `sportevenementen en wedstrijden ${city} ${month.nl}` },
 ] as const;
+
+const longRangeGroups = [
+  { focus: "vakbeurzen, congressen, wetenschappelijke en zakelijke conferenties met reizende bezoekers", query: "trade fairs congresses conferences calendar" },
+  { focus: "design-, kunst-, mode- en architectuurweken, biënnales, filmfestivals en stadsbrede culturele evenementen", query: "design art culture fashion festivals calendar" },
+  { focus: "grote muziekfestivals, meerdaagse festivals en bijzondere publieksevenementen met bovenregionale aantrekkingskracht", query: "major festivals music events calendar" },
+  { focus: "internationale en nationale sporttoernooien, kampioenschappen en massa-deelnamesport met reizende deelnemers", query: "sports championships tournaments mass participation events calendar" },
+] as const;
+
+export function longRangeWindow(window: CollectionWindow): CollectionWindow {
+  return { start: addDays(window.end, 1), end: `${Number(window.start.slice(0, 4)) + 1}-12-31` };
+}
 
 function addDays(value: string, days: number) {
   const date = new Date(`${value}T00:00:00Z`);
@@ -438,7 +450,7 @@ async function triageDiscoveries(input: {
   return { excluded, requests: slices.length, messages, errors };
 }
 
-function verificationInstructions(input: { start: string; end: string; location: string; radiusKm: number }) {
+export function verificationInstructions(input: { start: string; end: string; location: string; radiusKm: number }) {
   return `Controleer titel, datum, locatie en status. Gebruik status active, cancelled of postponed. Neem maximaal één evenement op, alleen tussen ${input.start} en ${input.end} en binnen ${input.radiusKm} km van ${input.location}. Baseer je uitsluitend op de tekst van de pagina's die je met web_fetch hebt opgehaald; een zoekfragment kan verouderd zijn, dus als een fragment een eerdere editie noemt en de opgehaalde pagina de huidige data toont, gelden de data van de opgehaalde pagina. Geef als sourceUrl altijd de gewone pagina-URL zonder #-fragment en zonder #:~:text=. Als de opgehaalde pagina het evenement bevestigt maar de data of een beslissend vraagsignaal van de huidige editie niet noemt, mag je de tweede web_fetch gebruiken voor een andere officiële eigenaarspagina, zoals de organisator, gemeente, sportbond, locatie of ticketverkoper. Een uitagenda, blog, wiki of zoekpagina telt daarvoor niet. Leid data nooit af uit een terugkerend patroon zoals "het tweede weekend van oktober"; zet dateConfirmed dan op false. Neem bij een echte meerdaagse huidige editie de eerste en laatste bevestigde datum over; maak van een bevestigde meerdaagse editie geen eendaagse 00:00-23:59-vermelding. Een reeks losse concerten, musicals of theatervoorstellingen is geen meerdaags evenement: beoordeel de vraag per voorstelling en gebruik de speelreeks niet als verblijfsduur. Classificeer aantoonbare extra overnachtingsvraag voor hotels: 35 Medium, 45 High of 60 Piek. Een bezoekersaantal is nuttig maar niet verplicht. Geef 45 High alleen als de huidige editie ten minste één sterk signaal heeft: aantoonbaar landelijke of internationale bezoekers of deelnemers, officiële hotel- of verblijfsinformatie, stadsbrede uitstraling, een actueel bezoekers- of deelnemersaantal van minstens 5.000, of gebruik van een officieel bevestigde zaalcapaciteit van minstens 10.000 voor deze uitvoering. Meerdaagse duur alleen is geen sterk signaal. Een internationale artiest, organisator, evenementnaam of vakinhoud bewijst geen internationale bezoekersstroom. Vul attendance alleen met een aantal voor de huidige editie. Vul venueCapacity alleen met de officiële capaciteit van de gebruikte zaal of opstelling; neem niet aan dat het evenement uitverkocht is. Gebruik alleen feiten over de huidige editie. Negeer cumulatieve bezoekersaantallen van eerdere edities en algemene marketingclaims. Reserveer 60 Piek voor stadsbrede evenementen of een uitzonderlijke combinatie van omvang, meerdere dagen en internationale toestroom. Geef een bevestigd actief evenement zonder sterk vraagsignaal terug met 35 Medium, zodat een eerdere High-score kan worden herzien; laat alleen een onbevestigd of Low evenement weg. Geef een specifieke locatie zodat die gegeocodeerd kan worden. Gebruik ownerType other voor een agenda, blog, wiki, zoekpagina of andere pagina die de evenementinformatie niet bezit. Bepaal daarnaast overnightAudience: waar komt het publiek vandaan en moet het blijven slapen? Gebruik none als het publiek uit de stad zelf komt en na het programma naar huis gaat, regional als het publiek uit de omliggende provincie komt en binnen een uur naar huis rijdt, national als de pagina bezoekers uit heel Nederland aantoont, en international als de pagina buitenlandse bezoekers of deelnemers aantoont. Beoordeel dit los van impactPoints en los van de duur: een markt of familiefestival dat twee dagen achter elkaar van 10:00 tot 17:00 open is, trekt twee dagen dezelfde dagbezoekers en is dus none of regional, terwijl één avond die om 02:00 eindigt met een landelijke line-up national is. Een voorstelling in een stadstheater is none of regional tenzij de pagina landelijke toestroom aantoont. Gebruik null als de opgehaalde pagina geen aanwijzing over de herkomst van het publiek geeft; verzin dan geen herkomst om High te rechtvaardigen.`;
 }
 
@@ -474,6 +486,8 @@ type MarketCache = {
 export type DatedTitle = { title: string; startDate: string; endDate: string | null };
 
 type CollectClaudeInput = CollectionWindow & {
+  discoveryMode?: "long_range";
+  agendaSeedUrls?: string[];
   location: string;
   radiusKm: number;
   model?: string;
@@ -506,6 +520,56 @@ export function marketResultIsShareable(usage: Record<string, number>) {
   return usage.plannedSearches > 0 && usage.completedSearches === usage.plannedSearches;
 }
 
+/** Both horizons share verification and persistence; a failed sweep must not discard the other. */
+export async function collectClaudeCalendar(
+  input: CollectClaudeInput & { longRangeSeeds?: LongRangeSeed[]; longRangeEnabled?: boolean; runNearTerm?: boolean },
+  collect = collectClaude,
+  // Dynamic: long-range.ts imports this module, so a static import here is a require cycle.
+  collectFuture = async (future: CollectClaudeInput & { seeds?: LongRangeSeed[] }) => (await import("./long-range")).collectLongRange(future),
+): Promise<SourceResult> {
+  if (!(input.longRangeEnabled ?? process.env.LONG_RANGE_DISCOVERY === "enabled")) return collect(input);
+  const settled = await Promise.allSettled([
+    input.runNearTerm === false ? Promise.resolve<SourceResult>({ source: "claude", candidates: [], requests: 0, usage: {} }) : collect({ ...input, agendaSeedUrls: [] }),
+    collectFuture({ ...input, ...longRangeWindow(input), seeds: input.longRangeSeeds }),
+  ]);
+  const merged: SourceResult = { source: "claude", candidates: [], requests: 0, usage: {}, invalidatedUrls: [],
+    funnel: { namesDiscovered: 0, urlsResolved: 0, pagesVerified: 0, demandAccepted: 0, drops: [] } };
+  const errors: string[] = [];
+  settled.forEach((result, index) => {
+    const horizon = index === 0 ? "nearTerm" : "longRange";
+    if (result.status === "rejected") {
+      if (result.reason instanceof LongRangeLeaseError) throw result.reason;
+      if (index === 0) merged.usage.nearTermSucceeded = 0;
+      errors.push(`${horizon}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
+      merged.usage[`${horizon}Failed`] = 1;
+      return;
+    }
+    const value = result.value;
+    if (index === 0 && input.runNearTerm !== false) {
+      merged.usage.nearTermSucceeded = Number(!value.error && !(value.usage.completedSearches < value.usage.plannedSearches));
+    }
+    merged.candidates.push(...value.candidates);
+    merged.requests += value.requests;
+    merged.invalidatedUrls!.push(...(value.invalidatedUrls ?? []));
+    if (value.quarantinedProviderEventIds?.length) merged.quarantinedProviderEventIds = [...(merged.quarantinedProviderEventIds ?? []), ...value.quarantinedProviderEventIds];
+    merged.usage[`${horizon}Candidates`] = value.candidates.length;
+    merged.usage[`${horizon}Requests`] = value.requests;
+    Object.entries(value.usage).forEach(([key, count]) => {
+      merged.usage[key] = (merged.usage[key] ?? 0) + count;
+      merged.usage[`${horizon}_${key}`] = count;
+    });
+    if (value.error) errors.push(`${horizon}: ${value.error}`);
+    if (value.usage.completedSearches < value.usage.plannedSearches) errors.push(`${horizon}: discovery searches incomplete`);
+    if (value.funnel) {
+      for (const key of ["namesDiscovered", "urlsResolved", "pagesVerified", "demandAccepted"] as const) merged.funnel![key] += value.funnel[key];
+      merged.funnel!.drops.push(...value.funnel.drops);
+    }
+  });
+  if (errors.length) merged.error = errors.join("; ");
+  if (input.runNearTerm === false) merged.usage.nearTermSkipped = 1;
+  return merged;
+}
+
 export async function collectClaude(input: CollectClaudeInput): Promise<SourceResult> {
   const model = input.model ?? process.env.ANTHROPIC_MODEL;
   if (!model) throw new Error("ANTHROPIC_MODEL is required for the Claude source.");
@@ -523,6 +587,7 @@ export async function collectClaude(input: CollectClaudeInput): Promise<SourceRe
     model,
     discoveryModel,
     knownUrls: input.knownUrls ?? [],
+    discoveryMode: input.discoveryMode,
   };
   if (batching.enabled) {
     const cached = await marketCache.load(market);
@@ -559,13 +624,23 @@ async function collectClaudeFresh(
   const searches: Anthropic.Message[] = [];
   const discovered: DiscoveredCandidate[] = [];
   const foundAgendaUrls: string[] = [];
+  const longRange = input.discoveryMode === "long_range";
+  const verificationBudget = longRange ? 12 : VERIFICATION_BUDGET;
+  const agendaBudget = longRange ? 2 : 8;
   let parsedSearches = 0;
   let firstFailure: unknown;
-  const searchTasks = searchWindows(input.start, input.end).flatMap((window) => {
-    const month = monthLabels(window.start);
-    return searchGroups.map((group) => {
-      const focus = group.focus;
-      const searchQuery = group.query(input.location, month);
+  const searchPlan = longRange
+    ? longRangeGroups.map((group) => ({
+      window: { start: input.start, end: input.end },
+      focus: group.focus,
+      // Including the current year drowned out announced future editions in the Eindhoven trial.
+      searchQuery: `${input.location} ${group.query} ${input.end.slice(0, 4)}`,
+    }))
+    : searchWindows(input.start, input.end).flatMap((window) => {
+      const month = monthLabels(window.start);
+      return searchGroups.map((group) => ({ window, focus: group.focus, searchQuery: group.query(input.location, month) }));
+    });
+  const searchTasks = searchPlan.map(({ window, focus, searchQuery }) => {
       return {
         window,
         focus,
@@ -590,12 +665,11 @@ async function collectClaudeFresh(
             output_config: { format: zodOutputFormat(discoverySchema) },
             messages: [{
               role: "user",
-              content: `Voer eerst precies één web_search uit en antwoord nooit zonder zoekresultaten. Zoek evenementen binnen ${input.radiusKm} km van ${input.location} tussen ${window.start} en ${window.end}: ${focus}. Gebruik als zoekopdracht exact "${searchQuery}" en verzin geen andere zoekopdracht. Gebruik uitagenda's, toeristische kalenders, ticketlijsten en overzichtspagina's om namen van evenementen te leren; dat mag in deze stap. Geef per evenement de naam, begindatum en einddatum als YYYY-MM-DD, de plaats, de locatie en de officiële pagina van de organisator, locatie, club, federatie, universiteit of gemeente als die in de zoekresultaten staat. Verzin geen URL's en neem alleen URL's over die letterlijk in de zoekresultaten voorkomen; gebruik null als je de officiële pagina niet ziet. Geef maximaal zes evenementen die aannemelijk extra hotelovernachtingen veroorzaken en sla markten, wekelijkse activiteiten en kleine lokale programmering over. Geef daarnaast maximaal twee agendapagina's met het volledigste programma voor deze periode; kies bij voorkeur de agenda van een concrete zaal, poppodium, congrescentrum, stadion of organisator boven een breed stadsportaal of een landelijke zoeksite, omdat die laatste vaak niet op te halen zijn. Geef daarna je antwoord in het gevraagde JSON-formaat.`,
+              content: `Voer eerst precies één web_search uit en antwoord nooit zonder zoekresultaten. Zoek evenementen binnen ${input.radiusKm} km van ${input.location} tussen ${window.start} en ${window.end}: ${focus}. Gebruik als zoekopdracht exact "${searchQuery}" en verzin geen andere zoekopdracht. Gebruik uitagenda's, toeristische kalenders, ticketlijsten en overzichtspagina's om namen van evenementen te leren; dat mag in deze stap. Geef per evenement de naam, begindatum en einddatum als YYYY-MM-DD, de plaats, de locatie en de officiële pagina van de organisator, locatie, club, federatie, universiteit of gemeente als die in de zoekresultaten staat. Verzin geen URL's en neem alleen URL's over die letterlijk in de zoekresultaten voorkomen; gebruik null als je de officiële pagina niet ziet. Geef maximaal ${longRange ? "vier" : "zes"} evenementen die aannemelijk extra hotelovernachtingen veroorzaken en sla markten, wekelijkse activiteiten en kleine lokale programmering over. Geef daarnaast maximaal twee agendapagina's met het volledigste programma voor deze periode; kies bij voorkeur de agenda van een concrete zaal, poppodium, congrescentrum, stadion of organisator boven een breed stadsportaal of een landelijke zoeksite, omdat die laatste vaak niet op te halen zijn. ${longRange ? "Neem uitsluitend concreet benoemde evenementen met gepubliceerde data binnen dit venster op. Een eerdere editie is alleen een aanwijzing om de organisator te vinden, geen kandidaat; schuif de datum nooit een jaar op. Geef geen generieke omschrijvingen zoals trade fair with conference. Geef bij ontbrekende toekomstige data een lege kandidatenlijst en eventueel de officiële agenda-URL. " : ""}Geef daarna je antwoord in het gevraagde JSON-formaat.`,
             }],
           } satisfies MessageCreateParamsNonStreaming,
         },
       };
-    });
   });
   const searchResults = await requestMessages(
     client,
@@ -645,6 +719,9 @@ async function collectClaudeFresh(
   const knownAgendas = (input.knownUrls ?? [])
     .map((url) => parentPath(url))
     .filter((url): url is string => Boolean(url));
+  for (const url of input.agendaSeedUrls ?? []) {
+    if (isPublicEvidenceUrl(url)) knownAgendas.push(parentPath(url) ?? new URL(url).origin);
+  }
   // A listing a candidate claims as its official page is still a listing:
   // harvest it here rather than letting verification reject it as ownerType other.
   for (const url of [...venueAgendas, ...foundAgendaUrls, ...knownAgendas]) {
@@ -652,7 +729,7 @@ async function collectClaudeFresh(
     if (seenAgendaKeys.has(key)) continue;
     seenAgendaKeys.add(key);
     agendaTargets.push(url);
-    if (agendaTargets.length === 8) break;
+    if (agendaTargets.length === agendaBudget) break;
   }
 
   const agendaMessages: Anthropic.Message[] = [];
@@ -835,7 +912,10 @@ async function collectClaudeFresh(
     const offset = Math.floor(
       (Date.parse(`${startDate ?? input.start}T00:00:00Z`) - Date.parse(`${input.start}T00:00:00Z`)) / 86_400_000,
     );
-    return Math.min(2, Math.max(0, Math.floor(offset / 30)));
+    const periodDays = longRange
+      ? Math.ceil((Date.parse(input.end) - Date.parse(input.start) + 86_400_000) / 86_400_000 / 3)
+      : 30;
+    return Math.min(2, Math.max(0, Math.floor(offset / periodDays)));
   };
   const byPeriod: VerificationEntry[][] = [[], [], []];
   nameEntries.forEach((entry) => byPeriod[periodOf(entry.startDate)].push(entry));
@@ -861,15 +941,15 @@ async function collectClaudeFresh(
   ];
   const queue: VerificationEntry[] = [];
   const queuedUrlKeys = new Set<string>();
-  let searchBudget = SEARCH_BUDGET;
+  let searchBudget = longRange ? 4 : SEARCH_BUDGET;
   for (const entry of pending) {
     if (entry.officialUrl) {
       const key = comparableUrl(entry.officialUrl);
       if (queuedUrlKeys.has(key)) continue;
       queuedUrlKeys.add(key);
     }
-    if (queue.length === VERIFICATION_BUDGET) {
-      recordDrop(entry.title ?? entry.officialUrl ?? "", "resolution", `Verificatiebudget van ${VERIFICATION_BUDGET} kandidaten bereikt.`);
+    if (queue.length === verificationBudget) {
+      recordDrop(entry.title ?? entry.officialUrl ?? "", "resolution", `Verificatiebudget van ${verificationBudget} kandidaten bereikt.`);
       continue;
     }
     if (!entry.officialUrl) {

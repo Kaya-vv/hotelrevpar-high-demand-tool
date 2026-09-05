@@ -30,6 +30,8 @@ describe("Anthropic batch cache", () => {
       .toBe(claudeMarketCacheKey(input));
     expect(claudeMarketCacheKey({ ...input, radiusKm: 30 }))
       .not.toBe(claudeMarketCacheKey(input));
+    expect(claudeMarketCacheKey({ ...input, discoveryMode: "long_range" }))
+      .not.toBe(claudeMarketCacheKey(input));
   });
 
   it("submits once, restores request order, and charges usage once", async () => {

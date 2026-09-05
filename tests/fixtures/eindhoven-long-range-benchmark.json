@@ -1,0 +1,58 @@
+{
+  "verifiedAt": "2026-09-05",
+  "city": "Eindhoven",
+  "radiusKm": 25,
+  "purpose": "Independent discovery benchmark. Do not feed these names or URLs into discovery. Official dates establish eligibility; hotel-specific High/Peak scoring is evaluated separately.",
+  "events": [
+    {
+      "title": "Dutch Design Week",
+      "start": "2027-10-23",
+      "end": "2027-10-31",
+      "officialUrl": "https://site.ddw.nl/nl/over-ddw",
+      "category": "design and culture",
+      "reason": "The organiser lists the 2027 edition under future dates. The event-wide description identifies an international audience across Eindhoven; its visitor totals are not 2027 attendance forecasts."
+    },
+    {
+      "title": "BRIDGE Guitar Festival",
+      "start": "2027-05-26",
+      "end": "2027-05-30",
+      "officialUrl": "https://mge.nl/bridge/en/",
+      "category": "music and culture",
+      "reason": "The official venue announces the 2027 edition and describes the international festival. The 2026 recap's audience figure must remain historical evidence."
+    },
+    {
+      "title": "Open Nederlandse masters kampioenschappen lange baan",
+      "aliases": ["ONMK", "Open Dutch Masters Championships"],
+      "start": "2027-05-06",
+      "end": "2027-05-09",
+      "officialUrl": "https://www.knzb.nl/nieuws/hoofddorp-en-eindhoven-locaties-voor-masters-kampioenschappen-2026-2027",
+      "category": "national sports championship",
+      "reason": "The federation confirms the dates, Eindhoven swimming stadium and PSV Masters organiser. Discovery should find this participant-led demand candidate; hotel impact still needs assessment."
+    },
+    {
+      "title": "Revolution Rising",
+      "start": "2027-04-23",
+      "end": "2027-04-24",
+      "officialUrl": "https://www.revolutionrisingfest.com/",
+      "category": "multi-day music festival",
+      "reason": "The organiser confirms Klokgebouw and 2027 dates and advertises European-exclusive performances. This is a discovery benchmark, not a guarantee of a particular hotel's demand score."
+    }
+  ],
+  "notScored": [
+    {
+      "title": "Dynamo Metalfest 2027",
+      "officialUrl": "https://dynamo-metalfest.nl/first-names-dmf-27/",
+      "reason": "2026-09-05: the organiser does announce 13-15 August 2027, but dynamo-metalfest.nl refuses the Anthropic web_fetch tool with error_code url_not_allowed on both the homepage and the announcement page, so no primary-source evidence can be produced for it. Verified by direct fetch probe on 2026-09-05; the collector discovers the series and the failure is the host's robots policy, not discovery or verification. Re-score this event if the host later permits fetching."
+    },
+    {
+      "title": "ASML Marathon Eindhoven 2027",
+      "officialUrl": "https://asmlmarathoneindhoven.nl/",
+      "reason": "The inspected homepage advertises 2026. A 2027 date was not verified in this benchmark research; absence from the trial is not counted as a miss. This is not proof that no announcement exists elsewhere."
+    },
+    {
+      "title": "GLOW Eindhoven 2027",
+      "officialUrl": "https://gloweindhoven.nl/",
+      "reason": "A 2027 date was not verified in this benchmark research. Do not infer dates from annual recurrence or count this as a confirmed benchmark miss."
+    }
+  ]
+}

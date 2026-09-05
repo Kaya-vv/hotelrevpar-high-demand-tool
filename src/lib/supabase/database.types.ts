@@ -34,6 +34,12 @@ export type Database = {
   };
   public: {
     Tables: {
+      long_range_markets: {
+        Row: { market_key: string; state: Json; updated_at: string; lease_owner: string | null; lease_until: string | null };
+        Insert: { market_key: string; state: Json; updated_at?: string; lease_owner?: string | null; lease_until?: string | null };
+        Update: { market_key?: string; state?: Json; updated_at?: string; lease_owner?: string | null; lease_until?: string | null };
+        Relationships: [];
+      };
       anthropic_batch_cache: {
         Row: {
           batch_id: string | null;
@@ -854,6 +860,9 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      claim_long_range_market: { Args: { target: string; owner: string }; Returns: boolean };
+      save_long_range_market: { Args: { target: string; owner: string; value: Json }; Returns: boolean };
+      release_long_range_market: { Args: { target: string; owner: string }; Returns: undefined };
       is_account_member: { Args: { target: string }; Returns: boolean };
     };
     Enums: {
