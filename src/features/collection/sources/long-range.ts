@@ -195,12 +195,12 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
     delete state.lastSweepAt;
     state.leads.forEach((lead) => { lead.nextCheck = now.toISOString(); });
   }
-  const model = input.model ?? process.env.ANTHROPIC_MODEL;
+  const model = input.model?.trim() || process.env.ANTHROPIC_MODEL?.trim();
   if (!model) throw new Error("ANTHROPIC_MODEL is required");
-  const discoveryModel = input.discoveryModel ?? process.env.ANTHROPIC_DISCOVERY_MODEL ?? model;
+  const discoveryModel = input.discoveryModel?.trim() || process.env.ANTHROPIC_DISCOVERY_MODEL?.trim() || model;
   // Picking the official domain out of search results is the same job the near-term collector
   // already gives Haiku; date extraction stays on the main model.
-  const resolutionModel = input.resolutionModel ?? process.env.ANTHROPIC_TRIAGE_MODEL ?? DEFAULT_TRIAGE_MODEL;
+  const resolutionModel = input.resolutionModel?.trim() || process.env.ANTHROPIC_TRIAGE_MODEL?.trim() || DEFAULT_TRIAGE_MODEL;
   const client = input.client ?? new Anthropic();
   const batching = input.batching ?? { enabled: !input.client && process.env.ANTHROPIC_BATCHES !== "disabled" };
   const usage: Record<string, number> = { inputTokens: 0, outputTokens: 0, webSearchRequests: 0, webFetchRequests: 0, estimatedCostUsd: 0 };

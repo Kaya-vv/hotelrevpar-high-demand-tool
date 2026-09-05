@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type Anthropic from "@anthropic-ai/sdk";
 import { collectLongRange, isAggregatorUrl, nextCheckAt, pruneLeads, repairObservedUrl, selectDueLeads, selectResolveLeads } from "./long-range";
 import { collectClaudeCalendar } from "./claude";
@@ -40,6 +40,33 @@ const client = (create: ReturnType<typeof vi.fn>) => ({ messages: { create } }) 
 const toolNames = (call: { tools: { name: string }[] }[]) => call[0].tools.map((tool) => tool.name);
 
 describe("long-range source leads", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it.each(["", "  \n"])("falls back from blank optional model settings (%j)", async (blank) => {
+    vi.stubEnv("ANTHROPIC_DISCOVERY_MODEL", blank);
+    vi.stubEnv("ANTHROPIC_TRIAGE_MODEL", blank);
+    const create = vi.fn().mockResolvedValue({
+      stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify({ leads: [] }) }],
+      usage: { input_tokens: 0, output_tokens: 0, server_tool_use: { web_search_requests: 1 } },
+    });
+    const result = await collectLongRange({ ...input, discoveryModel: blank, store: memoryStore(null).store, client: client(create) });
+    expect(result.usage.completedSearches).toBe(10);
+    expect(create).toHaveBeenCalledTimes(10);
+    expect(create.mock.calls.every(([request]) => request.model === input.model)).toBe(true);
+
+    create.mockReset().mockResolvedValueOnce(resolution(url)).mockResolvedValue(response([event()]));
+    await collectLongRange({ ...input, resolutionModel: blank, store: memoryStore(warmState([lead({ url: null })])).store, client: client(create) });
+    expect(create.mock.calls[0][0].model).toBe("claude-haiku-4-5-20251001");
+    expect(create.mock.calls[1][0].model).toBe(input.model);
+  });
+
+  it("rejects a blank main model before sending requests", async () => {
+    vi.stubEnv("ANTHROPIC_MODEL", "  ");
+    const create = vi.fn();
+    await expect(collectLongRange({ ...input, model: "", store: memoryStore(null).store, client: client(create) })).rejects.toThrow("ANTHROPIC_MODEL is required");
+    expect(create).not.toHaveBeenCalled();
+  });
+
   it("waits until a seeded edition finishes and does not re-fetch it on immediate repeats", async () => {
     const create = vi.fn().mockResolvedValue(response());
     const memory = memoryStore(warmState([], { lastSweepAt: now.toISOString() }));
