@@ -37,6 +37,22 @@ export const evidenceInstructions = `Return facts separately from conclusions. a
 
 // HTML typography and model JSON may use different quote glyphs for the same passage.
 const plain = (text: string) => text.normalize("NFKC").replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/\s+/g, " ").trim().toLowerCase();
+/** Repair a stitched heading only when its remaining date range is one actual passage.
+ * Never join fragments across editions or infer a year from another paragraph. */
+function recoverDatePassage(quote: string, pages: { text: string }[], dates?: { startAt: string; endAt: string }) {
+  if (!dates) return "";
+  const [year, month, start] = dates.startAt.slice(0, 10).split("-").map(Number);
+  const [endYear, endMonth, end] = dates.endAt.slice(0, 10).split("-").map(Number);
+  if (year !== endYear || month !== endMonth || end < start) return "";
+  const months = ["january|januari", "february|februari", "march|maart", "april", "may|mei", "june|juni", "july|juli", "august|augustus", "september", "october|oktober", "november", "december"];
+  if (!months[month - 1]) return "";
+  const range = `0?${start}\\s*[-–—]\\s*0?${end}\\s+(?:${months[month - 1]})`;
+  const pattern = new RegExp(`\\b(?:${year}\\s+${range}|${range}\\s+${year})\\b`, "gi");
+  for (const page of pages) for (const [passage] of page.text.matchAll(pattern)) {
+    if (plain(quote).endsWith(plain(passage))) return passage;
+  }
+  return "";
+}
 function quotesPublicationDate(date: string, quote: string) {
   const [year, month, day] = date.split("-").map(Number);
   const months = ["january|januari|jan", "february|februari|feb", "march|maart|mar", "april|apr", "may|mei", "june|juni|jun", "july|juli|jul", "august|augustus|aug", "september|sep", "october|oktober|oct|okt", "november|nov", "december|dec"];
@@ -47,16 +63,17 @@ export function verifyEventEvidence(
   sourceUrl: string,
   pages: { url: string; text: string; checkedAt?: string }[],
   checkedAt: string,
-  identity?: { venue: string | null; ownerType: string },
+  identity?: { venue: string | null; ownerType: string; startAt?: string; endAt?: string },
 ): EventEvidence | undefined {
   if (!facts || !eventFactsSchema.safeParse(facts).success) return undefined;
   const supported = (url: string, quote: string) => quote.trim().length >= 12
     && pages.some((page) => page.url === url && plain(page.text).includes(plain(quote)));
-  if (!supported(sourceUrl, facts.dateText)) return undefined;
+  const dateText = supported(sourceUrl, facts.dateText) ? facts.dateText : recoverDatePassage(facts.dateText,
+    pages.filter((page) => page.url === sourceUrl), identity?.startAt && identity.endAt ? { startAt: identity.startAt, endAt: identity.endAt } : undefined);
   const locationSupported = supported(facts.locationSourceUrl ?? sourceUrl, facts.locationText);
   const scopePassages = [facts.locationText, facts.identityText && supported(sourceUrl, facts.identityText) ? facts.identityText : ""];
   const citywideSupported = scopePassages.some((text) => /city.?wide|across (?:the )?city|throughout (?:the )?city|door heel|in heel|verspreid|meerdere locaties|verschillende locaties|\d+ (?:locations|locaties)|multi.venue/i.test(text));
-  const evidence: EventEvidence = { ...facts, assessmentVersion: 1, dateSourceUrl: sourceUrl, checkedAt,
+  const evidence: EventEvidence = { ...facts, dateText, assessmentVersion: 1, dateSourceUrl: sourceUrl, checkedAt,
     announcedAt: facts.announcedAt && /^\d{4}-\d{2}-\d{2}$/.test(facts.announcedAt) && Number.isFinite(Date.parse(facts.announcedAt)) && new Date(facts.announcedAt).toISOString().slice(0, 10) === facts.announcedAt && facts.announcedAt <= checkedAt.slice(0, 10) && facts.announcementText && quotesPublicationDate(facts.announcedAt, facts.announcementText) && supported(facts.announcementSourceUrl ?? sourceUrl, facts.announcementText) ? facts.announcedAt : null,
     hostCityText: facts.hostCityText && supported(facts.locationSourceUrl ?? sourceUrl, facts.hostCityText) ? facts.hostCityText : null,
     venueAddress: locationSupported && facts.venueAddress && plain(facts.locationText).includes(plain(facts.venueAddress)) ? facts.venueAddress : null,
@@ -92,6 +109,17 @@ export function supportedAudience(evidence: EventEvidence | undefined, audience:
 
 export function hasDemandEvidence(candidate: Pick<EventCandidate, "evidence">) {
   return Boolean(candidate.evidence?.demand.some((fact) => fact.comparable && fact.text && fact.sourceUrl));
+}
+
+/** A copied legacy edition must not overwrite newer verified evidence from another lead. */
+export function uniqueEvidenceEditions(events: EventCandidate[]) {
+  const editions = new Map<string, EventCandidate>();
+  const verifiedAt = (event: EventCandidate) => event.evidence?.dateText ? Date.parse(event.evidence.checkedAt) || 0 : 0;
+  for (const event of events) {
+    const previous = editions.get(event.providerEventId);
+    if (!previous || verifiedAt(event) >= verifiedAt(previous)) editions.set(event.providerEventId, event);
+  }
+  return [...editions.values()];
 }
 
 // JSON storage is read at the source boundary; malformed/legacy evidence remains unknown.

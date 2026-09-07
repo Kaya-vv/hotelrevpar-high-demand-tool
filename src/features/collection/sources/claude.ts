@@ -1211,8 +1211,8 @@ async function collectClaudeFresh(
           recordDrop(label, "verification", `Geen aantoonbare hotelvraag (impactPoints ${event.impactPoints}).`);
           return [];
         }
-        const evidence = verifyEventEvidence(event.facts, sourceUrl, message.content.flatMap((block) => block.type === "web_fetch_tool_result" && block.content.type === "web_fetch_result" ? [{ url: block.content.url, text: fetchedDocumentText(block.content.content) }] : []), new Date().toISOString());
-        return [{ ...event, sourceUrl, primarySourceConfirmed: primarySourceConfirmed && Boolean(evidence?.locationText), evidence }];
+        const evidence = verifyEventEvidence(event.facts, sourceUrl, message.content.flatMap((block) => block.type === "web_fetch_tool_result" && block.content.type === "web_fetch_result" ? [{ url: block.content.url, text: fetchedDocumentText(block.content.content) }] : []), new Date().toISOString(), { venue: event.venue, ownerType: event.ownerType, startAt: event.startAt, endAt: event.endAt });
+        return [{ ...event, sourceUrl, primarySourceConfirmed: primarySourceConfirmed && Boolean(evidence?.dateText && evidence.locationText), evidence }];
       });
     } catch (error) {
       failedFetches += 1;

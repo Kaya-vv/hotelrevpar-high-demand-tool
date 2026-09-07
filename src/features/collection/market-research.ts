@@ -1,4 +1,5 @@
 import { eventLocalDate, validEventRange } from "../events/normalize";
+import { uniqueEvidenceEditions } from "../events/evidence";
 import { createLongRangeStore, longRangeMarketKey, LongRangeLeaseError, type LongRangeState } from "./long-range-store";
 import { collectionWindow, publishLongRangeResult, type CollectionContext } from "./run";
 import { longRangeWindow } from "./sources/claude";
@@ -18,9 +19,8 @@ export function storedLongRangeResult(state: LongRangeState | null, now = new Da
   const leads = state?.leads ?? [];
   return {
     source: "claude", requests: 0, usage: { invalidDateEditions: leads.flatMap((lead) => lead.editions).filter((event) => !validEventRange(event)).length },
-    candidates: [...new Map(leads.filter((lead) => lead.outcome !== "conflict").flatMap((lead) => lead.editions)
-      .filter((event) => validEventRange(event) && eventLocalDate(event.endAt) >= now.toISOString().slice(0, 10) && eventLocalDate(event.startAt) <= horizon.end)
-      .map((event) => [event.providerEventId, event])).values()],
+    candidates: uniqueEvidenceEditions(leads.filter((lead) => lead.outcome !== "conflict").flatMap((lead) => lead.editions)
+      .filter((event) => validEventRange(event) && eventLocalDate(event.endAt) >= now.toISOString().slice(0, 10) && eventLocalDate(event.startAt) <= horizon.end)),
     quarantinedProviderEventIds: leads.flatMap((lead) => lead.editions.filter((event) => lead.outcome === "conflict" || !validEventRange(event)).map((event) => event.providerEventId)),
   };
 }

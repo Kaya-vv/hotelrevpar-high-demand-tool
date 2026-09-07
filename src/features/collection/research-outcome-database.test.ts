@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import type Anthropic from "@anthropic-ai/sdk";
+import ExcelJS from "exceljs";
 import { createClient } from "@supabase/supabase-js";
 import { expect, it, vi } from "vitest";
 import type { Database } from "@/lib/supabase/database.types";
@@ -24,7 +25,13 @@ vi.mock("server-only", () => ({}));
 vi.mock("@/lib/supabase/server", () => ({ createServerClient: vi.fn() }));
 vi.mock("../workspace/hotel-context", () => ({ getHotelScope: vi.fn() }));
 
-it.skipIf(!process.env.RESEARCH_LOCAL_KEY)("repairs the actual retained DDW edition and automatically adds exactly one calendar entry while preserving the existing three", async () => {
+it.skipIf(!process.env.RESEARCH_LOCAL_KEY)("repairs the retained DDW edition and adds exactly one calendar entry while preserving the starting calendar", async () => {
+  const networkFetch = globalThis.fetch;
+  vi.stubGlobal("fetch", (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    if (url.origin !== "http://127.0.0.1:54421") throw new Error(`External network disabled during publication replay: ${url.origin}`);
+    return networkFetch(input, init);
+  });
   const db = createClient<Database>("http://127.0.0.1:54421", process.env.RESEARCH_LOCAL_KEY!, { auth: { persistSession: false } });
   vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "http://127.0.0.1:54421");
   vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", process.env.RESEARCH_LOCAL_KEY!);
@@ -51,6 +58,16 @@ it.skipIf(!process.env.RESEARCH_LOCAL_KEY)("repairs the actual retained DDW edit
     expect((await calendar()).map((event) => event.id).sort()).toEqual([...visibleIds].sort());
     const repository = createCollectionRepository();
     const context = await repository.loadContext(accountId, area.id);
+    let startingVisibleIds = [...visibleIds];
+    if (process.env.RESEARCH_PRODUCTION_REPLAY) {
+      // Reproduce the last production output first, including the already-observed
+      // Playgrounds downgrade. This repair must preserve that starting calendar.
+      const before = JSON.parse(readFileSync("refs/research-evaluation/fast-repair/production-latest.json", "utf8")).market.state as LongRangeState;
+      await publishLongRangeResult(repository, context, storedLongRangeResult(before));
+      startingVisibleIds = (await calendar()).map((event) => event.id);
+      expect(startingVisibleIds).toHaveLength(2);
+      expect((await calendar()).some((event) => /Dutch Design Week/i.test(event.title))).toBe(false);
+    }
     let state: LongRangeState = { version: 2003, discoveredAt: fixture.capturedAt, announcementSearchAt: fixture.capturedAt, leads: [structuredClone(fixture.lead) as LongRangeState["leads"][number]] };
     // Refresh completes with the old market record, while research is still pending.
     const refresh = await runCollection({ accountId, areaId: area.id, trigger: "manual" }, { repository, collectors: { ...Object.fromEntries(context.area.enabledSources.map((source) => [source, async () => ({ source, candidates: [], requests: 0, usage: {} })])), claude: async () => ({ ...storedLongRangeResult(state), researchPending: true }) } });
@@ -97,20 +114,26 @@ it.skipIf(!process.env.RESEARCH_LOCAL_KEY)("repairs the actual retained DDW edit
     const visible = await calendar();
     const added = visible.filter((event) => !baselineIds.includes(event.id));
     createdId = added[0]?.id;
-    if (visible.length !== 4) writeFileSync("refs/research-evaluation/outcome-failure.json", JSON.stringify({ visible, result, scores: checked(await db.from("hotel_event_scores").select("*").eq("hotel_id", hotelId)), context }, null, 2));
-    expect(visible).toHaveLength(4);
+    if (visible.length !== startingVisibleIds.length + 1) writeFileSync("refs/research-evaluation/outcome-failure.json", JSON.stringify({ visible, result, scores: checked(await db.from("hotel_event_scores").select("*").eq("hotel_id", hotelId)), context }, null, 2));
+    expect(visible).toHaveLength(startingVisibleIds.length + 1);
     expect(added).toHaveLength(1);
-    expect(visible.filter((event) => baselineIds.includes(event.id))).toHaveLength(3);
+    expect(visible.filter((event) => startingVisibleIds.includes(event.id)).map((event) => event.id).sort()).toEqual([...startingVisibleIds].sort());
     expect(added[0].title).toMatch(/Dutch Design Week/i);
     const exported = await loadExportEvents(accountId, { start: "2027-01-01", end: "2027-12-31" }, [hotelId]);
     const rows = mapRevControlRows(exported.events, [hotelId]);
-    expect(rows).toHaveLength(4);
+    expect(rows).toHaveLength(startingVisibleIds.length + 1);
     const ddw = rows.find((row) => /Dutch Design Week/i.test(row.event))!;
     expect(ddw.startDate.toISOString().slice(0, 10)).toBe("2027-10-23");
     expect(ddw.endDate.toISOString().slice(0, 10)).toBe("2027-10-31");
     const workbook = await buildRevControlWorkbook(rows);
+    const reopened = new ExcelJS.Workbook();
+    await reopened.xlsx.load(workbook as unknown as Parameters<typeof reopened.xlsx.load>[0]);
+    const ddwRow = reopened.worksheets[0].getRow(rows.indexOf(ddw) + 2);
+    expect(ddwRow.getCell(2).value).toBe(ddw.event);
+    expect((ddwRow.getCell(3).value as Date).toISOString().slice(0, 10)).toBe("2027-10-23");
+    expect((ddwRow.getCell(4).value as Date).toISOString().slice(0, 10)).toBe("2027-10-31");
     if (process.env.RESEARCH_REPAIR_OUTPUT) {
-      writeFileSync(`${process.env.RESEARCH_REPAIR_OUTPUT}-publication.json`, JSON.stringify({ visible, rows, refresh, baselineIds }, null, 2));
+      writeFileSync(`${process.env.RESEARCH_REPAIR_OUTPUT}-publication.json`, JSON.stringify({ visible, rows, refresh, baselineIds, startingVisibleIds }, null, 2));
       writeFileSync(`${process.env.RESEARCH_REPAIR_OUTPUT}-workbook.xlsx`, Buffer.from(workbook));
     }
     checked(await db.from("account_events").update({ state: "excluded", operator_note: "Preserve account decision" }).eq("account_id", accountId).eq("event_id", createdId!));
@@ -135,5 +158,6 @@ it.skipIf(!process.env.RESEARCH_LOCAL_KEY)("repairs the actual retained DDW edit
     await db.from("accounts").delete().eq("id", accountId);
     await db.from("events").delete().in("id", [...baselineIds, ...(createdId ? [createdId] : [])]);
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
   }
 }, 60_000);

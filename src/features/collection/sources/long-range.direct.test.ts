@@ -26,7 +26,10 @@ it("fetches linked pages in code and accepts only supplied page evidence, withou
   const result = await collectLongRange(input);
   expect(result.candidates[0]).toMatchObject({ startAt: "2027-10-22T22:00:00.000Z", aiImpactPoints: null });
   expect(pageFetcher).toHaveBeenCalledTimes(2);
-  expect(create).toHaveBeenCalledTimes(2);
+  // Missing date facts need extraction repair, not another location-search request.
+  expect(create).toHaveBeenCalledTimes(1);
+  expect(result.candidates[0].primarySourceConfirmed).toBe(false);
+  expect(state.leads[0].pendingStage).toBe("extraction");
   expect((create.mock.calls as unknown[][])[0][0]).toMatchObject({ tools: [] });
   expect(state.leads[0].officialPage).toBe("https://organizer.example/about");
   expect((await collectLongRange(input)).requests).toBe(0);

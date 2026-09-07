@@ -11,6 +11,9 @@ import { scoreHotelEvent } from "../events/score";
 import { mapRevControlRows } from "../export/map-rows";
 import type { Lead, LongRangeState, LongRangeStore } from "./long-range-store";
 import { BatchPendingError, type BatchStore } from "./anthropic-batches";
+import productionDdw from "../../../tests/fixtures/production-ddw-extraction.json";
+import { eventFactsSchema, uniqueEvidenceEditions } from "../events/evidence";
+import { storedLongRangeResult } from "./market-research";
 
 const now = new Date("2026-09-07T12:00:00Z");
 const url = "https://organizer.example/about";
@@ -30,6 +33,49 @@ function setup() {
 }
 
 describe("coordinated long-range research", () => {
+  it("repairs the actual production quotation from a contiguous dated passage, preserving scoped demand", () => {
+    const event = productionDdw.event;
+    const evidence = verifyEventEvidence(eventFactsSchema.parse(event.facts), event.sourceUrl, [productionDdw.page], productionDdw.checkedAt, event);
+    expect(evidence?.dateText).toMatch(/^2027\s+23-31 October$/);
+    expect(evidence?.hostCity).toBe("Eindhoven");
+    expect(evidence?.locationScope).toBe("citywide");
+    expect(evidence?.demand).toHaveLength(1);
+    expect(evidence?.demand[0]).toMatchObject({ scope: "series", year: null });
+    expect(supportedAudience(evidence, "international")).toBe("international");
+  });
+  it.each([
+    "Upcoming Arts Week 2026 23-31 October\n2027 dates not announced",
+    "Upcoming Arts Week 2027\n23 October registration opens\n31 October registration closes",
+    "Upcoming Arts Week 2027 24-31 October",
+  ])("does not assemble date evidence from unrelated or wrong dates: %s", (body) => {
+    const evidence = verifyEventEvidence({ ...facts, dateText: "Upcoming Arts Week 2027 23-31 October" }, url,
+      [{ url, text: `${body}\n${facts.locationText}\n${facts.demand[0].text}` }], now.toISOString(), { ...event, ownerType: "organizer" });
+    expect(evidence?.dateText).toBe("");
+    expect(evidence?.locationText).toBe(facts.locationText);
+    expect(evidence?.demand).toHaveLength(1);
+  });
+  it("keeps invalid date evidence pending extraction and never publishes it", async () => {
+    const test = setup();
+    test.pageFetcher.mockResolvedValue(parseOfficialPage(`${facts.locationText}\n${facts.demand[0].text}`, url));
+    const result = await collectLongRange(test.input);
+    expect(result.candidates[0].evidence?.dateText).toBe("");
+    expect(result.candidates[0].primarySourceConfirmed).toBe(false);
+    expect(test.state().leads[0].pendingStage).toBe("extraction");
+    const calls = test.create.mock.calls.length;
+    // The unsuccessful extraction is cached, but must retry when its weekly check is due.
+    await collectLongRange({ ...test.input, now: new Date("2026-09-14T12:00:00Z") });
+    expect(test.create.mock.calls.length).toBeGreaterThan(calls);
+  });
+  it("keeps repaired evidence across stale duplicate leads, reload and newer cancellation", async () => {
+    const test = setup();
+    const result = await collectLongRange(test.input);
+    const good = result.candidates[0];
+    const stale = { ...good, evidence: undefined, latitude: null, longitude: null, primarySourceConfirmed: false };
+    test.state().leads.push(makeLead({ editions: [stale] }));
+    expect(storedLongRangeResult(JSON.parse(JSON.stringify(test.state())), now).candidates[0]).toEqual(good);
+    const cancelled = { ...good, sourceState: "cancelled" as const, evidence: { ...good.evidence!, checkedAt: "2026-09-08T12:00:00Z" } };
+    expect(uniqueEvidenceEditions([cancelled, good, stale])).toEqual([cancelled]);
+  });
   it("accepts typographic quote variations without accepting changed demand facts", () => {
     const official = "The world’s visitors attend the Arts Week across 120 locations.";
     const quoted = official.replace("’", "'");
