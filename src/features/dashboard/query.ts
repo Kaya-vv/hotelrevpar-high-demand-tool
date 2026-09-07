@@ -106,7 +106,7 @@ export async function getDashboardData(accountId: string): Promise<DashboardHote
       updatedAt: latestRun?.finished_at ?? null,
       status: latestJob?.status === "queued" || latestJob?.status === "running"
         ? "running"
-        : latestJob?.status === "failed" || latestJob?.status === "partial" || Boolean(latestRun?.error_summary)
+        : latestJob?.status === "failed" || Boolean(latestRun?.error_summary)
           ? "attention"
           : "idle",
     };
