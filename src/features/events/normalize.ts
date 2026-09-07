@@ -1,5 +1,10 @@
 import type { EventCandidate, NormalizedCandidate } from "./types";
 
+export function validEventRange(event: Pick<EventCandidate, "startAt" | "endAt">) {
+  const start = Date.parse(event.startAt), end = Date.parse(event.endAt);
+  return Number.isFinite(start) && Number.isFinite(end) && end >= start;
+}
+
 export function normalizeText(value: string) {
   return value
     .normalize("NFD")

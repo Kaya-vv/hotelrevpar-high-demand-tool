@@ -36,4 +36,14 @@ describe("hotel refresh and shared research separation", () => {
     expect(result.candidates).toEqual([]);
     expect(result.quarantinedProviderEventIds).toEqual([lead.editions[0].providerEventId]);
   });
+
+  it("withholds a reversed date range without blocking valid siblings or deleting research", () => {
+    const lead = structuredClone(fixture.lead);
+    lead.editions.push({ ...lead.editions[0], providerEventId: "invalid-range", startAt: "2027-04-11T22:00:00Z", endAt: "2027-04-11T21:59:59Z" });
+    const result = storedLongRangeResult({ version: 2003, discoveredAt: null, leads: [lead] } as Parameters<typeof storedLongRangeResult>[0]);
+    expect(result.candidates).toHaveLength(1);
+    expect(result.quarantinedProviderEventIds).toEqual(["invalid-range"]);
+    expect(result.usage.invalidDateEditions).toBe(1);
+    expect(lead.editions).toHaveLength(2);
+  });
 });

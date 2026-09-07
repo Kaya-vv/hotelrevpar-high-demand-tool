@@ -1,4 +1,4 @@
-import { eventLocalDate } from "../events/normalize";
+import { eventLocalDate, validEventRange } from "../events/normalize";
 import { createLongRangeStore, longRangeMarketKey, LongRangeLeaseError, type LongRangeState } from "./long-range-store";
 import { collectionWindow, publishLongRangeResult, type CollectionContext } from "./run";
 import { longRangeWindow } from "./sources/claude";
@@ -17,11 +17,11 @@ export function storedLongRangeResult(state: LongRangeState | null, now = new Da
   const horizon = longRangeWindow(collectionWindow(now));
   const leads = state?.leads ?? [];
   return {
-    source: "claude", requests: 0, usage: {},
+    source: "claude", requests: 0, usage: { invalidDateEditions: leads.flatMap((lead) => lead.editions).filter((event) => !validEventRange(event)).length },
     candidates: [...new Map(leads.filter((lead) => lead.outcome !== "conflict").flatMap((lead) => lead.editions)
-      .filter((event) => eventLocalDate(event.endAt) >= now.toISOString().slice(0, 10) && eventLocalDate(event.startAt) <= horizon.end)
+      .filter((event) => validEventRange(event) && eventLocalDate(event.endAt) >= now.toISOString().slice(0, 10) && eventLocalDate(event.startAt) <= horizon.end)
       .map((event) => [event.providerEventId, event])).values()],
-    quarantinedProviderEventIds: leads.filter((lead) => lead.outcome === "conflict").flatMap((lead) => lead.editions.map((event) => event.providerEventId)),
+    quarantinedProviderEventIds: leads.flatMap((lead) => lead.editions.filter((event) => lead.outcome === "conflict" || !validEventRange(event)).map((event) => event.providerEventId)),
   };
 }
 
@@ -76,7 +76,7 @@ export async function processMarketWork(work: MarketWork) {
       const counts = await publishLongRangeResult(repository, await repository.loadContext(area.account_id, area.id), result);
       for (const [name, count] of Object.entries(counts ?? {})) publication[name] = (publication[name] ?? 0) + count;
     }
-    if (state.research) state.research.usage = { ...state.research.usage, ...publication };
+    if (state.research) state.research.usage = { ...state.research.usage, ...result.usage, ...publication };
     state.publicationPending = false;
     state.publishedAt = new Date().toISOString();
     await store.save(key, state);

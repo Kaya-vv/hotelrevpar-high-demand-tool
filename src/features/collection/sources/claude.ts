@@ -80,12 +80,32 @@ export const outputSchema = z.object({
 
 // Keep the transport schema within the provider's optional/union limits. Application parsing
 // still accepts legacy records; coordinates and summary text are derived locally from facts.
+const unknownText = z.string().describe('Use "" when unknown; the application converts it to null.');
+const nullableFactText = ["announcedAt", "announcementText", "announcementSourceUrl", "identityText", "venueAddress", "locationSourceUrl", "hostCity", "hostCityText"] as const;
 export const eventWireSchema = outputSchema.shape.events.element.omit({ latitude: true, longitude: true, regionScope: true, evidenceText: true }).extend({
+  venue: unknownText,
   facts: eventFactsSchema.required().extend({
-    demand: z.array(eventFactsSchema.shape.demand.element.required()).max(4),
+    ...Object.fromEntries(nullableFactText.map((key) => [key, unknownText])) as Record<typeof nullableFactText[number], typeof unknownText>,
+    demand: z.array(eventFactsSchema.shape.demand.element.required().extend({ applicability: unknownText })),
   }),
 });
-export const eventWireOutputSchema = z.object({ events: z.array(eventWireSchema).max(1) });
+export const eventWireOutputSchema = z.object({ events: z.array(eventWireSchema) });
+
+/** Reduce grammar branching without changing stored unknowns or evidence validation. */
+export function normalizeEventResponse(value: unknown): unknown {
+  if (!value || typeof value !== "object" || !("events" in value) || !Array.isArray(value.events)) return value;
+  const normalize = (entry: Record<string, unknown>, keys: readonly string[]) => Object.fromEntries(Object.entries(entry).map(([key, item]) => [key, keys.includes(key) && item === "" ? null : item]));
+  return { ...value, events: value.events.map((event: unknown) => {
+    if (!event || typeof event !== "object" || Array.isArray(event)) return event;
+    const next = normalize(event as Record<string, unknown>, ["venue"]);
+    if (next.facts && typeof next.facts === "object" && !Array.isArray(next.facts)) {
+      const facts = normalize(next.facts as Record<string, unknown>, nullableFactText);
+      if (Array.isArray(facts.demand)) facts.demand = facts.demand.map((fact) => fact && typeof fact === "object" && !Array.isArray(fact) ? normalize(fact, ["applicability"]) : fact);
+      next.facts = facts;
+    }
+    return next;
+  }) };
+}
 
 const discoverySchema = z.object({
   candidates: z.array(z.object({
@@ -1151,7 +1171,7 @@ async function collectClaudeFresh(
       const text = message.content.find((block) => block.type === "text")?.text;
       if (!text) throw new Error("Claude verification returned no structured output.");
       const observed = fetchedUrls(message);
-      const parsed = outputSchema.parse(JSON.parse(text));
+      const parsed = outputSchema.parse(normalizeEventResponse(JSON.parse(text)));
       parsedFetches += 1;
       return parsed.events.flatMap((event) => {
         const sourceUrl = stripFragment(supportedObservedUrl(

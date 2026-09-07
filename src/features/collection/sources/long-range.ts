@@ -5,7 +5,7 @@ import { z } from "zod";
 import { createHash } from "node:crypto";
 import type { EventCandidate } from "@/features/events/types";
 import { fetchedDocumentText, evidenceInstructions, verifyEventEvidence, localDateBoundary, supportedAudience } from "@/features/events/evidence";
-import { eventLocalDate } from "@/features/events/normalize";
+import { eventLocalDate, validEventRange } from "@/features/events/normalize";
 import { researchBudget, estimatedCostUsd } from "../research-budget";
 import { geocodeCity, createLocationResolver } from "../research-location";
 import { pageChunks, pageHash } from "../official-pages";
@@ -15,7 +15,7 @@ import { BatchPendingError, CLAUDE_ASSESSMENT_VERSION } from "../anthropic-batch
 import { projectEditions, projectionInstructions, rememberEdition } from "../series-projections";
 import { fetchOfficialPage, retrieveOfficialPages, type PageFetcher, type OfficialPage } from "../official-pages";
 import { createLongRangeStore, LONG_RANGE_VERSION, LongRangeLeaseError, longRangeMarketKey, type Lead, type LongRangeSeed, type LongRangeStore, type ResearchJob } from "../long-range-store";
-import { claudeProviderEventId, DEFAULT_TRIAGE_MODEL, eventWireSchema, fetchedUrls, geocodeVenue, observedUrl, outputSchema, requestMessages, sourceUrls, usageEvent, type Batching, type MessageRequest, type ClaudeUsageEvent } from "./claude";
+import { claudeProviderEventId, DEFAULT_TRIAGE_MODEL, eventWireSchema, fetchedUrls, geocodeVenue, normalizeEventResponse, observedUrl, outputSchema, requestMessages, sourceUrls, usageEvent, type Batching, type MessageRequest, type ClaudeUsageEvent } from "./claude";
 
 const groups = [
   { topic: "universiteit introductie open dagen", futureTopic: "university conference open day introduction", focus: "physical university open days, introductions and scientific congresses; exclude online events" },
@@ -32,7 +32,7 @@ const groups = [
 const leadSchema = z.object({ title: z.string(), url: z.url().nullable(), kind: z.enum(["event", "calendar", "organizer", "venue", "federation"]) });
 const discoverySchema = z.object({ leads: z.array(leadSchema).max(8) });
 const editionSchema = z.object({ events: z.array(outputSchema.shape.events.element).max(8), reason: z.string(), more: z.boolean().optional() });
-export const editionWireSchema = z.object({ events: z.array(eventWireSchema).max(8), reason: z.string(), more: z.boolean() });
+export const editionWireSchema = z.object({ events: z.array(eventWireSchema), reason: z.string(), more: z.boolean() });
 const resolutionSchema = z.object({ url: z.url().nullable(), reason: z.string() });
 const day = 86_400_000;
 const later = (now: Date, days: number) => new Date(now.getTime() + days * day).toISOString();
@@ -200,7 +200,7 @@ function parseMessage<T>(message: Anthropic.Message, schema: z.ZodType<T>): T {
   if (message.stop_reason === "max_tokens" || message.stop_reason === "pause_turn") throw new Error(`Incomplete response: ${message.stop_reason}`);
   const text = message.content.find((block) => block.type === "text")?.text;
   if (!text) throw new Error("No structured result");
-  return schema.parse(JSON.parse(text));
+  return schema.parse(normalizeEventResponse(JSON.parse(text)));
 }
 
 type Job = Omit<ResearchJob, "leadKey"> & { lead: Lead };
@@ -646,7 +646,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
     return editions.length > 0;
   };
   const finalize = (lead: Lead) => {
-    if (lead.outcome === "conflict") lead.pendingStage = "conflict";
+    if (lead.outcome === "conflict" || lead.editions.some((event) => !validEventRange(event))) lead.pendingStage = "conflict";
     if (lead.repair) lead.repair.attemptedAt = now.toISOString();
     lead.checkedAt = now.toISOString();
     lead.nextCheck = nextCheckAt(lead, now);
@@ -811,7 +811,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
   const resolveLocation = createLocationResolver({ venue: input.geocode ?? geocodeVenue, city: input.geocodeCity, cache: state.locations });
   for (const event of candidates) await resolveLocation(event);
   for (const lead of state.leads) {
-    if (lead.outcome === "conflict") lead.pendingStage = "conflict";
+    if (lead.outcome === "conflict" || lead.editions.some((event) => !validEventRange(event))) lead.pendingStage = "conflict";
     else if (lead.editions.some((event) => event.latitude === null || event.longitude === null)) lead.pendingStage = "location";
     else if (lead.editions.some((event) => needsDemandResearch(event))) lead.pendingStage = "demand";
     else if (lead.editions.length) delete lead.pendingStage;
@@ -867,8 +867,8 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
     state.research.error = [...new Set(failures)].join("; ") || undefined;
     await store.save(key, state);
   }
-  return { source: "claude", candidates, requests, usage,
-    quarantinedProviderEventIds: state.leads.filter((lead) => lead.outcome === "conflict").flatMap((lead) => lead.editions.map((event) => event.providerEventId)),
+  return { source: "claude", candidates: candidates.filter(validEventRange), requests, usage,
+    quarantinedProviderEventIds: state.leads.flatMap((lead) => lead.editions.filter((event) => lead.outcome === "conflict" || !validEventRange(event)).map((event) => event.providerEventId)),
     ...(failures.length ? { error: [...new Set(failures)].join("; ") } : {}),
     funnel: { namesDiscovered: discovered, urlsResolved: [...due, ...toResolve].filter((lead) => lead.url).length, pagesVerified: verifiedPages, demandAccepted: usage.demandAccepted, drops },
   };

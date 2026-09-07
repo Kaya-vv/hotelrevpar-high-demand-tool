@@ -81,7 +81,7 @@ it.skipIf(!process.env.RESEARCH_LOCAL_KEY)("repairs the actual retained DDW edit
     const marketStore = createLongRangeStore();
     expect(await marketStore.acquire(marketKey)).toBe(true);
     previousMarket = await marketStore.load(marketKey);
-    state.leads = [{ ...state.leads[0], editions: result.candidates, outcome: "confirmed" }];
+    state.leads = [{ ...state.leads[0], editions: [...result.candidates, { ...result.candidates[0], title: "Invalid retained range", providerEventId: "invalid-range", startAt: "2027-04-11T22:00:00Z", endAt: "2027-04-11T21:59:59Z" }], outcome: "confirmed" }];
     state.publicationPending = true;
     state.research = { requestedAt: new Date().toISOString() };
     await marketStore.save(marketKey, state);
