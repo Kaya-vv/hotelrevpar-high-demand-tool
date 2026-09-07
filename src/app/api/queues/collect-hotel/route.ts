@@ -5,7 +5,10 @@ import { processCollectionJob, type CollectionJobMessage } from "@/features/coll
 
 export const maxDuration = 1800;
 
-const messageSchema = z.object({ jobId: z.uuid() });
+const messageSchema = z.union([
+  z.object({ jobId: z.uuid() }),
+  z.object({ kind: z.enum(["market-research", "market-publication"]), accountId: z.uuid(), areaId: z.uuid(), runId: z.uuid(), requestedAt: z.iso.datetime() }),
+]);
 
 export const POST = handleCallback<CollectionJobMessage>(
   async (message, metadata) => {

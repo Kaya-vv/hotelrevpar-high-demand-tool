@@ -49,6 +49,7 @@ export function createBatchStore(client?: Awaited<ReturnType<typeof adminClient>
       const { error } = await admin
         .from("anthropic_batch_cache")
         .delete()
+        .eq("status", "completed")
         .lt("expires_at", now);
       if (error) throw error;
     },
@@ -232,6 +233,10 @@ function decodeResults(value: Json, billable: boolean): BatchedMessageResult[] {
 const wait = (milliseconds: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 
+export class BatchPendingError extends Error {
+  constructor() { super("Batch is still processing; resume its saved request manifest."); }
+}
+
 export async function runAnthropicBatch(
   client: Anthropic,
   requests: MessageCreateParamsNonStreaming[],
@@ -239,6 +244,8 @@ export async function runAnthropicBatch(
     store?: BatchStore;
     wait?: (milliseconds: number) => Promise<void>;
     pollMilliseconds?: number;
+    deadline?: number;
+    usageHandledByCaller?: boolean;
   } = {},
 ): Promise<BatchedMessageResult[]> {
   if (!requests.length) return [];
@@ -251,6 +258,7 @@ export async function runAnthropicBatch(
   let row = await store.get(key);
 
   if (!row) {
+    if (options.deadline !== undefined && Date.now() >= options.deadline) throw new BatchPendingError();
     const ownerToken = randomUUID();
     // The lease must outlive the stuck-creation check below. With both at five minutes the
     // expiry sweep deletes the row first, `attach` silently updates nothing, and the batch that
@@ -264,11 +272,14 @@ export async function runAnthropicBatch(
             custom_id: `request-${index}`,
             params,
           })),
-        });
+        }, { maxRetries: 0 });
         const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
         await store.attach(key, ownerToken, batch.id, expiresAt);
       } catch (error) {
-        await store.release(key, ownerToken);
+        // Only explicit rejections prove that no batch was accepted. A transport or attach
+        // failure is ambiguous: retain the claim for reconciliation instead of resubmitting.
+        if (error instanceof Anthropic.APIError && [400, 401, 403, 404, 422, 429].includes(error.status ?? 0)) await store.release(key, ownerToken);
+        else await store.fail(key, `Batch submission needs reconciliation: ${error instanceof Error ? error.message : String(error)}`);
         throw error;
       }
     }
@@ -276,8 +287,9 @@ export async function runAnthropicBatch(
   }
 
   while (row) {
+    if (options.deadline !== undefined && Date.now() >= options.deadline) throw new BatchPendingError();
     if (row.status === "completed" && row.results) {
-      return decodeResults(row.results, await store.claimUsage(key));
+      return decodeResults(row.results, options.usageHandledByCaller || await store.claimUsage(key));
     }
     if (row.status === "failed") {
       throw new Error(row.error ?? "Anthropic batchverwerking is mislukt.");

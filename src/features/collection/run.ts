@@ -253,7 +253,8 @@ function configured(value: string | undefined, source: string) {
 }
 
 function defaultCollectors(
-  onUsage: (source: SourceName, usage: ClaudeUsageEvent) => Promise<void>
+  onUsage: (source: SourceName, usage: ClaudeUsageEvent) => Promise<void>,
+  runId: string,
 ): Partial<Record<SourceName, Collector>> {
   return {
     rijksoverheid: (context) => collectRijksoverheid({ start: context.window.start, end: longRangeWindow(context.window).end }),
@@ -290,7 +291,7 @@ function defaultCollectors(
         runNearTerm: context.runNearTermClaude,
         knownEvents: context.knownEvents,
         onUsage: (usage) => onUsage("claude", usage),
-      });
+      }, undefined, async () => (await import("./market-research")).readAndEnqueueResearch(context, runId));
     },
     footballdata: (context) =>
       collectFootballdata({
@@ -340,6 +341,16 @@ function relevantToHotel(candidate: EventCandidate, hotel: HotelContext) {
   );
 }
 
+/** Reuses the same repository, radius checks, decisions and score calculation as a refresh. */
+export async function publishLongRangeResult(repository: CollectionRepository, context: CollectionContext, result: SourceResult) {
+  if (!context.area.enabledSources.includes("claude")) return;
+  if (result.quarantinedProviderEventIds?.length) await repository.quarantineClaudeEditions(context, result.quarantinedProviderEventIds);
+  for (const candidate of result.candidates) {
+    if (context.hotels.some((hotel) => relevantToHotel(candidate, hotel))) await repository.persistCandidate(context, candidate);
+  }
+  return repository.recalculateScores(context);
+}
+
 function errorState(reason: unknown) {
   if (reason instanceof SourceUnavailableError)
     return { state: reason.state, error: reason.message };
@@ -385,7 +396,7 @@ export async function runCollection(
     const observeUsage = (source: SourceName, event: ClaudeUsageEvent) =>
       repository.recordUsage(runId, source, event);
     const collectors =
-      dependencies?.collectors ?? defaultCollectors(observeUsage);
+      dependencies?.collectors ?? defaultCollectors(observeUsage, runId);
     const demandTriageReviewer = dependencies
       ? dependencies.demandTriageReviewer
       : defaultDemandTriageReviewer(observeUsage);
@@ -694,6 +705,7 @@ export async function runCollection(
       sourceResults[source] = {
         state: sourceError ? "partial" : candidates.length ? "success" : "zero",
         ...(sourceError ? { error: sourceError } : {}),
+        ...(result.value.researchPending ? { researchPending: true } : {}),
         candidates: candidates.length,
         found: result.value.candidates.length,
         unique: canonicalIds.size || candidates.length,

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type Anthropic from "@anthropic-ai/sdk";
 import { collectLongRange, selectDueLeads } from "./sources/long-range";
-import { collectClaudeCalendar } from "./sources/claude";
+import { collectClaudeCalendar, parseDiscovery } from "./sources/claude";
 import { parseOfficialPage } from "./official-pages";
 import { geocodeCity, createLocationResolver } from "./research-location";
 import { researchBudget } from "./research-budget";
@@ -10,6 +10,7 @@ import { localParts, eventLocalDate } from "../events/normalize";
 import { scoreHotelEvent } from "../events/score";
 import { mapRevControlRows } from "../export/map-rows";
 import type { Lead, LongRangeState, LongRangeStore } from "./long-range-store";
+import { BatchPendingError, type BatchStore } from "./anthropic-batches";
 
 const now = new Date("2026-09-07T12:00:00Z");
 const url = "https://organizer.example/about";
@@ -29,6 +30,90 @@ function setup() {
 }
 
 describe("coordinated long-range research", () => {
+  it("accepts typographic quote variations without accepting changed demand facts", () => {
+    const official = "The world’s visitors attend the Arts Week across 120 locations.";
+    const quoted = official.replace("’", "'");
+    const source = [{ url, text: `${text}\n${official}` }];
+    const input = { ...facts, locationText: "Across the city of Eindhoven.", identityText: quoted, demand: [{ ...facts.demand[0], text: quoted }] };
+    expect(verifyEventEvidence(input, url, source, now.toISOString())?.demand).toHaveLength(1);
+    expect(verifyEventEvidence({ ...input, demand: [{ ...input.demand[0], text: quoted.replace("120", "1200") }] }, url, source, now.toISOString())?.demand).toHaveLength(0);
+  });
+  it.each(["waiting", "accounting", "application"])("resumes the exact batch after interruption during %s without paying twice or refetching pages", async (stage) => {
+    const test = setup();
+    let row: Awaited<ReturnType<BatchStore["get"]>> = null;
+    let params: { requests: { custom_id: string }[] };
+    let ended = stage !== "waiting";
+    const deadline = Date.now() + 60_000;
+    const clock = vi.spyOn(Date, "now");
+    const batchStore: BatchStore = {
+      removeExpired: async () => {}, get: async () => row,
+      claim: async () => { row = { status: "creating", batch_id: null, results: null, error: null, created_at: new Date().toISOString() }; return true; },
+      attach: async (_key, _owner, batchId) => { row = { ...row!, status: "processing", batch_id: batchId }; },
+      complete: async (_key, results) => { row = { ...row!, status: "completed", results }; },
+      fail: async () => {}, release: async () => {}, claimUsage: vi.fn(async () => { throw new Error("Per-request accounting owns research usage"); }),
+    };
+    const create = vi.fn(async (input) => { params = input; return { id: "durable-batch" }; });
+    const client = { messages: { batches: { create, retrieve: async () => ({ processing_status: ended ? "ended" : "in_progress" }), results: async function* () {
+      for (const request of params.requests) yield { custom_id: request.custom_id, result: { type: "succeeded", message: await test.create() } };
+    } } } } as unknown as Anthropic;
+    let interrupted = false;
+    const store = { ...test.input.store, save: async (key: string, state: LongRangeState) => {
+      if (stage === "application" && !interrupted && !state.cycle?.pending && state.leads[0].editions.length) { interrupted = true; throw new Error("Application interrupted"); }
+      await test.input.store.save(key, state);
+    } };
+    const usage = new Set<string>();
+    const onUsage = async (event: import("./sources/claude").ClaudeUsageEvent) => {
+      if (stage === "accounting" && !interrupted) { interrupted = true; throw new Error("Accounting interrupted"); }
+      usage.add(event.requestId!);
+    };
+    try {
+      const input = { ...test.input, start: "2027-10-31", client, store, onUsage, batching: { enabled: true, store: batchStore, deadline, wait: async () => { clock.mockReturnValue(deadline + 1); } } };
+      await expect(collectLongRange(input)).rejects.toThrow(stage === "waiting" ? BatchPendingError : /interrupted/);
+      expect(test.state().cycle?.pending?.jobs).toHaveLength(1);
+      ended = true;
+      clock.mockRestore();
+      test.pageFetcher.mockRejectedValue(new Error("Page must be restored from the manifest"));
+      // A delayed response keeps the original request window when the horizon moves forward.
+      const result = await collectLongRange({ ...input, start: "2027-11-01" });
+      expect(create).toHaveBeenCalledTimes(1);
+      expect(test.pageFetcher).toHaveBeenCalledTimes(1);
+      expect(result.candidates).toHaveLength(1);
+      expect(test.state().cycle?.pending).toBeUndefined();
+      expect(test.state().budget?.billedIds).toHaveLength(1);
+      expect(Object.keys(test.state().budget?.reservations ?? {})).toHaveLength(0);
+      expect(usage.size).toBe(1);
+    } finally { clock.mockRestore(); }
+  });
+  it("repairs a retained major edition before its future check date despite a complete page cache", async () => {
+    const test = setup();
+    await collectLongRange(test.input);
+    const lead = test.state().leads[0];
+    expect(lead.nextCheck).toBe("2026-09-14T12:00:00.000Z");
+    delete lead.editions[0].evidence;
+    lead.editions[0].latitude = null;
+    lead.editions[0].longitude = null;
+    const calls = test.create.mock.calls.length;
+    const repaired = await collectLongRange(test.input);
+    expect(test.create.mock.calls.length).toBeGreaterThan(calls);
+    expect(repaired.candidates[0].evidence?.dateText).toBe(facts.dateText);
+    expect(repaired.candidates[0].latitude).not.toBeNull();
+    expect(test.state().leads[0].repair?.attemptedAt).toBe(now.toISOString());
+    const repairedCalls = test.create.mock.calls.length;
+    await collectLongRange(test.input);
+    expect(test.create).toHaveBeenCalledTimes(repairedCalls);
+  });
+
+  it("retains valid discovery siblings and routes malformed official URLs to resolution", () => {
+    const candidate = { title: "Arts Week", startDate: "2027-10-23", endDate: null, city: "Eindhoven", venue: null, category: "culture", officialUrl: url };
+    const rejected = vi.fn();
+    const parsed = parseDiscovery(JSON.stringify({ candidates: [candidate, { ...candidate, title: "Other festival", officialUrl: "not a URL" }, { title: 3 }], agendaUrls: [url, "bad"] }), rejected);
+    expect(parsed.candidates).toHaveLength(2);
+    expect(parsed.candidates[1].officialUrl).toBeNull();
+    expect(parsed.agendaUrls).toEqual([url]);
+    expect(rejected).toHaveBeenCalledTimes(3);
+    expect(() => parseDiscovery(JSON.stringify({ candidates: [{ title: 3 }], agendaUrls: [] }))).toThrow("No usable");
+  });
+
   it("falls back to the evidenced host city and preserves that centroid after a venue lookup fails", async () => {
     const quote = "The event takes place at Rotterdam Ahoy in Rotterdam.";
     const evidence = verifyEventEvidence({ ...facts, locationText: quote, hostCity: "Rotterdam", locationScope: "venue" }, url, [{ url, text: `${text} ${quote}` }], now.toISOString())!;
@@ -75,8 +160,13 @@ describe("coordinated long-range research", () => {
 
   it("checks a legacy citywide edition behind more than eighteen due leads and reuses city resolution", async () => {
     const test = setup();
+    const legacy = (await collectLongRange(test.input)).candidates[0];
+    delete legacy.evidence;
+    legacy.latitude = null;
+    legacy.longitude = null;
+    delete test.state().cycle;
     test.state().leads = Array.from({ length: 24 }, (_, index) => makeLead({ key: `existing-${index}`, title: `Existing series ${index}`, url: `${url}/${index}`, checkedAt: "2026-09-01T00:00:00Z", nextCheck: "2026-09-06T00:00:00Z" }));
-    test.state().leads.push(makeLead({ checkedAt: "2026-09-01T00:00:00Z" }));
+    test.state().leads.push(makeLead({ checkedAt: "2026-09-01T00:00:00Z", editions: [legacy] }));
     test.pageFetcher.mockImplementation(async (requested: string) => parseOfficialPage(text, requested));
     test.create.mockImplementation(async (request?: unknown) => {
       const prompt = JSON.stringify(request);
@@ -111,6 +201,9 @@ describe("coordinated long-range research", () => {
     const unsupported = verifyEventEvidence({ ...facts, demand: [{ ...facts.demand[0], text: players }] }, url, [{ url, text: `${text} ${players}` }], now.toISOString());
     expect(unsupported?.demand).toEqual([]);
     expect(supportedAudience(unsupported, "international")).toBeNull();
+    const worldwide = "The event attracts visitors from around the globe.";
+    const globalEvidence = verifyEventEvidence({ ...facts, demand: [{ ...facts.demand[0], text: worldwide }] }, url, [{ url, text: `${text} ${worldwide}` }], now.toISOString());
+    expect(supportedAudience(globalEvidence, "international")).toBe("international");
   });
 
   it("preserves the boundary between an official street number and postcode", () => {
@@ -178,7 +271,12 @@ describe("coordinated long-range research", () => {
     await collectLongRange({ ...test.input, budgetEur: 0.2 });
     // Each conservative extraction reservation is much larger than its recorded actual cost.
     const requests = test.create.mock.calls as unknown as [{ tools: unknown[] }][];
-    expect(requests.filter(([request]) => !request.tools.length)).toHaveLength(6);
+    expect(requests.filter(([request]) => !request.tools.length)).toHaveLength(3);
+    expect(test.state().cycle?.waves).toBe(3);
+    const calls = test.create.mock.calls.length;
+    await collectLongRange({ ...test.input, budgetEur: 0.2 });
+    expect(test.create).toHaveBeenCalledTimes(calls);
+    expect(test.state().leads.filter((lead) => !lead.checkedAt).every((lead) => lead.nextCheck === now.toISOString())).toBe(true);
     expect(test.state().budget!.spentEur).toBeLessThan(0.2);
   });
 
@@ -207,7 +305,8 @@ describe("coordinated long-range research", () => {
     expect(test.state().leads[0].nextCheck).toBe(now.toISOString());
     complete = true;
     test.pageFetcher.mockRejectedValue(new Error("Official fetch returned HTTP 403"));
-    const next = await collectLongRange({ ...test.input, now: new Date("2026-09-08T12:00:00Z") });
+    test.state().announcementSearchAt = "2026-09-14T12:00:00Z";
+    const next = await collectLongRange({ ...test.input, now: new Date("2026-09-14T12:00:00Z") });
     expect(next.candidates.length).toBeGreaterThan(first.candidates.length);
     expect(test.state().pageCache?.[url].complete).toBe(true);
     expect(next.candidates.at(-1)?.evidence?.checkedAt).toBe(now.toISOString());
@@ -380,7 +479,10 @@ describe("coordinated long-range research", () => {
     budget.settle(key, usage, false);
     expect(state.budget!.spentEur).toBe(spent);
     budget.reserve(request, false);
-    researchBudget(state, new Date("2026-10-01"));
+    const nextMonth = researchBudget(state, new Date("2026-10-01"));
     expect(Object.keys(state.budget!.reservations)).toHaveLength(1);
+    nextMonth.settle(key, usage, false);
+    expect(state.budget!.spentEur).toBe(0);
+    expect(state.budget!.billedIds).toEqual(["same"]);
   });
 });

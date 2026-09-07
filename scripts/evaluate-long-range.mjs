@@ -26,12 +26,16 @@ for (const dir of ["src", "tests/fixtures", "supabase/migrations", "scripts"]) a
 const digest = hash.digest("hex");
 if (process.argv.includes("--offline")) {
   run(`${npx} tsc --noEmit`);
-  run(`${npx} eslint src scripts/evaluate-long-range.mjs scripts/capture-long-range-evidence.mjs scripts/test-research-database.mjs scripts/capture-research-locations.mjs`);
+  run(`${npx} eslint src scripts/evaluate-long-range.mjs scripts/evaluate-repair.mjs scripts/capture-long-range-evidence.mjs scripts/test-research-database.mjs scripts/capture-research-locations.mjs`);
   run(`${npx} vitest run --reporter=json --outputFile=${root}/offline-tests.json`);
   run("node scripts/test-research-database.mjs");
   const tests = JSON.parse(await readFile(`${root}/offline-tests.json`, "utf8"));
   await save(`${root}/offline-gate.json`, { digest, checkedAt: new Date().toISOString(), testsPassed: tests.numPassedTests, databaseReplay: true, syntheticResponsesProveRulesOnly: true });
   console.log("Offline gates passed. Live discovery quality remains unmeasured.");
+} else if (process.argv.includes("--repair")) {
+  const gate = JSON.parse(await readFile(`${root}/offline-gate.json`, "utf8"));
+  if (gate.digest !== digest) throw new Error("Code or evidence changed since the offline gate");
+  await (await import("./evaluate-repair.mjs")).evaluateRepair(digest);
 } else {
   if (!process.argv.includes("--allow-paid")) throw new Error("Run --offline first; --allow-paid enforces the agreed USD 30 evaluation ceiling.");
   const gate = JSON.parse(await readFile(`${root}/offline-gate.json`, "utf8"));

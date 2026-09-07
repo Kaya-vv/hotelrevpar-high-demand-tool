@@ -1,20 +1,21 @@
+import { scheduleEvidenceRepair, repairPending, researchDueAt, needsDemandResearch } from "../research-repair";
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { createHash } from "node:crypto";
 import type { EventCandidate } from "@/features/events/types";
-import { fetchedDocumentText, evidenceInstructions, verifyEventEvidence, localDateBoundary, hasDemandEvidence, supportedAudience } from "@/features/events/evidence";
+import { fetchedDocumentText, evidenceInstructions, verifyEventEvidence, localDateBoundary, supportedAudience } from "@/features/events/evidence";
 import { eventLocalDate } from "@/features/events/normalize";
 import { researchBudget, estimatedCostUsd } from "../research-budget";
 import { geocodeCity, createLocationResolver } from "../research-location";
 import { pageChunks, pageHash } from "../official-pages";
 import { normalizeText } from "@/features/events/normalize";
 import type { CollectionWindow, SourceResult } from "../types";
-import { CLAUDE_ASSESSMENT_VERSION } from "../anthropic-batches";
+import { BatchPendingError, CLAUDE_ASSESSMENT_VERSION } from "../anthropic-batches";
 import { projectEditions, projectionInstructions, rememberEdition } from "../series-projections";
 import { fetchOfficialPage, retrieveOfficialPages, type PageFetcher, type OfficialPage } from "../official-pages";
-import { createLongRangeStore, LONG_RANGE_VERSION, LongRangeLeaseError, longRangeMarketKey, type Lead, type LongRangeSeed, type LongRangeStore } from "../long-range-store";
-import { claudeProviderEventId, DEFAULT_TRIAGE_MODEL, eventWireSchema, fetchedUrls, geocodeVenue, observedUrl, outputSchema, requestMessages, sourceUrls, usageEvent, type Batching, type ClaudeUsageEvent } from "./claude";
+import { createLongRangeStore, LONG_RANGE_VERSION, LongRangeLeaseError, longRangeMarketKey, type Lead, type LongRangeSeed, type LongRangeStore, type ResearchJob } from "../long-range-store";
+import { claudeProviderEventId, DEFAULT_TRIAGE_MODEL, eventWireSchema, fetchedUrls, geocodeVenue, observedUrl, outputSchema, requestMessages, sourceUrls, usageEvent, type Batching, type MessageRequest, type ClaudeUsageEvent } from "./claude";
 
 const groups = [
   { topic: "universiteit introductie open dagen", futureTopic: "university conference open day introduction", focus: "physical university open days, introductions and scientific congresses; exclude online events" },
@@ -53,7 +54,6 @@ function targetWasRejected(message: Anthropic.Message, target: string | null) {
 
 const FETCH_SLOTS = 18;    // weekly lead checks
 const CALENDAR_SLOTS = 6;  // reserved inside FETCH_SLOTS for calendar hubs
-const DEEP_SLOTS = 8;      // bounded follow-up/chunk requests per lead per pass
 const SWEEP_DAYS = 28;
 
 // A lead URL only earns a fetch when it can own the event's dates. Aggregators, wikis and tourist
@@ -103,6 +103,7 @@ export function repairObservedUrl(value: string | null, observed: string[]) {
 }
 
 export type LongRangeInput = CollectionWindow & {
+  requestedAt?: string;
   location: string;
   radiusKm: number;
   now?: Date;
@@ -130,7 +131,7 @@ export function nextCheckAt(lead: Lead, now: Date): string {
 /** All due official pages, ordered in fair windows. Paid requests remain budget bounded. */
 export function selectDueLeads(leads: Lead[], now: Date, bootstrap: boolean) {
   void bootstrap;
-  let remaining = leads.filter((lead) => fetchTarget(lead) && Date.parse(lead.nextCheck) <= now.getTime());
+  let remaining = leads.filter((lead) => fetchTarget(lead) && Date.parse(researchDueAt(lead)) <= now.getTime());
   const selected: Lead[] = [];
   // These are fairness windows, not a pass limit. Persisted spend bounds paid work.
   while (remaining.length) {
@@ -148,16 +149,16 @@ export function selectDueLeads(leads: Lead[], now: Date, bootstrap: boolean) {
 /** URL work has its own queue, interleaved with fetched leads before budget reservations. */
 export function selectResolveLeads(leads: Lead[], now: Date, bootstrap: boolean) {
   void bootstrap;
-  return fairQueue(leads.filter((lead) => !fetchTarget(lead) && Date.parse(lead.nextCheck) <= now.getTime()));
+  return fairQueue(leads.filter((lead) => !fetchTarget(lead) && Date.parse(researchDueAt(lead)) <= now.getTime()));
 }
 
 // Equally due category groups take turns; one large university calendar cannot occupy all first checks.
 function fairQueue(leads: Lead[]) {
   const ordered = [...leads].sort(queueOrder);
   const result: Lead[] = [];
-  for (const due of [...new Set(ordered.map((lead) => lead.nextCheck))]) {
+  for (const due of [...new Set(ordered.map(researchDueAt))]) {
     const buckets = new Map<number, Lead[]>();
-    for (const lead of ordered.filter((item) => item.nextCheck === due)) buckets.set(lead.group, [...(buckets.get(lead.group) ?? []), lead]);
+    for (const lead of ordered.filter((item) => researchDueAt(item) === due)) buckets.set(lead.group, [...(buckets.get(lead.group) ?? []), lead]);
     while ([...buckets.values()].some((bucket) => bucket.length)) {
       for (const bucket of buckets.values()) if (bucket.length) result.push(bucket.shift()!);
     }
@@ -167,7 +168,8 @@ function fairQueue(leads: Lead[]) {
 
 // Oldest due work first; prior demand and portfolio history only break ties.
 function queueOrder(left: Lead, right: Lead) {
-  return left.nextCheck.localeCompare(right.nextCheck)
+  return Number(repairPending(right)) - Number(repairPending(left))
+    || researchDueAt(left).localeCompare(researchDueAt(right))
     || Number(Boolean(left.checkedAt)) - Number(Boolean(right.checkedAt))
     || (left.attempts ?? 0) - (right.attempts ?? 0)
     || (right.discoveryGroups?.length ?? 0) - (left.discoveryGroups?.length ?? 0)
@@ -201,7 +203,7 @@ function parseMessage<T>(message: Anthropic.Message, schema: z.ZodType<T>): T {
   return schema.parse(JSON.parse(text));
 }
 
-type Job = { lead: Lead; kind: "fetch" | "deep" | "resolve" | "evidence"; target?: string; providerFallback?: boolean; checkedAt?: string; pages?: OfficialPage[]; cached?: boolean; chunks?: { url: string; hash: string; index: number; total: number }[] };
+type Job = Omit<ResearchJob, "leadKey"> & { lead: Lead };
 class ResearchDeferredError extends Error {}
 
 function unfetchedEvidenceUrl(lead: Lead, message: Anthropic.Message) {
@@ -235,18 +237,26 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
   const store = input.store;
   const version = LONG_RANGE_VERSION * 1000 + CLAUDE_ASSESSMENT_VERSION;
   const state = await store.load(key) ?? { version, discoveredAt: null, leads: [] };
+  if (input.requestedAt && (!state.research || state.research.completedAt)) state.research = { requestedAt: input.requestedAt };
   // Storage upgrades retain discovery cadence, evidence and the spend ledger.
   state.storageVersion = 1;
   state.pageCache ??= {};
   state.retrievalFailures ??= {};
   state.announcementSearchAt ??= state.discoveredAt ?? undefined;
   for (const lead of state.leads) {
+    // The legacy extractor encoded local all-day dates as UTC boundaries. Repair those
+    // known encodings before edition comparison, otherwise the last day becomes tomorrow.
+    for (const event of lead.editions) if (!event.evidence?.dateText) {
+      if (/T00:00:00(?:\.000)?(?:Z|\+00:00)$/.test(event.startAt)) event.startAt = localDateBoundary(event.startAt.slice(0, 10));
+      if (/T23:59:59(?:\.999)?(?:Z|\+00:00)$/.test(event.endAt)) event.endAt = localDateBoundary(event.endAt.slice(0, 10), true);
+    }
     Object.assign(state.pageCache, lead.pageCache ?? {});
     delete lead.pageCache;
     lead.firstSeenAt ??= lead.checkedAt ?? lead.nextCheck;
     lead.officialPages ??= [...new Set([lead.officialPage, lead.url].filter((url): url is string => Boolean(url)))];
     if (lead.checkedAt && lead.nextCheck > later(new Date(lead.checkedAt), 7)) lead.nextCheck = later(new Date(lead.checkedAt), 7);
   }
+  for (const lead of state.leads) scheduleEvidenceRepair(lead, now.toISOString(), input.end);
   const model = input.model?.trim() || process.env.ANTHROPIC_MODEL?.trim();
   if (!model) throw new Error("ANTHROPIC_MODEL is required");
   const discoveryModel = input.discoveryModel?.trim() || process.env.ANTHROPIC_DISCOVERY_MODEL?.trim() || model;
@@ -254,9 +264,16 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
   // already gives Haiku; date extraction stays on the main model.
   const resolutionModel = input.resolutionModel?.trim() || process.env.ANTHROPIC_TRIAGE_MODEL?.trim() || DEFAULT_TRIAGE_MODEL;
   const client = input.client ?? new Anthropic();
-  const batching = input.batching ?? { enabled: !input.client && process.env.ANTHROPIC_BATCHES !== "disabled" };
+  const batching = { ...(input.batching ?? { enabled: !input.client && process.env.ANTHROPIC_BATCHES !== "disabled" }), usageHandledByCaller: true };
   const usage: Record<string, number> = { inputTokens: 0, outputTokens: 0, webSearchRequests: 0, webFetchRequests: 0, estimatedCostUsd: 0 };
   const budget = researchBudget(state, now, input.budgetEur ?? 5);
+  if (!state.cycle || (state.cycle.finished && now.getTime() - Date.parse(state.cycle.startedAt) >= 7 * day)) {
+    state.cycle = { startedAt: now.toISOString(), waves: 0, leadKeys: [], queued: state.cycle?.queued ?? [] };
+  }
+  const workCycle = state.cycle;
+  workCycle.retrieved ??= {};
+  if (state.leads.some(repairPending) && workCycle.waves < 3) workCycle.finished = false;
+
   const originalIds = new Set(state.leads.flatMap((lead) => lead.editions.map((edition) => edition.providerEventId)));
   const drops: NonNullable<SourceResult["funnel"]>["drops"] = [];
   const failures: string[] = [];
@@ -275,6 +292,10 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
     event.billingMode = batching.enabled ? "batch" : "standard";
     event.estimatedCostUsd = estimatedCostUsd(event, batching.enabled) ?? undefined;
     await input.onUsage?.(event);
+    if (event.requestId && state.budget?.billedIds.includes(event.requestId)) {
+      usage.cachedRequests = (usage.cachedRequests ?? 0) + 1;
+      return;
+    }
     for (const field of ["inputTokens", "outputTokens", "webSearchRequests", "webFetchRequests"] as const) {
       usage[field] += event[field];
       usage[`${stage}_${field}`] = (usage[`${stage}_${field}`] ?? 0) + event[field];
@@ -291,30 +312,35 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
     }
   }
 
-  async function dispatch(phase: "search" | "verification", tasks: Parameters<typeof requestMessages>[2]) {
-    const results: PromiseSettledResult<Anthropic.Message>[] = tasks.map(() => ({ status: "rejected", reason: new ResearchDeferredError("Research budget exhausted or request awaiting reconciliation") }));
-    let waiting = tasks.map((_task, index) => index);
-    while (waiting.length) {
-      const ready: { index: number; reservation: string }[] = [];
-      const deferred: number[] = [];
-      for (const index of waiting) {
-        const reservation = budget.reserve(tasks[index].params, batching.enabled);
-        if (reservation) ready.push({ index, reservation });
-        else deferred.push(index);
-      }
-      if (!ready.length) break;
-      await store.save(key, state);
-      const responses = await requestMessages(client, phase, ready.map(({ index }) => tasks[index]), batching);
-      ready.forEach(({ index, reservation }, offset) => {
-        const result = responses[offset];
-        results[index] = result;
-        if (result.status === "fulfilled") budget.settle(reservation, usageEvent(result.value, "discovery_fetch", tasks[index].params.model), batching.enabled);
-        else if (result.reason instanceof Anthropic.APIError && [400, 401, 403, 404, 422, 429].includes(result.reason.status ?? 0)) budget.releaseUnbilled(reservation);
+  async function dispatch(phase: "search" | "verification", tasks: Parameters<typeof requestMessages>[2], jobs?: ResearchJob[], preparationErrors?: Record<number, string>) {
+    let manifest = workCycle.pending;
+    const results: PromiseSettledResult<Anthropic.Message>[] = tasks.map(() => ({ status: "rejected", reason: new ResearchDeferredError("Research budget exhausted or cycle allowance reached") }));
+    if (!manifest) {
+      if (!tasks.length || workCycle.waves >= 3 || workCycle.finished) return results;
+      const indices: number[] = [], reservations: string[] = [];
+      tasks.forEach((task, index) => {
+        const reservation = budget.reserve(task.params, batching.enabled);
+        if (reservation) { indices.push(index); reservations.push(reservation); }
       });
+      if (!indices.length) return results;
+      manifest = { phase, requests: JSON.parse(JSON.stringify(tasks)) as MessageRequest[], indices, reservations, total: tasks.length, jobs, preparationErrors };
+      workCycle.pending = manifest;
+      workCycle.waves++;
       await store.save(key, state);
-      // Released conservative reservations can fund deferred requests in this same pass.
-      waiting = deferred;
     }
+    if (manifest.phase !== phase) throw new Error("Pending research phase must be resumed before new work");
+    const responses = await requestMessages(client, phase, manifest.indices.map((index) => manifest!.requests[index]), batching);
+    for (const [offset, index] of manifest.indices.entries()) {
+      const result = responses[offset];
+      results[index] = result;
+      if (result.status === "fulfilled") {
+        await observe(result.value, phase === "search" ? "discovery" : "verification", manifest.requests[index].params.model);
+        budget.settle(manifest.reservations[offset], usageEvent(result.value, "discovery_fetch", manifest.requests[index].params.model), batching.enabled);
+      }
+      else if (result.reason instanceof Anthropic.APIError && [400, 401, 403, 404, 422, 429].includes(result.reason.status ?? 0)) budget.releaseUnbilled(manifest!.reservations[offset]);
+    }
+    // The manifest remains until the caller checkpoints evidence and queue progress.
+    await store.save(key, state);
     return results;
   }
 
@@ -356,15 +382,17 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
   const discoveryDue = (!state.discoveredAt || now.getTime() - Date.parse(state.discoveredAt) >= 30 * day)
     && (!state.discoveryAttemptAt || now.getTime() - Date.parse(state.discoveryAttemptAt) >= 7 * day);
   const announcementsDue = !state.announcementSearchAt || now.getTime() - Date.parse(state.announcementSearchAt) >= 7 * day;
-  if (discoveryDue || announcementsDue || state.searchCycle) {
+  async function discover() {
+  if (workCycle.pending?.phase === "search" || (!workCycle.pending && !workCycle.finished && (discoveryDue || announcementsDue || state.searchCycle))) {
     state.searchCycle ??= { dueAt: now.toISOString(), broad: discoveryDue, completed: [] };
     const cycle = state.searchCycle;
     state.discoveryAttemptAt = now.toISOString();
-    const tasks = groups.flatMap((group, index) => (cycle.broad ? ["event", "calendar"] : ["calendar"]).map((kind) => ({
+    cycle.tasks ??= groups.flatMap((group, index) => (cycle.broad ? ["event", "calendar"] : ["calendar"]).map((kind) => ({
       group: index,
       query: kind === "event" ? `${input.location} ${group.topic}` : `${input.location} ${group.futureTopic} ${input.end.slice(0, 4)}`,
       focus: group.focus,
-    }))).filter((task) => !cycle.completed.includes(task.query));
+    })));
+    const tasks = cycle.tasks.filter((task) => !cycle.completed.includes(task.query));
     const results = await dispatch("search", tasks.map((task) => ({
       options: { timeout: 180_000, maxRetries: 0 },
       params: {
@@ -381,7 +409,6 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
       try {
         const result = results[index];
         if (result.status === "rejected") throw result.reason;
-        await observe(result.value, "discovery", discoveryModel);
         if (!(result.value.usage.server_tool_use?.web_search_requests)) throw new Error("Search tool not executed");
         const parsed = parseMessage(result.value, z.object({ leads: z.array(z.unknown()) }));
         usage.completedSearches++;
@@ -415,15 +442,29 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
       }
     }
     if (usage.completedSearches === tasks.length) { state.announcementSearchAt = now.toISOString(); if (cycle.broad) state.discoveredAt = now.toISOString(); delete state.searchCycle; }
+    delete workCycle.pending;
     await store.save(key, state);
   }
+
+  }
+  const repairFirst = state.leads.some(repairPending);
+  if (!repairFirst || workCycle.pending?.phase === "search") await discover();
+  const verificationWaveLimit = repairFirst && (discoveryDue || announcementsDue || state.searchCycle) ? 2 : 3;
 
   // Monthly breadth is separate from weekly lead eligibility.
   const bootstrap = !state.lastSweepAt;
   const sweepDue = discoveryDue || bootstrap
     || now.getTime() - Date.parse(state.lastSweepAt!) >= SWEEP_DAYS * day;
-  const due = selectDueLeads(state.leads, now, bootstrap);
-  const toResolve = selectResolveLeads(state.leads, now, bootstrap);
+  const eligible = state.leads.filter((lead) => Date.parse(researchDueAt(lead)) <= now.getTime());
+  const firstChecks = fairQueue(eligible.filter((lead) => !lead.checkedAt && !(lead.attempts ?? 0))).slice(0, 5);
+  const available = [...firstChecks, ...fairQueue(eligible.filter((lead) => !firstChecks.includes(lead)))];
+  if (workCycle.finished && workCycle.waves < 3 && workCycle.leadKeys.length < 18 && available.some((lead) => !workCycle.leadKeys.includes(lead.key))) workCycle.finished = false;
+  if (!workCycle.finished) for (const lead of available) {
+    if (workCycle.leadKeys.length >= 18) break;
+    if (!workCycle.leadKeys.includes(lead.key)) workCycle.leadKeys.push(lead.key);
+  }
+  const due = available.filter((lead) => fetchTarget(lead) && workCycle.leadKeys.includes(lead.key) && !workCycle.finished);
+  const toResolve = available.filter((lead) => !fetchTarget(lead) && workCycle.leadKeys.includes(lead.key) && !workCycle.finished);
   const fetchedPages = new Map<string, Promise<OfficialPage>>();
   const directFetch = input.pageFetcher === false ? null : input.pageFetcher ?? fetchOfficialPage;
   const cachedFetch: PageFetcher = (url) => {
@@ -441,6 +482,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
   const verificationWindow = (lead: Lead) => ({ ...input, start: lead.editions.some((event) => eventLocalDate(event.endAt) >= now.toISOString().slice(0, 10) && eventLocalDate(event.startAt) < input.start) ? now.toISOString().slice(0, 10) : input.start });
   const makeRequest = async (job: Job) => {
     const { lead, kind, target } = job;
+    job.windowStart ??= verificationWindow(lead).start;
     const request = {
     options: { timeout: 180_000, maxRetries: 0 },
     params: kind === "resolve" ? {
@@ -466,18 +508,22 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
       request.params.output_config = { format: zodOutputFormat(resolutionSchema) };
       const locationWork = lead.pendingStage === "location";
       const demandWork = lead.pendingStage === "demand";
-      const query = locationWork ? `${lead.editions.find((event) => event.venue)?.venue ?? lead.title} ${input.location} officieel adres bezoek contact` : demandWork ? `${lead.title} bezoekers herkomst overnachten official visitors hotels` : `${lead.title} ${input.location} ${input.end.slice(0, 4)} toekomstige editie data official announcement`;
-      request.params.messages = [{ role: "user", content: `Search once for "${query}". Find ${locationWork ? "the official physical venue address/contact page" : demandWork ? "official series or comparable past-edition audience, attendance, hotel or travel evidence" : "the official announcement/about/calendar page for a future edition"}, beyond ${fetchTarget(lead)}. Return its exact observed URL and a short reason, or null if absent. Do not fetch or confirm dates: the application will fetch this page itself.` }];
+      const seriesName = lead.title.replace(/\b20\d{2}\b/g, "").trim();
+      const query = locationWork ? `${lead.editions.find((event) => event.venue)?.venue ?? seriesName} ${input.location} officieel adres bezoek contact` : demandWork ? `${seriesName} bezoekers herkomst overnachten official visitors hotels` : `${seriesName} ${input.location} official about upcoming editions dates`;
+      request.params.messages = [{ role: "user", content: `Search once for "${query}". Find ${locationWork ? "the official physical venue address/contact page" : demandWork ? "official series or comparable past-edition audience, attendance, hotel or travel evidence" : "the organizer's official about, dates, announcement or calendar page"}, beyond ${fetchTarget(lead)}. Return its exact observed URL and a short reason, or null if absent. Future dates or the target year do NOT have to appear in a search snippet: an official about/calendar page with a current-edition header is a valid retrieval target. Do not fetch or confirm dates: the application will fetch this page itself.` }];
     } else if (directFetch && kind !== "resolve") {
-      const attempted = attemptedByLead.get(lead.key) ?? new Set<string>();
+      const attempted = attemptedByLead.get(lead.key) ?? new Set(workCycle.retrieved![lead.key] ?? []);
       attemptedByLead.set(lead.key, attempted);
       const boundedFetch: PageFetcher = async (url) => {
         if (!attempted.has(url) && attempted.size >= 4) throw new ResearchDeferredError("Four-page retrieval limit");
         attempted.add(url);
+        workCycle.retrieved![lead.key] = [...attempted];
         return cachedFetch(url);
       };
       // Leave one of the four pages for a newly discovered announcement or venue address.
-      const retrieved = job.pages ? { pages: job.pages, errors: [] } : await retrieveOfficialPages(target ?? fetchTarget(lead)!, input.end.slice(0, 4), boundedFetch, lead.officialPages, lead.title, kind === "fetch" ? 3 : 1);
+      // Keep half the four-page allowance for an organizer discovered by the bounded search
+      // and its observed announcement/about link. A venue's practical page must not consume it.
+      const retrieved = job.pages ? { pages: job.pages, errors: [] } : await retrieveOfficialPages(target ?? fetchTarget(lead)!, input.end.slice(0, 4), boundedFetch, kind === "fetch" ? lead.officialPages : [], lead.title, 2);
       for (const error of retrieved.errors) failures.push(`${lead.title}: ${error}`);
       if (!retrieved.pages.length) {
         const cachedUrl = target ?? fetchTarget(lead)!;
@@ -499,7 +545,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
       const extractionVersion = Number(`1${input.end.slice(0, 4)}`);
       const unprocessed = retrieved.pages.filter((page) => {
         const entry = state.pageCache![page.url];
-        return !entry || entry.hash !== pageHash(page) || entry.version !== extractionVersion || !entry.complete;
+        return (repairPending(lead) && !pageOwners.has(page.url)) || !entry || entry.hash !== pageHash(page) || entry.version !== extractionVersion || !entry.complete;
       });
       const pendingPages = unprocessed.filter((page) => !pageOwners.has(page.url) || pageOwners.get(page.url) === lead.key);
       if (unprocessed.length && !pendingPages.length) throw new ResearchDeferredError("Shared page extraction already scheduled; lead remains due");
@@ -510,7 +556,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
         const hash = pageHash(page);
         const chunks = pageChunks(page);
         let cache = state.pageCache![page.url];
-        if (!cache || cache.hash !== hash || cache.version !== extractionVersion) {
+        if (!cache || cache.hash !== hash || cache.version !== extractionVersion || (repairPending(lead) && cache.complete)) {
           cache = { text: page.text, links: page.links, hash, version: extractionVersion, cursor: 0, chunks: chunks.length, complete: false, checkedAt: now.toISOString() };
           state.pageCache![page.url] = cache;
         }
@@ -530,7 +576,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
   const rememberedEvidence = (lead: Lead): OfficialPage[] => [...lead.editions, ...(lead.knownEdition?.previousLocation?.evidence ? [{ evidence: lead.knownEdition.previousLocation.evidence }] : [])].flatMap((event) => event.evidence
     ? [{ url: event.evidence.dateSourceUrl, text: event.evidence.dateText, links: [] }, { url: event.evidence.locationSourceUrl ?? event.evidence.dateSourceUrl, text: [event.evidence.locationText, event.evidence.hostCityText].filter(Boolean).join("\n"), links: [] }, ...(event.evidence.locationAddressEvidence ? [{ url: event.evidence.locationAddressEvidence.sourceUrl, text: event.evidence.locationAddressEvidence.text, links: [] }] : []), ...event.evidence.demand.map((fact) => ({ url: fact.sourceUrl, text: fact.text, links: [] }))]
     : []);
-  const applyResult = (lead: Lead, message: Anthropic.Message, pages?: OfficialPage[], checkedAt = now.toISOString()) => {
+  const applyResult = (lead: Lead, message: Anthropic.Message, pages?: OfficialPage[], checkedAt = now.toISOString(), windowStart = verificationWindow(lead).start) => {
     const parsed = parseMessage(message, editionSchema);
     if (pages) pages = [...pages, ...rememberedEvidence(lead)];
     const observed = pages ? pages.map((page) => page.url) : fetchedUrls(message);
@@ -549,7 +595,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
       const start = event.startAt.slice(0, 10);
       const end = event.endAt.slice(0, 10);
       const validDate = (date: string) => /^\d{4}-\d{2}-\d{2}$/.test(date) && Number.isFinite(Date.parse(date)) && new Date(date).toISOString().slice(0, 10) === date;
-      if (!validDate(start) || !validDate(end) || end < start || start > input.end || end < verificationWindow(lead).start) return [];
+      if (!validDate(start) || !validDate(end) || end < start || start > input.end || end < windowStart) return [];
       const evidencePages = pages?.map((page) => ({ ...page, text: state.pageCache![page.url]?.text ?? page.text, checkedAt: state.pageCache![page.url]?.checkedAt })) ?? message.content.flatMap((block) => block.type === "web_fetch_tool_result" && block.content.type === "web_fetch_result" ? [{ url: block.content.url, text: fetchedDocumentText(block.content.content) }] : []);
       const evidence = verifyEventEvidence(event.facts, event.sourceUrl, evidencePages, checkedAt, { venue: event.venue, ownerType: event.ownerType });
       const candidate: EventCandidate = {
@@ -564,10 +610,15 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
         evidenceText: event.evidenceText ?? evidence?.demand.map((fact) => fact.text).join(" ") ?? null, primarySourceConfirmed: Boolean(evidence?.locationText),
       };
       candidate.providerEventId = claudeProviderEventId(candidate);
+      const prior = lead.editions.find((old) => labelKey(old.title) === labelKey(candidate.title)
+        && eventLocalDate(old.startAt) === eventLocalDate(candidate.startAt)
+        && eventLocalDate(old.endAt) === eventLocalDate(candidate.endAt)
+        && (!/concert|performance|theatre|musical/i.test(candidate.category) || old.startAt === candidate.startAt));
+      if (prior) candidate.providerEventId = prior.providerEventId;
       return [candidate];
     });
     if (editions.length) {
-      lead.pendingStage = editions.some((event) => !event.evidence?.locationText || (event.evidence.locationScope === "venue" && !event.evidence.venueAddress)) ? "location" : editions.some((event) => !hasDemandEvidence(event)) ? "demand" : undefined;
+      lead.pendingStage = editions.some((event) => !event.evidence?.locationText || (event.evidence.locationScope === "venue" && !event.evidence.venueAddress)) ? "location" : editions.some((event) => needsDemandResearch(event)) ? "demand" : undefined;
       const ownEdition = editions.find((edition) => labelKey(edition.title) === labelKey(lead.title));
       const sameEditionDates = (a: EventCandidate, b: EventCandidate) => labelKey(a.title) === labelKey(b.title) && eventLocalDate(a.startAt) === eventLocalDate(b.startAt) && eventLocalDate(a.endAt) === eventLocalDate(b.endAt);
       // Several editions can legitimately share a series and year. A date is ambiguous only when
@@ -596,6 +647,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
   };
   const finalize = (lead: Lead) => {
     if (lead.outcome === "conflict") lead.pendingStage = "conflict";
+    if (lead.repair) lead.repair.attemptedAt = now.toISOString();
     lead.checkedAt = now.toISOString();
     lead.nextCheck = nextCheckAt(lead, now);
     if (lead.outcome === "failed" || lead.outcome === "conflict") failures.push(`${lead.title}: ${lead.notes.join(" ")}`);
@@ -604,7 +656,6 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
 
   // Resolve and fetch first, then share the deeper-page slots across both paths. Capture queue
   // priority before attempts change so resolving a missing URL does not penalize that lead.
-  const deepPriority = new Map(fairQueue([...due, ...toResolve]).map((lead, index) => [lead.key, index]));
   const deepCandidates: Job[] = [];
   let pending: Job[] = [];
   // Alternate work categories so fetch reservations cannot exhaust the budget before URL work.
@@ -612,26 +663,34 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
     if (due[index]) pending.push({ lead: due[index], kind: "fetch" });
     if (toResolve[index]) pending.push({ lead: toResolve[index], kind: "resolve" });
   }
-  const followups = new Map<string, number>();
-  for (let round = 0; round < 2 + DEEP_SLOTS * (due.length + toResolve.length); round++) {
-    if (round >= 2) {
-      if (round === 2) deepCandidates.sort((a, b) => deepPriority.get(a.lead.key)! - deepPriority.get(b.lead.key)!);
-      // Small batches leave room to fetch missing evidence before spending the rest on exploration.
-      pending = [];
-      for (let index = 0; index < deepCandidates.length && pending.length < 8;) {
-        const job = deepCandidates[index];
-        if ((followups.get(job.lead.key) ?? 0) >= DEEP_SLOTS) { index++; continue; }
-        deepCandidates.splice(index, 1);
-        pending.push(job);
-        followups.set(job.lead.key, (followups.get(job.lead.key) ?? 0) + 1);
-      }
-      if (!pending.length) break;
-    }
+  const serializeJob = ({ lead, ...job }: Job): ResearchJob => ({ ...job, leadKey: lead.key });
+  const restoreJob = ({ leadKey, ...job }: ResearchJob): Job => {
+    const lead = state.leads.find((item) => item.key === leadKey);
+    if (!lead) throw new Error("Pending research lead is missing");
+    return { ...job, lead };
+  };
+  if (workCycle.pending?.jobs) pending = workCycle.pending.jobs.map(restoreJob);
+  else if (workCycle.queued.length) {
+    const continued = workCycle.queued.filter((job) => workCycle.leadKeys.includes(job.leadKey)).map(restoreJob);
+    pending = [...continued, ...pending.filter((job) => !continued.some((old) => old.lead.key === job.lead.key))];
+  }
+  for (let round = 0; round < 3 && (!workCycle.finished && (workCycle.waves < verificationWaveLimit || workCycle.pending)); round++) {
     if (!pending.length) continue;
-    const prepared: PromiseSettledResult<Awaited<ReturnType<typeof makeRequest>>>[] = [];
-    for (let offset = 0; offset < pending.length; offset += 8) prepared.push(...await Promise.allSettled(pending.slice(offset, offset + 8).map(makeRequest)));
+    if (batching.deadline !== undefined && Date.now() >= batching.deadline) {
+      workCycle.queued = pending.map(serializeJob);
+      await store.save(key, state);
+      throw new BatchPendingError();
+    }
+    const prepared: PromiseSettledResult<MessageRequest | null>[] = [];
+    if (workCycle.pending?.jobs) {
+      let requestIndex = 0;
+      pending.forEach((job, index) => {
+        const error = workCycle.pending!.preparationErrors?.[index];
+        prepared.push(error ? { status: "rejected", reason: new Error(error) } : { status: "fulfilled", value: job.cached ? null : workCycle.pending!.requests[requestIndex++] });
+      });
+    } else for (let offset = 0; offset < pending.length; offset += 8) prepared.push(...await Promise.allSettled(pending.slice(offset, offset + 8).map(makeRequest)));
     const ready = prepared.flatMap((result) => result.status === "fulfilled" && result.value ? [result.value] : []);
-    const responses = await dispatch("verification", ready);
+    const responses = await dispatch("verification", ready, pending.map(serializeJob), Object.fromEntries(prepared.flatMap((result, index) => result.status === "rejected" ? [[index, errorText(result.reason)]] : [])));
     let responseIndex = 0;
     const results = prepared.map((result) => result.status === "rejected" ? result : result.value ? responses[responseIndex++] : null);
     pending.forEach((job, index) => {
@@ -653,6 +712,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
       const result = results[index]!;
       if (result.status === "rejected" && result.reason instanceof ResearchDeferredError) {
         lead.pendingStage ??= "retrieval";
+        next.push(job);
         drops.push({ title: lead.title, stage: "verification", reason: errorText(result.reason) });
         continue;
       }
@@ -660,7 +720,6 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
       let found = false;
       try {
         if (result.status === "rejected") throw result.reason;
-        await observe(result.value, "verification", job.kind === "resolve" ? resolutionModel : model);
         if (job.kind === "deep" && directFetch) {
           const resolved = parseMessage(result.value, resolutionSchema);
           const target = repairObservedUrl(resolved.url, sourceUrls(result.value));
@@ -680,7 +739,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
           if (resolvedUrl && resolvedUrl !== lead.blockedPage && !isAggregatorUrl(resolvedUrl)) {
             lead.url = resolvedUrl;
             lead.outcome = "pending";
-            if (round === 0) { next.push({ lead, kind: "fetch" }); continue; }
+            next.push({ lead, kind: "fetch" }); continue;
           } else {
             lead.outcome = "unannounced";
             // Without this the drop reads as "no official page exists" when the model in fact named
@@ -700,7 +759,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
           }
           if (job.kind === "evidence" && !observedUrl(job.target!, job.pages?.map((page) => page.url) ?? fetchedUrls(result.value))) throw new Error(NO_PAGE);
           const evidenceUrl = !directFetch && job.kind !== "evidence" ? unfetchedEvidenceUrl(lead, result.value) : null;
-          found = job.pages?.length || fetchedUrls(result.value).length ? applyResult(lead, result.value, job.pages, job.checkedAt) : false;
+          found = job.pages?.length || fetchedUrls(result.value).length ? applyResult(lead, result.value, job.pages, job.checkedAt, job.windowStart) : false;
           if (job.chunks) {
             const parsed = parseMessage(result.value, editionSchema);
             for (const chunk of job.chunks) {
@@ -738,17 +797,12 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
       }
       finalize(lead);
     }
+    delete workCycle.pending;
+    workCycle.queued = [...next, ...deepCandidates].map(serializeJob);
     await store.save(key, state);
-    pending = next;
+    pending = [...next, ...deepCandidates.splice(0)];
   }
-  for (const job of deepCandidates) {
-    if (job.kind === "evidence") {
-      job.lead.checkedAt = now.toISOString();
-      // Preserve the original due date until all chunks finish.
-      if (!job.lead.editions.length) job.lead.outcome = "pending";
-      drops.push({ title: job.lead.title, stage: "verification", reason: "Calendar or evidence continuation deferred by the per-lead follow-up limit." });
-    } else { job.lead.pendingStage ??= "retrieval"; }
-  }
+  if (repairFirst && !workCycle.pending) await discover();
   const candidates = [...new Map(state.leads.filter((lead) => lead.outcome !== "conflict").flatMap((lead) => lead.editions)
     .filter((event) => eventLocalDate(event.startAt) <= input.end && eventLocalDate(event.endAt) >= now.toISOString().slice(0, 10))
     .map((event) => [event.providerEventId, event])).values()];
@@ -759,7 +813,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
   for (const lead of state.leads) {
     if (lead.outcome === "conflict") lead.pendingStage = "conflict";
     else if (lead.editions.some((event) => event.latitude === null || event.longitude === null)) lead.pendingStage = "location";
-    else if (lead.editions.some((event) => !hasDemandEvidence(event))) lead.pendingStage = "demand";
+    else if (lead.editions.some((event) => needsDemandResearch(event))) lead.pendingStage = "demand";
     else if (lead.editions.length) delete lead.pendingStage;
     else if (!fetchTarget(lead)) lead.pendingStage = "url";
   }
@@ -783,13 +837,15 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
       series.projections = projectEditions(series, input.start, input.end);
     }
   }
+  workCycle.finished = true;
+  state.publicationPending = true;
   await store.save(key, state);
-  const deferred = state.leads.filter((lead) => Date.parse(lead.nextCheck) <= now.getTime()).length;
+  const deferred = state.leads.filter((lead) => Date.parse(researchDueAt(lead)) <= now.getTime()).length;
   usage.discovered = discovered;
   usage.newEditions = candidates.filter((event) => !originalIds.has(event.providerEventId)).length;
   usage.cachedEditions = candidates.filter((event) => originalIds.has(event.providerEventId)).length;
   usage.pendingLocation = candidates.filter((event) => event.latitude === null || event.longitude === null).length;
-  usage.pendingDemand = candidates.filter((event) => !hasDemandEvidence(event)).length;
+  usage.pendingDemand = candidates.filter((event) => needsDemandResearch(event)).length;
   usage.blockedSources = Object.values(state.retrievalFailures).filter((failure) => /HTTP 40[13]/.test(failure.message)).length;
   usage.unavailableSources = Object.keys(state.retrievalFailures).length;
   usage.extractionFailures = state.leads.filter((lead) => lead.pendingStage === "extraction").length;
@@ -804,9 +860,16 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
   usage.budgetDeferred = new Set(drops.filter((drop) => drop.reason.includes("Research budget exhausted")).map((drop) => drop.title)).size;
   usage.cachedLeads = state.leads.length - due.length - toResolve.length;
   usage.sweep = sweepDue ? 1 : 0;
+  if (state.research) {
+    state.research.completedAt = new Date().toISOString();
+    usage.researchLatencySeconds = Math.max(0, (Date.parse(state.research.completedAt) - Date.parse(state.research.requestedAt)) / 1000);
+    state.research.usage = usage;
+    state.research.error = [...new Set(failures)].join("; ") || undefined;
+    await store.save(key, state);
+  }
   return { source: "claude", candidates, requests, usage,
     quarantinedProviderEventIds: state.leads.filter((lead) => lead.outcome === "conflict").flatMap((lead) => lead.editions.map((event) => event.providerEventId)),
-    ...(failures.length ? { error: failures.join("; ") } : {}),
+    ...(failures.length ? { error: [...new Set(failures)].join("; ") } : {}),
     funnel: { namesDiscovered: discovered, urlsResolved: [...due, ...toResolve].filter((lead) => lead.url).length, pagesVerified: verifiedPages, demandAccepted: usage.demandAccepted, drops },
   };
 }

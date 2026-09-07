@@ -14,7 +14,7 @@ import { selectScoreEvidence } from "@/features/events/source-evidence";
 import type { EventCandidate, ValidationReason } from "@/features/events/types";
 import { validateCandidate } from "@/features/events/validate";
 import { createAdminClient } from "@/lib/supabase/admin";
-import type { Json } from "@/lib/supabase/database.types";
+import type { Database, Json } from "@/lib/supabase/database.types";
 
 import {
   CLAUDE_ASSESSMENT_VERSION,
@@ -35,6 +35,30 @@ import { longRangeWindow } from "./sources/claude";
 
 const structuredUpdateProviders = new Set(["rijksoverheid", "openholidays", "ticketmaster", "predicthq", "footballdata"]);
 const automatedSourceStates = new Set<EventCandidate["sourceState"]>(["cancelled", "postponed", "removed"]);
+
+function storedCandidate(event: Database["public"]["Tables"]["events"]["Row"], evidence: Database["public"]["Tables"]["event_sources"]["Row"]): EventCandidate {
+  return {
+    evidence: readEventEvidence(evidence.evidence),
+    provider: evidence.provider as EventCandidate["provider"],
+    providerEventId: evidence.provider_event_id,
+    sourceUrl: evidence.source_url,
+    publicSourceUrl: evidence.public_source_url,
+    title: event.title, category: event.category, venue: event.venue,
+    latitude: event.latitude, longitude: event.longitude, regionScope: event.region_scope,
+    startAt: event.start_at, endAt: event.end_at,
+    sourceState: evidence.source_state as EventCandidate["sourceState"],
+    providerDuplicateOfId: evidence.provider_duplicate_of_id,
+    providerDeletedReason: evidence.provider_deleted_reason,
+    providerCancelledAt: evidence.provider_cancelled_at,
+    providerPostponedAt: evidence.provider_postponed_at,
+    certainty: event.certainty, localRank: evidence.local_rank,
+    attendance: evidence.attendance, venueCapacity: evidence.venue_capacity,
+    aiImpactPoints: evidence.ai_impact_points,
+    overnightAudience: evidence.overnight_audience as EventCandidate["overnightAudience"],
+    evidenceText: evidence.evidence_text,
+    primarySourceConfirmed: evidence.primary_source_confirmed,
+  };
+}
 
 function publicSourceUrl(candidate: EventCandidate) {
   const value = candidate.publicSourceUrl ?? (candidate.primarySourceConfirmed ? candidate.sourceUrl : null);
@@ -354,14 +378,22 @@ export function createCollectionRepository(): CollectionRepository {
     },
 
     async persistCandidate(context, candidate) {
-      const normalized = normalizeCandidate(candidate);
       const { data: existingSource, error: sourceError } = await supabase
         .from("event_sources")
-        .select("event_id, extracted_start_at, extracted_end_at, extracted_location, evidence, source_state")
+        .select("*, events!inner(*)")
         .eq("provider", candidate.provider)
         .eq("provider_event_id", candidate.providerEventId)
         .maybeSingle();
       if (sourceError) throw sourceError;
+
+      // Background publication may resume after a fresher near-term date/status check.
+      // Reuse that evidence while still associating it with a newly eligible hotel.
+      const previousEvidence = readEventEvidence(existingSource?.evidence);
+      if (candidate.provider === "claude" && existingSource && previousEvidence?.dateText
+        && Date.parse(previousEvidence.checkedAt) > (Date.parse(candidate.evidence?.checkedAt ?? "") || 0)) {
+        candidate = storedCandidate(existingSource.events, existingSource);
+      }
+      const normalized = normalizeCandidate(candidate);
 
       let eventId: string | null = existingSource?.event_id ?? null;
       let conflict: ValidationReason | null = null;
@@ -678,34 +710,7 @@ export function createCollectionRepository(): CollectionRepository {
         if (!evidence) return [];
         return [{
           eventId: event.id,
-          candidate: {
-            evidence: readEventEvidence(evidence.evidence),
-            provider: evidence.provider as EventCandidate["provider"],
-            providerEventId: evidence.provider_event_id,
-            sourceUrl: evidence.source_url,
-            publicSourceUrl: evidence.public_source_url,
-            title: event.title,
-            category: event.category,
-            venue: event.venue,
-            latitude: event.latitude,
-            longitude: event.longitude,
-            regionScope: event.region_scope,
-            startAt: event.start_at,
-            endAt: event.end_at,
-            sourceState: evidence.source_state as EventCandidate["sourceState"],
-            providerDuplicateOfId: evidence.provider_duplicate_of_id,
-            providerDeletedReason: evidence.provider_deleted_reason,
-            providerCancelledAt: evidence.provider_cancelled_at,
-            providerPostponedAt: evidence.provider_postponed_at,
-            certainty: event.certainty,
-            localRank: evidence.local_rank,
-            attendance: evidence.attendance,
-            venueCapacity: evidence.venue_capacity,
-            aiImpactPoints: evidence.ai_impact_points,
-            overnightAudience: evidence.overnight_audience as EventCandidate["overnightAudience"],
-            evidenceText: evidence.evidence_text,
-            primarySourceConfirmed: evidence.primary_source_confirmed,
-          } satisfies EventCandidate,
+          candidate: storedCandidate(event, evidence),
         }];
       });
       const supportedIds = new Set(candidates.map(({ eventId }) => eventId));

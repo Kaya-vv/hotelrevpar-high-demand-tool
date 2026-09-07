@@ -100,6 +100,25 @@ const discoverySchema = z.object({
   agendaUrls: z.array(z.url()).max(2),
 });
 
+/** Preserve valid discovery records even when a sibling URL is malformed. */
+export function parseDiscovery(text: string, rejected: (reason: string) => void = () => {}) {
+  const raw = z.object({ candidates: z.array(z.unknown()), agendaUrls: z.array(z.unknown()) }).parse(JSON.parse(text));
+  const candidates = raw.candidates.slice(0, 10).flatMap((value) => {
+    const parsed = discoverySchema.shape.candidates.element.extend({ officialUrl: z.unknown().optional() }).safeParse(value);
+    if (!parsed.success) { rejected(parsed.error.message); return []; }
+    const url = z.url().safeParse(parsed.data.officialUrl);
+    if (parsed.data.officialUrl != null && !url.success) rejected("Invalid official URL retained as unresolved URL work.");
+    return [{ ...parsed.data, officialUrl: url.success ? url.data : null }];
+  });
+  const agendaUrls = raw.agendaUrls.flatMap((value) => {
+    const parsed = z.url().safeParse(value);
+    if (!parsed.success) { rejected("Invalid agenda URL discarded."); return []; }
+    return [parsed.data];
+  }).slice(0, 2);
+  if (raw.candidates.length && !candidates.length && !agendaUrls.length) throw new Error("No usable discovery candidates or agenda URLs.");
+  return { candidates, agendaUrls };
+}
+
 type DiscoveredCandidate = {
   title: string;
   startDate: string;
@@ -324,13 +343,15 @@ async function observeUsage(observer: UsageObserver | undefined, event: ClaudeUs
   if (observer) await observer(event);
 }
 
-type MessageRequest = {
+export type MessageRequest = {
   params: MessageCreateParamsNonStreaming;
   options: { timeout: number; maxRetries: number };
 };
 
 export type Batching = {
   enabled: boolean;
+  usageHandledByCaller?: boolean;
+  deadline?: number;
   store?: BatchStore;
   wait?: (milliseconds: number) => Promise<void>;
 };
@@ -357,6 +378,8 @@ export async function requestMessages(
   const results = await runAnthropicBatch(client, requests.map((request) => request.params), {
     store: batching.store,
     wait: batching.wait,
+    deadline: batching.deadline,
+    usageHandledByCaller: batching.usageHandledByCaller,
   });
   return results.map((result): PromiseSettledResult<Anthropic.Message> => {
     if (result.status === "rejected") return result;
@@ -577,6 +600,7 @@ export async function collectClaudeCalendar(
       return;
     }
     const value = result.value;
+    if (value.researchPending) merged.researchPending = true;
     if (index === 0 && input.runNearTerm !== false) {
       merged.usage.nearTermSucceeded = Number(!value.error && !(value.usage.completedSearches < value.usage.plannedSearches));
     }
@@ -734,7 +758,7 @@ async function collectClaudeFresh(
       }
       const text = search.content.find((block) => block.type === "text")?.text;
       if (!text) throw new Error(`Claude discovery returned no structured output (stop_reason: ${search.stop_reason}).`);
-      const parsed = discoverySchema.parse(JSON.parse(text));
+      const parsed = parseDiscovery(text, (reason) => recordDrop("Discovery response", "discovery", reason));
       parsedSearches += 1;
       const observed = sourceUrls(search);
       parsed.candidates.slice(0, 6).forEach((candidate) => discovered.push({
@@ -842,7 +866,7 @@ async function collectClaudeFresh(
       }
       const text = message.content.find((block) => block.type === "text")?.text;
       if (!text) throw new Error("Claude agenda fetch returned no structured output.");
-      discovered.push(...discoverySchema.parse(JSON.parse(text)).candidates.slice(0, 10));
+      discovered.push(...parseDiscovery(text, (reason) => recordDrop("Discovery response", "discovery", reason)).candidates.slice(0, 10));
     } catch (error) {
       failedFetches += 1;
       recordDrop(agendaTargets[index], "discovery", dropReason(error));

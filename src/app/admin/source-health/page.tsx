@@ -51,7 +51,7 @@ export function SourceHealthTable({ runs }: { runs: SourceHealthRun[] }) {
 }
 
 export default async function SourceHealthPage() {
-  const [{ requirePlatformAdmin }, { getSourceHealthRuns }, { getHotelScope }] =
+  const [{ requirePlatformAdmin }, { getSourceHealthRuns, getMarketResearchHealth }, { getHotelScope }] =
     await Promise.all([
       import("@/lib/auth/require-account"),
       import("@/features/accounts/source-health"),
@@ -60,6 +60,7 @@ export default async function SourceHealthPage() {
   const account = await requirePlatformAdmin();
   const scope = await getHotelScope(account.accountId);
   const runs = await getSourceHealthRuns();
+  const markets = await getMarketResearchHealth();
   return (
     <main className="admin-page">
       <header className="page-title"><span className="eyebrow">Platformbeheer</span><h1>Bronstatus</h1><p>De laatste 100 verzamelruns met aantallen, fouten en API-verbruik.</p></header>
@@ -70,6 +71,17 @@ export default async function SourceHealthPage() {
         <RefreshAllForm />
       </div>
       <SourceHealthTable runs={runs} />
+      {markets.length > 0 && <section className="panel">
+        <h2>Onderzoek naar toekomstige evenementen</h2>
+        <p>Gedeeld per stad en straal. Hotelverversingen wachten niet op dit onderzoek.</p>
+        {markets.map((market) => <details key={market.key}>
+          <summary>{market.city} ({market.radius} km): {!market.completedAt ? "Onderzoek loopt" : market.publicationPending ? "Publicatie in behandeling" : "Verwerkt"}</summary>
+          <p>Aangevraagd: {new Date(market.requestedAt).toLocaleString("nl-NL")}. {market.completedAt && `Onderzoek afgerond: ${new Date(market.completedAt).toLocaleString("nl-NL")}.`} {market.publishedAt && `Kalenders bijgewerkt: ${new Date(market.publishedAt).toLocaleString("nl-NL")}.`}</p>
+          <p>{market.leads} gecontroleerde leads; {market.waves} AI-rondes.</p>
+          {market.error && <p>{market.error}</p>}
+          <dl className="hotel-status-grid">{Object.entries({ Nieuwe_edities: "newEditions", Hergebruikte_edities: "cachedEditions", Locatie_onbekend: "pendingLocation", Vraag_in_onderzoek: "pendingDemand", Geblokkeerde_bronnen: "blockedSources", Oudste_achterstand_dagen: "oldestOverdueDays", Onderzoeksduur_seconden: "researchLatencySeconds", Hotelkalender_vermeldingen: "hotelPublished", Binnen_14_dagen: "announcementWithin14Days", Later_dan_14_dagen: "announcementMissed14Days", Aankondigingsdatum_onbekend: "announcementDateUnknown", Maandkosten_EUR_schatting: "monthlySpentEur", Gereserveerd_EUR: "reservedEur" }).map(([label, key]) => <div key={key}><dt>{label.replaceAll("_", " ")}</dt><dd>{market.usage?.[key]?.toFixed(2) ?? "Nog niet beschikbaar"}</dd></div>)}</dl>
+        </details>)}
+      </section>}
     </main>
   );
 }

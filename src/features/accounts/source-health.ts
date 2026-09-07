@@ -2,6 +2,24 @@ import type { DiscoveryDrop, DiscoveryFunnel } from "@/features/collection/types
 import { createAdminClient } from "@/lib/supabase/admin";
 
 import { currentSourceError } from "./source-health-state";
+import { longRangeMarketKey, type LongRangeState } from "../collection/long-range-store";
+
+export async function getMarketResearchHealth() {
+  const admin = createAdminClient();
+  const [markets, areas] = await Promise.all([
+    admin.from("long_range_markets").select("market_key, state"),
+    admin.from("collection_areas").select("search_location, radius_km"),
+  ]);
+  if (markets.error) throw markets.error;
+  if (areas.error) throw areas.error;
+  return markets.data.flatMap((market) => {
+    const state = market.state as unknown as LongRangeState;
+    const area = areas.data.find((area) => longRangeMarketKey(area.search_location, area.radius_km) === market.market_key);
+    return state.research ? [{ key: market.market_key, city: area?.search_location ?? market.market_key.slice(0, 8), radius: area?.radius_km,
+      ...state.research, publishedAt: state.publishedAt, publicationPending: state.publicationPending,
+      waves: state.cycle?.waves ?? 0, leads: state.cycle?.leadKeys.length ?? 0 }] : [];
+  });
+}
 
 export type SourceHealth = {
   research?: Record<string, number>;

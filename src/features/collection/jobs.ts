@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
 
 import { runCollection } from "./run";
+import { processMarketWork, type MarketWork } from "./market-research";
 
 export const COLLECTION_TOPIC = "hotel-collection";
 
-export type CollectionJobMessage = { jobId: string };
+export type CollectionJobMessage = { jobId: string } | MarketWork;
 export type CollectionJobTrigger = "cron" | "manual";
 export type EnqueueResult = { batchId: string; queued: number; skipped: number; failed: number };
 
@@ -21,7 +22,7 @@ export async function publishCollectionJob(
   }
   const { send } = await import("@vercel/queue");
   await send(COLLECTION_TOPIC, message, {
-    idempotencyKey: message.jobId,
+    idempotencyKey: "jobId" in message ? message.jobId : `${message.runId}:${message.kind}`,
     // Anthropic batches may use their full 24-hour processing window before a retry completes.
     retentionSeconds: 172_800,
   });
@@ -126,6 +127,7 @@ export async function processCollectionJob(
   deliveryCount: number,
   run = runCollection,
 ) {
+  if ("kind" in messageBody) return processMarketWork(messageBody);
   const { createAdminClient } = await import("@/lib/supabase/admin");
   const admin = createAdminClient();
   const { data: job, error: jobError } = await admin

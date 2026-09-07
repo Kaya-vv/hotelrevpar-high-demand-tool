@@ -44,6 +44,7 @@ export type CalendarEvent = {
 };
 
 export type LatestRun = {
+  researchPending?: boolean;
   startedAt: string;
   finishedAt: string | null;
   hadErrors?: boolean;
@@ -290,7 +291,7 @@ export function CalendarView({
     events.find((event) => event.id === selectedId) ?? events[0] ?? null;
 
   useEffect(() => {
-    if (!latestRun || latestRun.finishedAt) return;
+    if (!latestRun || (latestRun.finishedAt && !latestRun.researchPending)) return;
     const timer = window.setInterval(() => router.refresh(), 3_000);
     return () => window.clearInterval(timer);
   }, [latestRun, router]);
@@ -431,6 +432,7 @@ function RunStatus({ latestRun }: { latestRun: LatestRun }) {
             hour: "2-digit",
             minute: "2-digit",
           })}.`}
+      {latestRun.researchPending && " Onderzoek naar toekomstige evenementen loopt nog; nieuwe resultaten verschijnen automatisch."}
     </p>
   );
 }

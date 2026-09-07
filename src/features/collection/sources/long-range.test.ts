@@ -272,7 +272,8 @@ describe("long-range source leads", () => {
     expect(create).toHaveBeenCalledTimes(21);
     const deep = create.mock.calls.filter(([request]) => request.messages[0].content[1]?.text?.includes("Then read a SECOND page"));
     expect(deep).toHaveLength(10);
-    expect(deep[0][0].messages[0].content[1].text).toContain("New Arts Week");
+    expect(deep.some(([request]) => request.messages[0].content[1].text.includes("New Arts Week"))).toBe(true);
+    expect(memory.state().cycle?.waves).toBe(3);
     expect(memory.state().leads.filter((item) => item.checkedAt === now.toISOString())).toHaveLength(10);
     expect(memory.state().leads.filter((item) => item.checkedAt !== now.toISOString()).every((item) => item.nextCheck <= now.toISOString())).toBe(true);
   });

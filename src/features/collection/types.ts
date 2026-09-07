@@ -11,6 +11,7 @@ export type DiscoveryFunnel = {
   drops: DiscoveryDrop[];
 };
 export type SourceResult = {
+  researchPending?: boolean;
   source: SourceName;
   candidates: EventCandidate[];
   requests: number;

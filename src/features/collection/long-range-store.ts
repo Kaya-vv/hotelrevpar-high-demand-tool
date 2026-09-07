@@ -2,6 +2,17 @@ import { createHash, randomUUID } from "node:crypto";
 import type { EventCandidate } from "@/features/events/types";
 import type { Json } from "@/lib/supabase/database.types";
 
+import type { MessageRequest } from "./sources/claude";
+import type { OfficialPage } from "./official-pages";
+
+export type ResearchJob = { leadKey: string; windowStart?: string; kind: "fetch" | "deep" | "resolve" | "evidence"; target?: string; providerFallback?: boolean; checkedAt?: string; pages?: OfficialPage[]; cached?: boolean; chunks?: { url: string; hash: string; index: number; total: number }[] };
+export type ResearchCycle = {
+  startedAt: string; waves: number; leadKeys: string[]; finished?: boolean;
+  retrieved?: Record<string, string[]>;
+  queued: ResearchJob[];
+  pending?: { phase: "search" | "verification"; requests: MessageRequest[]; indices: number[]; reservations: string[]; total: number; jobs?: ResearchJob[]; preparationErrors?: Record<number, string> };
+};
+
 export const LONG_RANGE_VERSION = 2;
 /** Editions this account already confirmed, used to seed leads without paying for a search. */
 export type LongRangeSeed = { title: string; url: string; officialPages?: string[]; lastEditionStart?: string; lastEditionEnd: string; historicalDemandPoints?: number; previousLocation?: { venue: string | null; text: string; sourceUrl: string; checkedAt: string; evidence?: EventCandidate["evidence"] } };
@@ -16,6 +27,7 @@ export type ProjectedEdition = {
   basedOn: SeriesEdition;
 };
 export type Lead = {
+  repair?: { version: number; dueAt: string; attemptedAt?: string };
   knownEdition?: LongRangeSeed;
   officialPages?: string[];
   pendingStage?: "url" | "retrieval" | "extraction" | "location" | "demand" | "conflict";
@@ -47,7 +59,7 @@ export type Lead = {
   editions: EventCandidate[];
   notes: string[];
 };
-export type LongRangeState = { locations?: Record<string, { latitude: number; longitude: number }>;  retrievalFailures?: Record<string, { checkedAt: string; message: string }>; pageCache?: Lead["pageCache"]; searchCycle?: { dueAt: string; broad: boolean; completed: string[] }; version: number; storageVersion?: number; announcementSearchAt?: string; discoveredAt: string | null; discoveryAttemptAt?: string; lastPassAt?: string; lastSweepAt?: string; leads: Lead[];
+export type LongRangeState = { research?: { requestedAt: string; completedAt?: string; usage?: Record<string, number>; error?: string }; publishedAt?: string; cycle?: ResearchCycle; publicationPending?: boolean; locations?: Record<string, { latitude: number; longitude: number }>;  retrievalFailures?: Record<string, { checkedAt: string; message: string }>; pageCache?: Lead["pageCache"]; searchCycle?: { dueAt: string; broad: boolean; tasks?: { group: number; query: string; focus: string }[]; completed: string[] }; version: number; storageVersion?: number; announcementSearchAt?: string; discoveredAt: string | null; discoveryAttemptAt?: string; lastPassAt?: string; lastSweepAt?: string; leads: Lead[];
   budget?: { month: string; spentEur: number; reservations: Record<string, number>; billedIds: string[] };
 };
 export type LongRangeStore = {

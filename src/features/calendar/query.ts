@@ -77,7 +77,7 @@ export async function getCalendarData(
       areaId
         ? supabase
             .from("collection_runs")
-            .select("started_at, finished_at, error_summary")
+            .select("started_at, finished_at, error_summary, source_results")
             .eq("account_id", accountId)
             .eq("collection_area_id", areaId)
             .order("started_at", { ascending: false })
@@ -177,10 +177,20 @@ export async function getCalendarData(
 
   let latestRun: LatestRun | null = null;
   if (runResult.data) {
+    const sourceResults = runResult.data.source_results as { claude?: { researchPending?: boolean } } | null;
+    let researchPending = Boolean(sourceResults?.claude?.researchPending);
+    if (researchPending && areaId) {
+      const { data: area, error } = await supabase.from("collection_areas").select("search_location, radius_km").eq("account_id", accountId).eq("id", areaId).single();
+      if (error) throw error;
+      const { createLongRangeStore, longRangeMarketKey } = await import("../collection/long-range-store");
+      const state = await createLongRangeStore().load(longRangeMarketKey(area.search_location, area.radius_km));
+      researchPending = !state?.publishedAt || state.publishedAt < runResult.data.started_at || Boolean(state.publicationPending);
+    }
     latestRun = {
       startedAt: runResult.data.started_at,
       finishedAt: runResult.data.finished_at,
       hadErrors: Boolean(runResult.data.error_summary),
+      researchPending,
     };
   }
   return {

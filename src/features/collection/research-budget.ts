@@ -23,7 +23,7 @@ export function researchBudget(state: LongRangeState, now: Date, ceilingEur = 5)
   const month = now.toISOString().slice(0, 7);
   if (!state.budget || state.budget.month !== month) {
     // Unknown in-flight spend survives a month boundary until reconciled.
-    state.budget = { month, spentEur: 0, reservations: state.budget?.reservations ?? {}, billedIds: [] };
+    state.budget = { month, spentEur: 0, reservations: state.budget?.reservations ?? {}, billedIds: state.budget?.billedIds ?? [] };
   }
   const ledger = state.budget;
   return {
