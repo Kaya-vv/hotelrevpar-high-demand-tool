@@ -17,6 +17,7 @@ export const overnightAudiences = [
 export type OvernightAudience = (typeof overnightAudiences)[number];
 
 export type EventCandidate = {
+  evidence?: import("./evidence").EventEvidence;
   provider: SourceName;
   providerEventId: string;
   sourceUrl: string;

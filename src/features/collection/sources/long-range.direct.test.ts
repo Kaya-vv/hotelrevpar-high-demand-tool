@@ -24,9 +24,9 @@ it("fetches linked pages in code and accepts only supplied page evidence, withou
   const input = { start: "2027-01-01", end: "2027-12-31", location: "Eindhoven", radiusKm: 25, now, model: "claude-sonnet-5",
     client: { messages: { create } } as unknown as Anthropic, batching: { enabled: false }, pageFetcher, store };
   const result = await collectLongRange(input);
-  expect(result.candidates[0]).toMatchObject({ startAt: "2027-10-23T00:00:00Z", aiImpactPoints: null });
+  expect(result.candidates[0]).toMatchObject({ startAt: "2027-10-22T22:00:00.000Z", aiImpactPoints: null });
   expect(pageFetcher).toHaveBeenCalledTimes(2);
-  expect(create).toHaveBeenCalledTimes(1);
+  expect(create).toHaveBeenCalledTimes(2);
   expect((create.mock.calls as unknown[][])[0][0]).toMatchObject({ tools: [] });
   expect(state.leads[0].officialPage).toBe("https://organizer.example/about");
   expect((await collectLongRange(input)).requests).toBe(0);

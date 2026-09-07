@@ -35,6 +35,21 @@ const candidate: EventCandidate = {
 };
 
 describe("event domain", () => {
+  it("keeps consecutive concerts and separately timed performances distinct", () => {
+    const first = normalizeCandidate({ ...candidate, category: "concerts", title: "Tour show", startAt: "2027-04-20T18:00:00+02:00", endAt: "2027-04-20T20:00:00+02:00" });
+    for (const startAt of ["2027-04-21T18:00:00+02:00", "2027-04-20T21:00:00+02:00"]) {
+      const next = normalizeCandidate({ ...candidate, providerEventId: "next", category: "concerts", title: "Tour show", startAt, endAt: startAt });
+      expect(classifyMatch(next, [{ ...first, id: "first" }])).toEqual({ kind: "new", eventId: null });
+    }
+  });
+
+  it("uses supported aliases only with the same date and host location", () => {
+    const first = normalizeCandidate({ ...candidate, title: "Arts and Design Week" });
+    const alias = normalizeCandidate({ ...candidate, providerEventId: "alias", title: "ADW", evidence: { dateText: "Official dated edition", locationText: "Official host location", hostCity: "Eindhoven", locationScope: "citywide", continuous: true, majorCompetition: false, demand: [], aliases: ["Arts and Design Week"], dateSourceUrl: candidate.sourceUrl!, checkedAt: "2026-09-07" } });
+    expect(classifyMatch(alias, [{ ...first, id: "first" }]).kind).toBe("exact");
+    expect(classifyMatch({ ...alias, latitude: 53.2 }, [{ ...first, id: "first" }]).kind).toBe("new");
+  });
+
   it("publishes only High and Peak demand with evidence", () => {
     expect(publishableDemandLevels).toEqual(["High", "Peak"]);
     expect(isPublishableDemand("Medium", "attendance")).toBe(false);

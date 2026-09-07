@@ -1,0 +1,362 @@
+{
+  "provenance": "Actual provider rejection from isolated seedless evaluation on 2026-09-07; no synthetic response",
+  "error": {
+    "message": "400 {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"The compiled grammar is too large, which would cause performance issues. Simplify your tool schemas or reduce the number of strict tools.\"},\"request_id\":\"req_011CeozSpwx1aLr86VqFjw9J\"}",
+    "status": 400
+  },
+  "schema": {
+    "$defs": {
+      "__schema0": {
+        "type": "object",
+        "properties": {
+          "sourceUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "title": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "venue": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "latitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "longitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "regionScope": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "startAt": {
+            "type": "string"
+          },
+          "endAt": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "description": "{enum: [\"active\",\"cancelled\",\"postponed\"]}"
+          },
+          "ownerType": {
+            "type": "string",
+            "description": "{enum: [\"organizer\",\"venue\",\"club\",\"federation\",\"ticket_provider\",\"university\",\"municipality\",\"event_owner\",\"other\"]}"
+          },
+          "evidenceText": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "attendance": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "description": "{minimum: -9007199254740991, maximum: 9007199254740991}"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "venueCapacity": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "description": "{minimum: -9007199254740991, maximum: 9007199254740991}"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "impactPoints": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "description": "{minimum: -9007199254740991, maximum: 9007199254740991}"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "overnightAudience": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "{enum: [\"none\",\"regional\",\"national\",\"international\"]}"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "titleConfirmed": {
+            "type": "boolean"
+          },
+          "dateConfirmed": {
+            "type": "boolean"
+          },
+          "locationConfirmed": {
+            "type": "boolean"
+          },
+          "facts": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "dateText": {
+                    "type": "string"
+                  },
+                  "announcedAt": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "announcementText": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "announcementSourceUrl": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "uri"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "aliases": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/__schema1"
+                    },
+                    "description": "{maxItems: 5}"
+                  },
+                  "identityText": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "locationText": {
+                    "type": "string"
+                  },
+                  "venueAddress": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "locationSourceUrl": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "uri"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "hostCity": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "locationScope": {
+                    "type": "string",
+                    "description": "{enum: [\"venue\",\"citywide\",\"unknown\"]}"
+                  },
+                  "continuous": {
+                    "type": "boolean"
+                  },
+                  "majorCompetition": {
+                    "type": "boolean"
+                  },
+                  "demand": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/__schema2"
+                    },
+                    "description": "{maxItems: 4}"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "dateText",
+                  "locationText",
+                  "hostCity",
+                  "locationScope",
+                  "continuous",
+                  "majorCompetition",
+                  "demand"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "sourceUrl",
+          "title",
+          "category",
+          "venue",
+          "latitude",
+          "longitude",
+          "regionScope",
+          "startAt",
+          "endAt",
+          "status",
+          "ownerType",
+          "evidenceText",
+          "attendance",
+          "venueCapacity",
+          "impactPoints",
+          "overnightAudience",
+          "titleConfirmed",
+          "dateConfirmed",
+          "locationConfirmed"
+        ]
+      },
+      "__schema1": {
+        "type": "string"
+      },
+      "__schema2": {
+        "type": "object",
+        "properties": {
+          "sourceUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "text": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string",
+            "description": "{enum: [\"edition\",\"series\",\"historical\"]}"
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "description": "{minimum: -9007199254740991, maximum: 9007199254740991}"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "comparable": {
+            "type": "boolean"
+          },
+          "applicability": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "sourceUrl",
+          "text",
+          "scope",
+          "year",
+          "comparable"
+        ]
+      }
+    },
+    "type": "object",
+    "properties": {
+      "events": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/__schema0"
+        },
+        "description": "{maxItems: 8}"
+      },
+      "reason": {
+        "type": "string"
+      },
+      "more": {
+        "type": "boolean"
+      }
+    },
+    "additionalProperties": false,
+    "required": [
+      "events",
+      "reason"
+    ],
+    "description": "{$schema: \"https://json-schema.org/draft/2020-12/schema\"}"
+  }
+}

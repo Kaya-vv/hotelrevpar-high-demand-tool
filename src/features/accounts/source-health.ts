@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { currentSourceError } from "./source-health-state";
 
 export type SourceHealth = {
+  research?: Record<string, number>;
   name: string;
   state: string;
   lastSuccess: string | null;
@@ -109,6 +110,7 @@ export async function getSourceHealthRuns(): Promise<SourceHealthRun[]> {
         const recordedUsage = usageByRunSource.get(`${run.id}:${name}`);
         return {
           name,
+          research: source?.usage,
           state: source?.state ?? "not_run",
           lastSuccess: lastSuccess.get(`${run.account_id}:${run.collection_area_id}:${name}`) ?? null,
           currentError: currentSourceError(source, run.finished_at),

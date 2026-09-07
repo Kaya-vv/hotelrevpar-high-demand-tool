@@ -1,4 +1,5 @@
-import { normalizeCandidate } from "@/features/events/normalize";
+import { readEventEvidence } from "@/features/events/evidence";
+import { normalizeCandidate, eventLocalDate } from "@/features/events/normalize";
 import { fetchInBatches } from "@/lib/supabase/fetch-in-batches";
 import { classifyMatch } from "@/features/events/match";
 import { isPublishableDemand, type DemandLevel } from "@/features/events/importance";
@@ -133,7 +134,7 @@ export function createCollectionRepository(): CollectionRepository {
           links.map((link) => link.event_id),
           (ids) => supabase
             .from("event_sources")
-            .select("event_id, source_url, public_source_url, extracted_start_at, extracted_end_at, checked_at, ai_impact_points")
+            .select("event_id, source_url, public_source_url, extracted_start_at, extracted_end_at, checked_at, ai_impact_points, extracted_location, evidence")
             .eq("primary_source_confirmed", true)
             .in("event_id", ids),
         )
@@ -141,7 +142,7 @@ export function createCollectionRepository(): CollectionRepository {
       const seedRows = selectLongRangeSeeds(confirmedSources);
       const seedTitles = seedRows.length
         ? await fetchInBatches(seedRows.map((row) => row.eventId), (ids) =>
-          supabase.from("events").select("id, title").in("id", ids))
+          supabase.from("events").select("id, title, venue").in("id", ids))
         : [];
       const reassessmentDue = refreshSources.some((source) => source.needs_reassessment);
       // A third of every run's verification budget went to events this area already holds as
@@ -189,11 +190,11 @@ export function createCollectionRepository(): CollectionRepository {
           endDate: event.end_at?.slice(0, 10) ?? null,
         })),
         longRangeSeeds: seedRows.flatMap((row) => {
-          const title = seedTitles.find((event) => event.id === row.eventId)?.title;
-          const lastEditionStart = confirmedSources.find((source) => source.event_id === row.eventId
-            && (source.public_source_url ?? source.source_url) === row.url
-            && (source.extracted_end_at ?? source.extracted_start_at).slice(0, 10) === row.lastEditionEnd)?.extracted_start_at?.slice(0, 10);
-          return title ? [{ title, url: row.url, lastEditionStart, lastEditionEnd: row.lastEditionEnd, historicalDemandPoints: row.historicalDemandPoints }] : [];
+          const storedEvent = seedTitles.find((event) => event.id === row.eventId);
+          const title = storedEvent?.title;
+          const source = confirmedSources.filter((source) => source.event_id === row.eventId && (source.public_source_url ?? source.source_url) === row.url).sort((a, b) => b.checked_at.localeCompare(a.checked_at))[0];
+          const lastEditionStart = source ? eventLocalDate(source.extracted_start_at) : undefined;
+          return title ? [{ title, url: row.url, officialPages: [...new Set([row.url, ...confirmedSources.filter((source) => source.event_id === row.eventId).map((source) => source.public_source_url ?? source.source_url)])].filter((url) => /^https?:\/\//i.test(url)).slice(0, 4), lastEditionStart, lastEditionEnd: row.lastEditionEnd, historicalDemandPoints: row.historicalDemandPoints, ...(source?.extracted_location ? { previousLocation: { venue: storedEvent?.venue ?? null, text: source.extracted_location, sourceUrl: row.url, checkedAt: source.checked_at, evidence: readEventEvidence(source.evidence) } } : {}) }] : [];
         }),
         // Retain source history after an edition ends to discover future programmes.
         // These seed agendas only: checking old editions against a future window must not invalidate them.
@@ -356,7 +357,7 @@ export function createCollectionRepository(): CollectionRepository {
       const normalized = normalizeCandidate(candidate);
       const { data: existingSource, error: sourceError } = await supabase
         .from("event_sources")
-        .select("event_id, extracted_start_at, extracted_location")
+        .select("event_id, extracted_start_at, extracted_end_at, extracted_location, evidence, source_state")
         .eq("provider", candidate.provider)
         .eq("provider_event_id", candidate.providerEventId)
         .maybeSingle();
@@ -514,6 +515,11 @@ export function createCollectionRepository(): CollectionRepository {
         if (error) throw error;
       }
 
+      if (candidate.evidence && existingSource) {
+        const previous = readEventEvidence(existingSource.evidence);
+        const changed = Date.parse(existingSource.extracted_start_at) !== Date.parse(candidate.startAt) || Date.parse(existingSource.extracted_end_at ?? existingSource.extracted_start_at) !== Date.parse(candidate.endAt) || existingSource.source_state !== candidate.sourceState;
+        if (previous) candidate.evidence.history = [...(previous.history ?? []), ...(changed ? [{ checkedAt: previous.checkedAt, startAt: existingSource.extracted_start_at, endAt: existingSource.extracted_end_at ?? existingSource.extracted_start_at, status: existingSource.source_state, dateText: previous.dateText, dateSourceUrl: previous.dateSourceUrl }] : [])];
+      }
       const verifiedPublicUrl = publicSourceUrl(candidate);
       const primarySourceConfirmed = candidate.primarySourceConfirmed && Boolean(verifiedPublicUrl);
       const { data: evidence, error: evidenceError } = await supabase.from("event_sources").upsert(
@@ -528,6 +534,7 @@ export function createCollectionRepository(): CollectionRepository {
           extracted_end_at: candidate.endAt,
           extracted_location: candidate.venue ?? candidate.regionScope,
           evidence_text: candidate.evidenceText,
+          evidence: candidate.evidence ? JSON.parse(JSON.stringify(candidate.evidence)) as Json : null,
           source_state: candidate.sourceState,
           certainty: candidate.certainty,
           local_rank: candidate.localRank,
@@ -549,7 +556,7 @@ export function createCollectionRepository(): CollectionRepository {
 
       const validation = validateCandidate(
         { ...candidate, primarySourceConfirmed },
-        candidate.provider === "claude"
+        ["claude", "openholidays", "rijksoverheid"].includes(candidate.provider)
           ? { start: context.window.start, end: longRangeWindow(context.window).end }
           : context.window,
         conflict as Parameters<typeof validateCandidate>[2],
@@ -672,6 +679,7 @@ export function createCollectionRepository(): CollectionRepository {
         return [{
           eventId: event.id,
           candidate: {
+            evidence: readEventEvidence(evidence.evidence),
             provider: evidence.provider as EventCandidate["provider"],
             providerEventId: evidence.provider_event_id,
             sourceUrl: evidence.source_url,
@@ -703,6 +711,8 @@ export function createCollectionRepository(): CollectionRepository {
       const supportedIds = new Set(candidates.map(({ eventId }) => eventId));
       const unsupportedIds = activeIds.filter((id) => !supportedIds.has(id));
 
+      const published = new Set<string>();
+      const latency = { announcementWithin14Days: 0, announcementMissed14Days: 0, announcementDateUnknown: 0 };
       for (const hotel of context.hotels) {
         for (let index = 0; index < unsupportedIds.length; index += 50) {
           const { error } = await supabase
@@ -741,11 +751,38 @@ export function createCollectionRepository(): CollectionRepository {
           const { error } = await supabase.from("hotel_event_scores").upsert(rows.slice(index, index + 200));
           if (error) throw error;
         }
+        // Query the persisted score, including preserved account overrides, after recalculation.
+        const scores = await fetchInBatches(activeIds, (ids) => supabase.from("hotel_event_scores").select("event_id, suggested_importance, importance_override, impact_basis, first_eligible_at").eq("hotel_id", hotel.id).in("event_id", ids));
+        for (const score of scores) {
+          const event = events.find((event) => event.id === score.event_id);
+          if (event?.certainty === "confirmed" && event.start_at.slice(0, 10) > context.window.end && supportedIds.has(event.id)
+            && isPublishableDemand((score.importance_override ?? score.suggested_importance) as DemandLevel, score.impact_basis)) {
+            published.add(`${hotel.id}:${event.id}`);
+            const firstEligibleAt = score.first_eligible_at ?? new Date().toISOString();
+            if (!score.first_eligible_at) {
+              const { error } = await supabase.from("hotel_event_scores").update({ first_eligible_at: firstEligibleAt }).eq("hotel_id", hotel.id).eq("event_id", event.id).is("first_eligible_at", null);
+              if (error) throw error;
+            }
+            const announcedAt = candidates.find((candidate) => candidate.eventId === event.id)?.candidate.evidence?.announcedAt;
+            if (!announcedAt) latency.announcementDateUnknown++;
+            else if ((Date.parse(firstEligibleAt.slice(0, 10)) - Date.parse(announcedAt)) / 86400000 <= 14) latency.announcementWithin14Days++;
+            else latency.announcementMissed14Days++;
+          }
+        }
       }
+      return { hotelPublished: published.size, ...latency };
     },
 
     async recordUsage(runId, source, usage) {
-      const { error } = await supabase.from("collection_usage_events").insert({
+      if (!usage.requestId && !(usage.inputTokens + usage.outputTokens + usage.webSearchRequests + (usage.cacheWriteTokens ?? 0) + (usage.cacheReadTokens ?? 0))) return;
+      const { error } = await supabase.from("collection_usage_events").upsert({
+        request_id: usage.requestId ?? null,
+        market_key: usage.marketKey ?? null,
+        horizon: usage.horizon ?? null,
+        cache_write_tokens: usage.cacheWriteTokens ?? 0,
+        cache_read_tokens: usage.cacheReadTokens ?? 0,
+        billing_mode: usage.billingMode ?? null,
+        estimated_cost_usd: usage.estimatedCostUsd ?? null,
         collection_run_id: runId,
         source,
         phase: usage.phase,
@@ -754,7 +791,7 @@ export function createCollectionRepository(): CollectionRepository {
         output_tokens: usage.outputTokens,
         web_search_requests: usage.webSearchRequests,
         web_fetch_requests: usage.webFetchRequests,
-      });
+      }, { onConflict: "request_id", ignoreDuplicates: true });
       if (error) throw error;
     },
 

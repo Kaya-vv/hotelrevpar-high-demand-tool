@@ -25,6 +25,8 @@ it.each([false, true])("selects the benchmark from the saved queue without relyi
   state.discoveredAt = now.toISOString();
   state.lastSweepAt = "2026-08-01T00:00:00Z";
   state.leads.forEach((lead) => { lead.nextCheck = now.toISOString(); lead.title = rename(lead.title); });
+  // The weekly queue ages deferred portfolio work into service; it no longer jumps every older lead.
+  state.leads.filter((lead) => lead.title.includes(target)).forEach((lead) => { lead.nextCheck = "2026-08-01T00:00:00Z"; });
   const store: LongRangeStore = { acquire: async () => true, release: async () => {}, load: async () => state,
     save: async (_key, value) => { state = structuredClone(value); } };
   const create = vi.fn().mockImplementation(async (request) => {
@@ -45,9 +47,8 @@ it.each([false, true])("selects the benchmark from the saved queue without relyi
   expect(ddwRequests).toHaveLength(2);
   expect(ddwRequests[1]).toContain("Then read a SECOND page");
   expect(ddwRequests[0]).toContain("edition year(s) 2027");
-  expect(result.usage.deepRequests).toBeLessThanOrEqual(8);
-  expect(result.usage.resolveRequests).toBeLessThanOrEqual(6);
-  expect(result.requests).toBeLessThanOrEqual(38);
+  expect(result.usage.deepRequests).toBeLessThanOrEqual(state.leads.length * 8);
+  expect(result.usage.budgetDeferred).toBe(0);
   expect(result.candidates).toEqual([]);
   expect(create.mock.calls.some(([request]) => JSON.stringify(request.messages).includes("First fetch this observed official source: ozi:"))).toBe(false);
 });

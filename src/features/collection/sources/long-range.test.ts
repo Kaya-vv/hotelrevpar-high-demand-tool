@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type Anthropic from "@anthropic-ai/sdk";
-import { collectLongRange, isAggregatorUrl, nextCheckAt, pruneLeads, repairObservedUrl, selectDueLeads, selectResolveLeads } from "./long-range";
+import { collectLongRange, isAggregatorUrl, nextCheckAt, repairObservedUrl, selectDueLeads, selectResolveLeads } from "./long-range";
 import { collectClaudeCalendar } from "./claude";
 import { LongRangeLeaseError, longRangeMarketKey, type Lead, type LongRangeState, type LongRangeStore } from "../long-range-store";
 
@@ -42,7 +42,7 @@ const toolNames = (call: { tools: { name: string }[] }[]) => call[0].tools.map((
 describe("long-range source leads", () => {
   afterEach(() => vi.unstubAllEnvs());
 
-  it("shares the eight follow-up slots between exploration and explicit evidence fetches", async () => {
+  it("finishes both follow-up stages for all due leads when budget permits", async () => {
     const about = "https://organizer.example/about";
     const create = vi.fn().mockImplementation(async (request) => {
       const prompt = request.messages[0].content[1].text;
@@ -60,9 +60,9 @@ describe("long-range source leads", () => {
     const memory = memoryStore(warmState(Array.from({ length: 9 }, (_, index) => lead({ key: `lead-${index}`, title: `Series ${index}` })),
       { lastSweepAt: "2026-08-01T00:00:00Z" }));
     const result = await collectLongRange({ ...input, store: memory.store, client: client(create) });
-    expect(result.usage.deepRequests + result.usage.evidenceRequests).toBe(8);
-    expect(result.usage.evidenceRequests).toBe(4);
-    expect(result.requests).toBe(17);
+    expect(result.usage.deepRequests + result.usage.evidenceRequests).toBe(18);
+    expect(result.usage.evidenceRequests).toBe(9);
+    expect(result.requests).toBe(27);
   });
 
   it("uses a known edition as an internal announcement target before it ends, without publishing the estimate", async () => {
@@ -92,6 +92,7 @@ describe("long-range source leads", () => {
     const seeds = [{ title: "Annual Arts Week", url, lastEditionStart: "2027-05-21", lastEditionEnd: "2027-05-23" }];
     const later = new Date("2026-12-05T12:00:00Z");
     memory.state().discoveredAt = later.toISOString();
+    memory.state().announcementSearchAt = later.toISOString();
     await collectLongRange({ ...input, now: later, seeds, store: memory.store, client: client(create) });
     expect(JSON.stringify(create.mock.calls[1][0].messages)).toContain(`First fetch this observed official source: ${about}`);
     expect(memory.state().leads[0]).toMatchObject({ officialPage: about, url: about, outcome: "failed" });
@@ -100,6 +101,7 @@ describe("long-range source leads", () => {
     memory.state().leads[0].url = null;
     const nextDue = new Date(memory.state().leads[0].nextCheck);
     memory.state().discoveredAt = nextDue.toISOString();
+    memory.state().announcementSearchAt = nextDue.toISOString();
     create.mockResolvedValue(confirmed);
     const refreshed = await collectLongRange({ ...input, now: nextDue, seeds, store: memory.store, client: client(create) });
     expect(refreshed.usage.resolveRequests ?? 0).toBe(0);
@@ -115,8 +117,8 @@ describe("long-range source leads", () => {
       usage: { input_tokens: 0, output_tokens: 0, server_tool_use: { web_search_requests: 1 } },
     });
     const result = await collectLongRange({ ...input, discoveryModel: blank, store: memoryStore(null).store, client: client(create) });
-    expect(result.usage.completedSearches).toBe(10);
-    expect(create).toHaveBeenCalledTimes(10);
+    expect(result.usage.completedSearches).toBe(14);
+    expect(create).toHaveBeenCalledTimes(14);
     expect(create.mock.calls.every(([request]) => request.model === input.model)).toBe(true);
 
     create.mockReset().mockResolvedValueOnce(resolution(url)).mockResolvedValue(response([event()]));
@@ -153,6 +155,7 @@ describe("long-range source leads", () => {
     await run(now);
     for (const at of ["2026-12-05T12:00:00Z", "2027-03-06T12:00:00Z"]) {
       memory.state().discoveredAt = at;
+    memory.state().announcementSearchAt = at;
       const result = await run(new Date(at));
       expect(result.candidates).toHaveLength(2);
       expect(result.quarantinedProviderEventIds).toEqual([]);
@@ -165,6 +168,7 @@ describe("long-range source leads", () => {
     const memory = memoryStore(warmState());
     await collectLongRange({ ...input, store: memory.store, client: client(create) });
     memory.state().discoveredAt = "2026-12-05T12:00:00Z";
+    memory.state().announcementSearchAt = "2026-12-05T12:00:00Z";
     const result = await collectLongRange({ ...input, now: new Date("2026-12-05T12:00:00Z"), store: memory.store, client: client(create) });
     expect(result.candidates).toEqual([]);
     expect(memory.state().leads[0].editions.map((item) => item.endAt.slice(0, 10))).toEqual(["2027-05-23", "2027-05-24"]);
@@ -195,9 +199,9 @@ describe("long-range source leads", () => {
     await expect(run()).resolves.toMatchObject({ source: "claude" });
   });
 
-  it("bootstraps ten searches, rejects aggregator URLs and resolves them off the main model", async () => {
+  it("bootstraps fourteen searches, rejects aggregator URLs and resolves them off the main model", async () => {
     const create = vi.fn();
-    for (let i = 0; i < 10; i++) create.mockResolvedValueOnce({
+    for (let i = 0; i < 14; i++) create.mockResolvedValueOnce({
       stop_reason: "end_turn",
       content: [{ type: "web_search_tool_result", content: [{ url: "https://en.wikipedia.org/wiki/Arts_Week" }] },
         { type: "text", text: JSON.stringify({ leads: i === 0 ? [{ title: "Annual Arts Week 2026", url: "https://en.wikipedia.org/wiki/Arts_Week", kind: "event" }] : [] }) }],
@@ -206,11 +210,11 @@ describe("long-range source leads", () => {
     create.mockResolvedValueOnce(resolution(url)).mockResolvedValue(response([event()]));
     const memory = memoryStore(null);
     const result = await collectLongRange({ ...input, store: memory.store, client: client(create) });
-    expect(result.usage.completedSearches).toBe(10);
+    expect(result.usage.completedSearches).toBe(14);
     // The Wikipedia hit is a name, never a fetch target, so the lead arrives without a URL.
-    expect(toolNames(create.mock.calls[10])).toContain("web_search");
-    expect(create.mock.calls[10][0].model).not.toBe("claude-sonnet-5");
-    expect(result.candidates[0]).toMatchObject({ title: "Annual Arts Week", aiImpactPoints: null, primarySourceConfirmed: true });
+    expect(toolNames(create.mock.calls[14])).toContain("web_search");
+    expect(create.mock.calls[14][0].model).not.toBe("claude-sonnet-5");
+    expect(result.candidates[0]).toMatchObject({ title: "Annual Arts Week", aiImpactPoints: null, primarySourceConfirmed: false });
     expect(memory.state().leads[0].url).toBe(url);
     const discoveryPrompts = create.mock.calls.slice(0, 10).map(([request]) => request.messages[0].content).join(" ");
     expect(discoveryPrompts).not.toContain("Annual Arts Week");
@@ -221,8 +225,8 @@ describe("long-range source leads", () => {
     const memory = memoryStore(warmState([lead({ url: null })]));
     const result = await collectLongRange({ ...input, store: memory.store, client: client(create) });
     expect(create).toHaveBeenCalledTimes(2);
-    expect(result.usage).toMatchObject({ datesConfirmed: 1, demandAccepted: 0 });
-    expect(memory.state().leads[0].nextCheck).toBe("2026-12-04T12:00:00.000Z");
+    expect(result.usage).toMatchObject({ datesConfirmed: 0, demandAccepted: 0 });
+    expect(memory.state().leads[0].nextCheck).toBe("2026-09-12T12:00:00.000Z");
     const warm = await collectLongRange({ ...input, location: " eindhoven ", store: memory.store, client: client(create) });
     expect(warm.requests).toBe(0);
     expect(warm.usage.inputTokens).toBe(0);
@@ -250,13 +254,13 @@ describe("long-range source leads", () => {
     const memory = memoryStore(warmState([lead({ url: null })]));
     const result = await collectLongRange({ ...input, store: memory.store, client: client(create) });
     expect(create).toHaveBeenCalledTimes(3);
-    expect(result.usage).toMatchObject({ resolveRequests: 1, fetchRequests: 1, deepRequests: 1, datesConfirmed: 1 });
+    expect(result.usage).toMatchObject({ resolveRequests: 1, fetchRequests: 1, deepRequests: 1, datesConfirmed: 0 });
     expect(create.mock.calls[2][0].messages[0].content[1].text).toContain("Then read a SECOND page");
     expect(memory.state().leads[0].outcome).toBe("confirmed");
     expect((await collectLongRange({ ...input, store: memory.store, client: client(create) })).requests).toBe(0);
   });
 
-  it("shares the existing deeper-page cap with newly resolved leads using their original queue priority", async () => {
+  it("preserves original queue priority for newly resolved leads without dropping other due follow-ups", async () => {
     const known = Array.from({ length: 9 }, (_, i) => lead({ key: `known-${i}`, title: `Known ${i}`, url: `https://organizer.example/${i}`, attempts: 3 }));
     const fresh = lead({ key: "new", title: "New Arts Week", url: null });
     const create = vi.fn().mockImplementation((request) => Promise.resolve(
@@ -264,12 +268,13 @@ describe("long-range source leads", () => {
     ));
     const memory = memoryStore(warmState([...known, fresh], { lastSweepAt: "2026-08-01T12:00:00Z" }));
     const result = await collectLongRange({ ...input, store: memory.store, client: client(create) });
-    expect(result.usage).toMatchObject({ resolveRequests: 1, fetchRequests: 10, deepRequests: 8 });
-    expect(create).toHaveBeenCalledTimes(19);
+    expect(result.usage).toMatchObject({ resolveRequests: 1, fetchRequests: 10, deepRequests: 10 });
+    expect(create).toHaveBeenCalledTimes(21);
     const deep = create.mock.calls.filter(([request]) => request.messages[0].content[1]?.text?.includes("Then read a SECOND page"));
-    expect(deep).toHaveLength(8);
+    expect(deep).toHaveLength(10);
     expect(deep[0][0].messages[0].content[1].text).toContain("New Arts Week");
-    expect(memory.state().leads.every((item) => item.checkedAt === now.toISOString())).toBe(true);
+    expect(memory.state().leads.filter((item) => item.checkedAt === now.toISOString())).toHaveLength(10);
+    expect(memory.state().leads.filter((item) => item.checkedAt !== now.toISOString()).every((item) => item.nextCheck <= now.toISOString())).toBe(true);
   });
 
   it("sends a calendar hub one level deeper even after it produced editions", async () => {
@@ -325,6 +330,7 @@ describe("long-range source leads", () => {
     // A confirmed lead waits 90 days, so the refresh has to happen after that and outside the
     // monthly discovery window to isolate the scheduled source refresh.
     memory.state().discoveredAt = "2026-12-01T12:00:00Z";
+    memory.state().announcementSearchAt = "2026-12-10T12:00:00Z";
     const changed = await collectLongRange({ ...input, now: new Date("2026-12-10T12:00:00Z"), store: memory.store, client: client(create) });
     expect(memory.state().leads[0].outcome).toBe("conflict");
     expect(memory.state().leads[0].editions).toHaveLength(2);
@@ -332,13 +338,13 @@ describe("long-range source leads", () => {
     expect(changed.error).toContain("Conflicting dates");
   });
 
-  it("checks a lead weekly inside its announcement window and monthly outside it", () => {
+  it("checks a lead weekly regardless of edition outcome or announcement window", () => {
     const anchored = (days: number) => nextCheckAt(lead({ anchor: new Date(now.getTime() - days * 86_400_000).toISOString().slice(0, 10) }), now);
     expect(anchored(30)).toBe("2026-09-12T12:00:00.000Z");
-    expect(anchored(200)).toBe("2026-10-03T12:00:00.000Z");
-    expect(anchored(-10)).toBe("2026-10-03T12:00:00.000Z");
-    expect(nextCheckAt(lead({ outcome: "confirmed", anchor: "2026-08-06" }), now)).toBe("2026-12-04T12:00:00.000Z");
-    expect(nextCheckAt(lead({ kind: "calendar", anchor: "2026-08-06" }), now)).toBe("2026-10-03T12:00:00.000Z");
+    expect(anchored(200)).toBe("2026-09-12T12:00:00.000Z");
+    expect(anchored(-10)).toBe("2026-09-12T12:00:00.000Z");
+    expect(nextCheckAt(lead({ outcome: "confirmed", anchor: "2026-08-06" }), now)).toBe("2026-09-12T12:00:00.000Z");
+    expect(nextCheckAt(lead({ kind: "calendar", anchor: "2026-08-06" }), now)).toBe("2026-09-12T12:00:00.000Z");
   });
 
   it("reserves resolve slots so a URL-less lead is never starved by repeatedly fetched ones", () => {
@@ -350,17 +356,17 @@ describe("long-range source leads", () => {
       lead({ key: "fresh", attempts: 0 }),
     ];
     const selected = selectDueLeads(leads, now, false);
-    expect(selected).toHaveLength(18);
+    expect(selected).toHaveLength(44);
     expect(selected.every((item) => item.url)).toBe(true);
-    expect(selected.filter((item) => item.kind === "calendar")).toHaveLength(6);
-    expect(selected.find((item) => item.kind !== "calendar")!.key).toBe("portfolio");
+    expect(selected.slice(0, 18).filter((item) => item.kind === "calendar")).toHaveLength(6);
+    expect(selected.filter((item) => item.kind !== "calendar").slice(0, 3).every((item) => !item.checkedAt)).toBe(true);
     // A lead nobody has looked at outranks one already fetched five times.
     expect(selected.map((item) => item.key)).toContain("fresh");
-    expect(selectDueLeads(leads, now, true)).toHaveLength(36);
+    expect(selectDueLeads(leads, now, true)).toEqual(selected);
     const resolving = selectResolveLeads(leads, now, false);
-    expect(resolving).toHaveLength(6);
+    expect(resolving).toHaveLength(20);
     expect(resolving.every((item) => !item.url)).toBe(true);
-    expect(selectResolveLeads(leads, now, true)).toHaveLength(12);
+    expect(selectResolveLeads(leads, now, true)).toEqual(resolving);
     expect(longRangeMarketKey(" Eindhoven ", 25)).toBe(longRangeMarketKey("eindhoven", 25));
     expect(longRangeMarketKey("Eindhoven", 30)).not.toBe(longRangeMarketKey("Eindhoven", 25));
   });
@@ -381,6 +387,7 @@ describe("long-range source leads", () => {
     expect(selectDueLeads(memory.state().leads, nextDue, false)).toEqual([]);
     expect(selectResolveLeads(memory.state().leads, nextDue, false)).toHaveLength(1);
     memory.state().discoveredAt = nextDue.toISOString();
+    memory.state().announcementSearchAt = nextDue.toISOString();
     create.mockResolvedValue(resolution(url));
     await collectLongRange({ ...input, now: nextDue, store: memory.store, client: client(create) });
     expect(create).toHaveBeenCalledTimes(2);
@@ -412,7 +419,7 @@ describe("long-range source leads", () => {
 
   it("retains valid discoveries when another result has an invalid kind", async () => {
     const create = vi.fn();
-    for (let i = 0; i < 10; i++) create.mockResolvedValueOnce({
+    for (let i = 0; i < 14; i++) create.mockResolvedValueOnce({
       stop_reason: "end_turn",
       content: [{ type: "web_search_tool_result", content: [{ url }] },
         { type: "text", text: JSON.stringify({ leads: i === 0 ? [
@@ -434,11 +441,13 @@ describe("long-range source leads", () => {
     const memory = memoryStore(warmState());
     await collectLongRange({ ...input, store: memory.store, client: client(create) });
     memory.state().discoveredAt = "2026-12-01T12:00:00Z";
+    memory.state().announcementSearchAt = "2026-12-10T12:00:00Z";
     create.mockRejectedValue(new Error("Temporary fetch failure"));
     const failed = await collectLongRange({ ...input, now: new Date("2026-12-10T12:00:00Z"), store: memory.store, client: client(create) });
     expect(failed.candidates).toHaveLength(1);
     expect(failed.error).toContain("Temporary fetch failure");
     memory.state().discoveredAt = "2027-06-01T12:00:00Z";
+    memory.state().announcementSearchAt = "2027-06-01T12:00:00Z";
     create.mockResolvedValue(response());
     const completed = await collectLongRange({ ...input, start: "2027-09-01", end: "2028-12-31", now: new Date("2027-06-01T12:00:00Z"), store: memory.store, client: client(create) });
     expect(completed.candidates).toEqual([]);
@@ -494,15 +503,16 @@ describe("long-range source leads", () => {
     expect(isAggregatorUrl("https://dynamo-metalfest.nl/first-names-dmf-27/")).toBe(false);
   });
 
-  it("drops the most-attempted unannounced leads first and never drops stored editions", () => {
+  it("retains unannounced series and portfolio leads without silently pruning backlog", async () => {
     const leads = [
-      lead({ key: "held", outcome: "unannounced", attempts: 9, editions: [{ title: "kept" } as never] }),
+      lead({ key: "held", outcome: "unannounced", attempts: 9 }),
       lead({ key: "owned", outcome: "unannounced", attempts: 9, origin: "portfolio" }),
       ...Array.from({ length: 81 }, (_, i) => lead({ key: `cold-${i}`, outcome: "unannounced", attempts: i, checkedAt: "2026-09-01T12:00:00Z" })),
     ];
-    const dropped = pruneLeads(leads);
-    expect(dropped.map((item) => item.key)).toEqual(["cold-80", "cold-79", "cold-78"]);
-    expect(leads).toHaveLength(80);
+    const memory = memoryStore(warmState(leads));
+    await collectLongRange({ ...input, store: memory.store, budgetEur: 0, client: client(vi.fn()) });
+    expect(memory.state().leads).toHaveLength(83);
+    expect(leads).toHaveLength(83);
     expect(leads.map((item) => item.key)).toContain("held");
     expect(leads.map((item) => item.key)).toContain("owned");
   });

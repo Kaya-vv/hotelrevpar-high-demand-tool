@@ -1,0 +1,165 @@
+{
+  "provenance": "Actual public PDOK responses; no synthetic coordinates",
+  "results": [
+    {
+      "city": "Eindhoven",
+      "url": "https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?q=Eindhoven&fq=type%3Awoonplaats&rows=10&fl=woonplaatsnaam%2Ccentroide_ll",
+      "checkedAt": "2026-09-07T10:53:12.924Z",
+      "body": {
+        "response": {
+          "numFound": 1,
+          "start": 0,
+          "maxScore": 8.984591,
+          "numFoundExact": true,
+          "docs": [
+            {
+              "woonplaatsnaam": "Eindhoven",
+              "centroide_ll": "POINT(5.45853544 51.45016172)"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "city": "Rotterdam",
+      "url": "https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?q=Rotterdam&fq=type%3Awoonplaats&rows=10&fl=woonplaatsnaam%2Ccentroide_ll",
+      "checkedAt": "2026-09-07T10:53:12.925Z",
+      "body": {
+        "response": {
+          "numFound": 10,
+          "start": 0,
+          "maxScore": 8.160054,
+          "numFoundExact": true,
+          "docs": [
+            {
+              "woonplaatsnaam": "Rotterdam",
+              "centroide_ll": "POINT(4.48653571 51.92248806)"
+            },
+            {
+              "woonplaatsnaam": "Botlek Rotterdam",
+              "centroide_ll": "POINT(4.27745862 51.88271921)"
+            },
+            {
+              "woonplaatsnaam": "Europoort Rotterdam",
+              "centroide_ll": "POINT(4.14885244 51.94225335)"
+            },
+            {
+              "woonplaatsnaam": "Hoogvliet Rotterdam",
+              "centroide_ll": "POINT(4.36337309 51.86222694)"
+            },
+            {
+              "woonplaatsnaam": "Maasvlakte Rotterdam",
+              "centroide_ll": "POINT(4.013754 51.95631371)"
+            },
+            {
+              "woonplaatsnaam": "Pernis Rotterdam",
+              "centroide_ll": "POINT(4.3939012 51.88403609)"
+            },
+            {
+              "woonplaatsnaam": "Vondelingenplaat Rotterdam",
+              "centroide_ll": "POINT(4.35241359 51.88636222)"
+            },
+            {
+              "woonplaatsnaam": "Rozenburg",
+              "centroide_ll": "POINT(4.23181614 51.915564)"
+            },
+            {
+              "woonplaatsnaam": "Rotterdam-Albrandswaard",
+              "centroide_ll": "POINT(4.41926201 51.86945912)"
+            },
+            {
+              "woonplaatsnaam": "Hoek van Holland",
+              "centroide_ll": "POINT(4.12346644 51.97983088)"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "city": "Groningen",
+      "url": "https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?q=Groningen&fq=type%3Awoonplaats&rows=10&fl=woonplaatsnaam%2Ccentroide_ll",
+      "checkedAt": "2026-09-07T10:53:12.918Z",
+      "body": {
+        "response": {
+          "numFound": 199,
+          "start": 0,
+          "maxScore": 8.926877,
+          "numFoundExact": true,
+          "docs": [
+            {
+              "woonplaatsnaam": "Groningen",
+              "centroide_ll": "POINT(6.56334263 53.22222947)"
+            },
+            {
+              "woonplaatsnaam": "Garmerwolde",
+              "centroide_ll": "POINT(6.66001568 53.25101337)"
+            },
+            {
+              "woonplaatsnaam": "Glimmen",
+              "centroide_ll": "POINT(6.62847242 53.13587837)"
+            },
+            {
+              "woonplaatsnaam": "Lellens",
+              "centroide_ll": "POINT(6.70730879 53.29907827)"
+            },
+            {
+              "woonplaatsnaam": "Meerstad",
+              "centroide_ll": "POINT(6.66006562 53.22741819)"
+            },
+            {
+              "woonplaatsnaam": "Noordlaren",
+              "centroide_ll": "POINT(6.6651309 53.12669763)"
+            },
+            {
+              "woonplaatsnaam": "Onnen",
+              "centroide_ll": "POINT(6.65530964 53.15726441)"
+            },
+            {
+              "woonplaatsnaam": "Thesinge",
+              "centroide_ll": "POINT(6.65288177 53.27407525)"
+            },
+            {
+              "woonplaatsnaam": "Winneweer",
+              "centroide_ll": "POINT(6.73812015 53.30849397)"
+            },
+            {
+              "woonplaatsnaam": "Woltersum",
+              "centroide_ll": "POINT(6.72836524 53.27363021)"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "city": "Amsterdam",
+      "url": "https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?q=Amsterdam&fq=type%3Awoonplaats&rows=10&fl=woonplaatsnaam%2Ccentroide_ll",
+      "checkedAt": "2026-09-07T10:53:12.926Z",
+      "body": {
+        "response": {
+          "numFound": 4,
+          "start": 0,
+          "maxScore": 7.7842455,
+          "numFoundExact": true,
+          "docs": [
+            {
+              "woonplaatsnaam": "Amsterdam",
+              "centroide_ll": "POINT(4.90454379 52.37344272)"
+            },
+            {
+              "woonplaatsnaam": "Weesp",
+              "centroide_ll": "POINT(5.05804338 52.30320518)"
+            },
+            {
+              "woonplaatsnaam": "Nieuw-Amsterdam",
+              "centroide_ll": "POINT(6.87369486 52.71583032)"
+            },
+            {
+              "woonplaatsnaam": "Amsterdam-Duivendrecht",
+              "centroide_ll": "POINT(4.92651544 52.32295314)"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

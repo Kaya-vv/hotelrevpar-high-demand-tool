@@ -1,4 +1,5 @@
 "use client";
+import { eventLocalDate } from "@/features/events/normalize";
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -31,6 +32,7 @@ export type CalendarHotelScore = {
 };
 
 export type CalendarEvent = {
+  locationApproximate?: boolean;
   id: string;
   title: string;
   category: string;
@@ -115,7 +117,7 @@ function EventDetails({
           <span>
             {score.distanceKm === null
               ? "Van toepassing op dit hotel"
-              : `${score.distanceKm.toFixed(1)} km van het hotel`}
+              : `${event.locationApproximate ? "Ca. " : ""}${score.distanceKm.toFixed(1)} km van het hotel${event.locationApproximate ? " (stadscentrum)" : ""}`}
           </span>
         </div>
       )}
@@ -220,7 +222,7 @@ function EventOverview({
             </span>
             {score?.distanceKm !== null && score?.distanceKm !== undefined && (
               <span className="event-overview-distance">
-                {score.distanceKm.toFixed(1)} km
+                {event.locationApproximate ? "ca. " : ""}{score.distanceKm.toFixed(1)} km
               </span>
             )}
             {score && (
@@ -333,8 +335,8 @@ export function CalendarView({
                   events
                     .filter(
                       (event) =>
-                        event.startAt.slice(0, 10) <= date &&
-                        event.endAt.slice(0, 10) >= date
+                        eventLocalDate(event.startAt) <= date &&
+                        eventLocalDate(event.endAt) >= date
                     )
                     .map((event) => {
                       const score = event.hotelScores[0];

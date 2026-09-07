@@ -41,10 +41,11 @@ async function adminClient() {
   return createAdminClient();
 }
 
-function batchStore(): BatchStore {
+export function createBatchStore(client?: Awaited<ReturnType<typeof adminClient>>): BatchStore {
+  const getClient = async () => client ?? adminClient();
   return {
     async removeExpired(_cacheKey, now) {
-      const admin = await adminClient();
+      const admin = await getClient();
       const { error } = await admin
         .from("anthropic_batch_cache")
         .delete()
@@ -52,7 +53,7 @@ function batchStore(): BatchStore {
       if (error) throw error;
     },
     async get(cacheKey) {
-      const admin = await adminClient();
+      const admin = await getClient();
       const { data, error } = await admin
         .from("anthropic_batch_cache")
         .select("batch_id, created_at, error, results, status")
@@ -62,7 +63,7 @@ function batchStore(): BatchStore {
       return data;
     },
     async claim(cacheKey, ownerToken, expiresAt) {
-      const admin = await adminClient();
+      const admin = await getClient();
       const { error } = await admin.from("anthropic_batch_cache").insert({
         cache_key: cacheKey,
         owner_token: ownerToken,
@@ -74,7 +75,7 @@ function batchStore(): BatchStore {
       return true;
     },
     async attach(cacheKey, ownerToken, batchId, expiresAt) {
-      const admin = await adminClient();
+      const admin = await getClient();
       const { error } = await admin
         .from("anthropic_batch_cache")
         .update({
@@ -88,7 +89,7 @@ function batchStore(): BatchStore {
       if (error) throw error;
     },
     async complete(cacheKey, results) {
-      const admin = await adminClient();
+      const admin = await getClient();
       const { error } = await admin
         .from("anthropic_batch_cache")
         .update({
@@ -100,7 +101,7 @@ function batchStore(): BatchStore {
       if (error) throw error;
     },
     async fail(cacheKey, errorMessage) {
-      const admin = await adminClient();
+      const admin = await getClient();
       const { error } = await admin
         .from("anthropic_batch_cache")
         .update({
@@ -112,7 +113,7 @@ function batchStore(): BatchStore {
       if (error) throw error;
     },
     async release(cacheKey, ownerToken) {
-      const admin = await adminClient();
+      const admin = await getClient();
       const { error } = await admin
         .from("anthropic_batch_cache")
         .delete()
@@ -121,7 +122,7 @@ function batchStore(): BatchStore {
       if (error) throw error;
     },
     async claimUsage(cacheKey) {
-      const admin = await adminClient();
+      const admin = await getClient();
       const { data, error } = await admin
         .from("anthropic_batch_cache")
         .update({ usage_reported: true })
@@ -241,7 +242,7 @@ export async function runAnthropicBatch(
   } = {},
 ): Promise<BatchedMessageResult[]> {
   if (!requests.length) return [];
-  const store = options.store ?? batchStore();
+  const store = options.store ?? createBatchStore();
   const pause = options.wait ?? wait;
   const pollMilliseconds = options.pollMilliseconds ?? 5_000;
   const key = cacheKey(requests);

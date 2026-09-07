@@ -2,6 +2,7 @@ import { lookup } from "node:dns/promises";
 import { request as httpsRequest } from "node:https";
 import { request as httpRequest } from "node:http";
 import { load } from "cheerio";
+import { createHash } from "node:crypto";
 
 export type OfficialPage = { url: string; text: string; links: { url: string; label: string }[] };
 export type PageFetcher = (url: string) => Promise<OfficialPage>;
@@ -25,7 +26,10 @@ export function officialHost(url: string, root: string) {
 
 export function parseOfficialPage(html: string, url: string): OfficialPage {
   const $ = load(html);
+  const structured = $('script[type="application/ld+json"]').map((_index, element) => $(element).text()).get().join("\n");
   $("script,style,noscript,svg").remove();
+  // Adjacent address spans otherwise become e.g. "Dommelstraat 25611 CK".
+  $("span + span, a + a").before(" ");
   const links = new Map<string, string>();
   $("a[href]").each((_index, anchor) => {
     try {
@@ -35,7 +39,9 @@ export function parseOfficialPage(html: string, url: string): OfficialPage {
     } catch { /* Ignore malformed links rather than constructing paths. */ }
   });
   $("p,div,section,li,h1,h2,h3,tr,br").append("\n");
-  return { url, text: $("body").text().replace(/[ \t]+/g, " ").replace(/\n\s*\n/g, "\n").trim().slice(0, 36_000),
+  const siteContext = $("header,footer").text();
+  $("nav,footer,header").remove();
+  return { url, text: `${$("body").text()}\nSTRUCTURED EVENT DATA:\n${structured}\nSITE CONTEXT (may contain organiser addresses rather than event locations):\n${siteContext}`.replace(/[ \t]+/g, " ").replace(/\n\s*\n/g, "\n").trim(),
     links: [...links].map(([url, label]) => ({ url, label })) };
 }
 
@@ -82,27 +88,45 @@ export const fetchOfficialPage: PageFetcher = async (initial) => {
   throw new Error("Official page redirected too many times");
 };
 
-export function announcementLink(page: OfficialPage, year: string) {
+export function announcementLinks(page: OfficialPage, year: string, title = "") {
   const score = (link: OfficialPage["links"][number]) => {
     const text = `${link.url} ${link.label}`.toLowerCase();
     return (text.includes(year) ? 30 : 0)
       + (/future|upcoming|volgende|toekomst|save.the.date/.test(text) ? 20 : 0)
       + (/(?:^|[\s/_-])(?:about|over|prakti\w*|info\w*|dates|data)(?:$|[\s/_-])/.test(text) ? 10 : 0)
       + (/calendar|kalender|agenda|programma/.test(text) ? 5 : 0)
-      - (/privacy|cookie|terms|ticket|login|contact/.test(text) ? 100 : 0)
+      + (/news|nieuws|announcement|edition|editie|detail/.test(text) ? 5 : 0)
+      + (title && text.includes(title.toLowerCase()) ? 10 : 0)
+      - (/privacy|cookie|terms|login|contact|registration|aanmeld|participant|deelnem|vacanc/.test(text) ? 100 : 0)
       + (new URL(link.url).pathname.split("/")[1] === new URL(page.url).pathname.split("/")[1] ? 1 : 0);
   };
-  return page.links.filter((link) => score(link) >= 5).sort((a, b) => score(b) - score(a))[0]?.url;
+  return page.links.filter((link) => score(link) >= 5).sort((a, b) => score(b) - score(a)).map((link) => link.url);
 }
 
-export async function retrieveOfficialPages(url: string, year: string, fetchPage: PageFetcher): Promise<{ pages: OfficialPage[]; errors: string[] }> {
-  const first = await fetchPage(url);
-  const pages = [first];
-  const secondUrl = announcementLink(first, year);
+export const announcementLink = (page: OfficialPage, year: string) => announcementLinks(page, year)[0];
+
+export function pageChunks(page: OfficialPage, size = 12_000) {
+  const chunks: string[] = [];
+  // Overlap protects entries crossing a text boundary. Canonical identity removes repeats.
+  for (let start = 0; start < page.text.length; start += size - 1000) chunks.push(page.text.slice(start, start + size));
+  return chunks.length ? chunks : [""];
+}
+export const pageHash = (page: OfficialPage) => createHash("sha256").update(page.text).digest("hex");
+
+export async function retrieveOfficialPages(url: string, year: string, fetchPage: PageFetcher, remembered: string[] = [], title = "", limit = 4): Promise<{ pages: OfficialPage[]; errors: string[] }> {
+  const pages: OfficialPage[] = [];
+  const queue = [...new Set([url, ...remembered])];
+  const attempted = new Set<string>();
   const errors: string[] = [];
-  if (secondUrl) {
-    try { pages.push(await fetchPage(secondUrl)); }
-    catch (error) { errors.push(error instanceof Error ? error.message : String(error)); }
+  while (queue.length && attempted.size < limit) {
+    const target = queue.shift()!;
+    if (attempted.has(target)) continue;
+    attempted.add(target);
+    try {
+      const page = await fetchPage(target);
+      pages.push(page);
+      queue.push(...announcementLinks(page, year, title).filter((link) => !attempted.has(link)));
+    } catch (error) { errors.push(error instanceof Error ? error.message : String(error)); }
   }
   return { pages, errors };
 }

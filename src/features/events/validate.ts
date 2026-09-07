@@ -1,3 +1,4 @@
+import { eventLocalDate } from "@/features/events/normalize";
 import type {
   EventCandidate,
   ValidationOutcome,
@@ -45,8 +46,8 @@ export function validateCandidate(
     return result("excluded", "postponed");
   if (candidate.sourceState === "removed") return result("excluded", "removed");
   if (
-    candidate.startAt.slice(0, 10) > window.end ||
-    candidate.endAt.slice(0, 10) < window.start
+    eventLocalDate(candidate.startAt) > window.end ||
+    eventLocalDate(candidate.endAt) < window.start
   ) {
     return result("excluded", "out_of_window");
   }

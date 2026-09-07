@@ -1,9 +1,11 @@
+import { eventLocalDate } from "@/features/events/normalize";
 import { isPublishableDemand } from "@/features/events/importance";
 
 import type { ExportEvent, RevControlRow } from "./types";
 
 function excelDate(value: string) {
-  const [year, month, day] = value.slice(0, 10).split("-").map(Number);
+  const date = eventLocalDate(value);
+  const [year, month, day] = date.split("-").map(Number);
   return new Date(Date.UTC(year, month - 1, day));
 }
 

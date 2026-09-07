@@ -1,4 +1,4 @@
-import { meaningfulTokens } from "./normalize";
+import { meaningfulTokens, normalizeText, performanceTime } from "./normalize";
 import type { NormalizedCandidate } from "./types";
 import { distanceKm } from "./distance";
 
@@ -102,14 +102,16 @@ export function classifyMatch(
   );
   if (identityMatch) return { kind: "exact", eventId: identityMatch.id };
 
+  const compatiblePerformance = (event: ExistingEvent) => !performanceTime(event) || !performanceTime(candidate) || performanceTime(event) === performanceTime(candidate);
   const strong = existing.find(
     (event) =>
-      event.localStartDate === candidate.localStartDate &&
+      event.localStartDate === candidate.localStartDate && compatiblePerformance(event) &&
       ((!placesConflict(event, candidate) &&
         similarity(event.normalizedTitle, candidate.normalizedTitle) >= 0.92) ||
         (samePlace(event, candidate) &&
           (similarity(event.normalizedTitle, candidate.normalizedTitle) >= 0.8
-            || samePlaceEdition(event.normalizedTitle, candidate.normalizedTitle))))
+            || samePlaceEdition(event.normalizedTitle, candidate.normalizedTitle)
+            || candidate.evidence?.aliases?.some((alias) => normalizeText(alias) === event.normalizedTitle))))
   );
   if (strong) return { kind: "exact", eventId: strong.id };
 
@@ -117,6 +119,7 @@ export function classifyMatch(
   // at the same place on a touching or overlapping date range is one event, not two.
   const consecutive = existing.find(
     (event) =>
+      !/concert|musical|theat|performance/i.test(candidate.category) &&
       event.normalizedTitle === candidate.normalizedTitle &&
       samePlace(event, candidate) &&
       event.localStartDate <= nextDay(candidate.localEndDate) &&
@@ -126,7 +129,7 @@ export function classifyMatch(
 
   const uncertain = existing.find(
     (event) =>
-      event.localStartDate === candidate.localStartDate &&
+      event.localStartDate === candidate.localStartDate && compatiblePerformance(event) &&
       samePlace(event, candidate) &&
       similarity(event.normalizedTitle, candidate.normalizedTitle) >= 0.6
   );

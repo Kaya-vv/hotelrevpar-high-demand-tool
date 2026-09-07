@@ -474,6 +474,13 @@ export type Database = {
       };
       collection_usage_events: {
         Row: {
+          request_id: string | null;
+          market_key: string | null;
+          horizon: string | null;
+          billing_mode: string | null;
+          cache_write_tokens: number | null;
+          cache_read_tokens: number | null;
+          estimated_cost_usd: number | null;
           collection_run_id: string;
           created_at: string;
           id: number;
@@ -486,6 +493,13 @@ export type Database = {
           web_search_requests: number;
         };
         Insert: {
+          request_id?: string | null;
+          market_key?: string | null;
+          horizon?: string | null;
+          billing_mode?: string | null;
+          cache_write_tokens?: number | null;
+          cache_read_tokens?: number | null;
+          estimated_cost_usd?: number | null;
           collection_run_id: string;
           created_at?: string;
           id?: never;
@@ -498,6 +512,13 @@ export type Database = {
           web_search_requests?: number;
         };
         Update: {
+          request_id?: string | null;
+          market_key?: string | null;
+          horizon?: string | null;
+          billing_mode?: string | null;
+          cache_write_tokens?: number | null;
+          cache_read_tokens?: number | null;
+          estimated_cost_usd?: number | null;
           collection_run_id?: string;
           created_at?: string;
           id?: never;
@@ -601,6 +622,7 @@ export type Database = {
       };
       event_sources: {
         Row: {
+          evidence: Json | null;
           ai_impact_points: number | null;
           assessment_version: number;
           attendance: number | null;
@@ -628,6 +650,7 @@ export type Database = {
           venue_capacity: number | null;
         };
         Insert: {
+          evidence?: Json | null;
           ai_impact_points?: number | null;
           assessment_version?: number;
           attendance?: number | null;
@@ -655,6 +678,7 @@ export type Database = {
           venue_capacity?: number | null;
         };
         Update: {
+          evidence?: Json | null;
           ai_impact_points?: number | null;
           assessment_version?: number;
           attendance?: number | null;
@@ -744,6 +768,7 @@ export type Database = {
       };
       hotel_event_scores: {
         Row: {
+          first_eligible_at: string | null;
           distance_km: number | null;
           distance_points: number;
           event_id: string;
@@ -757,6 +782,7 @@ export type Database = {
           total: number;
         };
         Insert: {
+          first_eligible_at?: string | null;
           distance_km?: number | null;
           distance_points: number;
           event_id: string;
@@ -770,6 +796,7 @@ export type Database = {
           total: number;
         };
         Update: {
+          first_eligible_at?: string | null;
           distance_km?: number | null;
           distance_points?: number;
           event_id?: string;

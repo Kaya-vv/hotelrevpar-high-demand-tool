@@ -20,7 +20,7 @@ export function SourceHealthTable({ runs }: { runs: SourceHealthRun[] }) {
           <summary><strong>{run.accountName}</strong><span>{run.areaName}</span><span>{new Date(run.startedAt).toLocaleString("nl-NL")}</span><span>{runStatusLabel(run)}</span></summary>
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Bron</th><th>Status</th><th>Laatste succes</th><th>Fout</th><th>Gevonden</th><th>Uniek</th><th>Duplicaten</th><th>Namen</th><th>Officiële URL&apos;s</th><th>Geverifieerd</th><th>High/Piek</th><th>Review</th><th>Requests</th><th>AI-calls</th><th>Input</th><th>Output</th><th>Search</th><th>Fetch</th></tr></thead>
+              <thead><tr><th>Bron</th><th>Status</th><th>Laatste succes</th><th>Fout</th><th>Gevonden</th><th>Uniek</th><th>Duplicaten</th><th>Namen</th><th>Officiële URL&apos;s</th><th>Geverifieerd</th><th>Vraag beoordeeld</th><th>Review</th><th>Requests</th><th>AI-calls</th><th>Input</th><th>Output</th><th>Search</th><th>Fetch</th></tr></thead>
               <tbody>{run.sources.map((source) => (
                 <tr key={source.name}>
                   <td>{source.name}</td><td>{!run.finishedAt && source.state === "not_run" ? "Wachten" : source.state}</td><td>{source.lastSuccess ? new Date(source.lastSuccess).toLocaleString("nl-NL") : "Geen"}</td><td>{source.currentError ?? ""}</td>
@@ -28,6 +28,13 @@ export function SourceHealthTable({ runs }: { runs: SourceHealthRun[] }) {
                 </tr>
               ))}</tbody>
             </table>
+            {run.sources.filter((source) => source.research?.longRange_newEditions !== undefined).map((source) => (
+              <dl key={`${source.name}-research`} className="hotel-status-grid">
+                {Object.entries({ Extractiefouten: "extractionFailures", Onbereikbare_bronnen: "unavailableSources", Binnen_14_dagen: "announcementWithin14Days", Later_dan_14_dagen: "announcementMissed14Days", Aankondigingsdatum_onbekend: "announcementDateUnknown", Gepubliceerd_voor_hotel: "hotelPublished", Nieuwe_edities: "newEditions", Hergebruikte_edities: "cachedEditions", Locatie_onbekend: "pendingLocation", Vraag_in_onderzoek: "pendingDemand", Geblokkeerde_bronnen: "blockedSources", Oudste_achterstand_dagen: "oldestOverdueDays", Maandkosten_EUR_schatting: "monthlySpentEur", Gereserveerd_EUR: "reservedEur" }).map(([label, key]) => (
+                  <div key={key}><dt>{label.replaceAll("_", " ")}</dt><dd>{(source.research?.[`longRange_${key}`] ?? 0).toFixed(2)}</dd></div>
+                ))}
+              </dl>
+            ))}
             {run.sources.filter((source) => source.drops.length > 0).map((source) => (
               <details key={`${source.name}-drops`}>
                 <summary>{source.name}: {source.drops.length} afgewezen kandidaten</summary>

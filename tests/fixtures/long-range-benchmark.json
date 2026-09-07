@@ -1,0 +1,354 @@
+{
+  "version": 1,
+  "frozenAt": "2026-09-07",
+  "scope": "Independent date benchmark. Never supply its names or URLs to live discovery. Null expectedImportance means demand truth remains unresolved; release gates must not pass a city with no graded High/Peak cases.",
+  "markets": [
+    {
+      "city": "Eindhoven",
+      "latitude": 51.4372,
+      "longitude": 5.4774,
+      "events": [
+        {
+          "title": "Dutch Design Week",
+          "start": "2027-10-23",
+          "end": "2027-10-31",
+          "officialUrl": "https://site.ddw.nl/nl/over-ddw",
+          "category": "culture",
+          "expectedImportance": "Peak",
+          "reason": "Official citywide series with international visitors; attendance is series-level.",
+          "aliases": [
+            "DDW"
+          ]
+        },
+        {
+          "title": "BRIDGE Guitar Festival",
+          "start": "2027-05-26",
+          "end": "2027-05-30",
+          "officialUrl": "https://mge.nl/bridge/en/",
+          "category": "festivals",
+          "expectedImportance": "High",
+          "reason": "Citywide festival; prior edition attendance must stay historical.",
+          "aliases": []
+        },
+        {
+          "title": "Open Nederlandse masters kampioenschappen lange baan",
+          "start": "2027-05-06",
+          "end": "2027-05-09",
+          "officialUrl": "https://www.knzb.nl/nieuws/hoofddorp-en-eindhoven-locaties-voor-masters-kampioenschappen-2026-2027",
+          "category": "sports",
+          "expectedImportance": null,
+          "reason": "Dates and venue confirmed; demand requires separate evidence.",
+          "aliases": [
+            "ONMK",
+            "Open Dutch Masters"
+          ]
+        },
+        {
+          "title": "Revolution Rising",
+          "start": "2027-04-23",
+          "end": "2027-04-24",
+          "officialUrl": "https://www.revolutionrisingfest.com/",
+          "category": "festivals",
+          "expectedImportance": null,
+          "reason": "European-exclusive performers do not alone prove travelling visitors.",
+          "aliases": []
+        },
+        {
+          "title": "Dynamo Metalfest",
+          "start": "2027-08-13",
+          "end": "2027-08-15",
+          "officialUrl": "https://dynamo-metalfest.nl/first-names-dmf-27/",
+          "category": "festivals",
+          "expectedImportance": null,
+          "reason": "Official dates verified; intermittent transport block remains a coverage miss.",
+          "aliases": []
+        },
+        {
+          "title": "Fuzz Club",
+          "start": "2027-05-21",
+          "end": "2027-05-22",
+          "officialUrl": "https://www.effenaar.nl/fuzzclub-2027",
+          "category": "festivals",
+          "expectedImportance": "High",
+          "reason": "Official venue documents prior attendees travelling from nearly 40 countries.",
+          "aliases": []
+        }
+      ],
+      "radiusKm": 25
+    },
+    {
+      "city": "Rotterdam",
+      "latitude": 51.906,
+      "longitude": 4.488,
+      "events": [
+        {
+          "title": "InfraTech",
+          "start": "2027-01-12",
+          "end": "2027-01-15",
+          "officialUrl": "https://www.ahoy.nl/agenda",
+          "category": "expos",
+          "expectedImportance": null,
+          "reason": "Dates verified; separate demand assessment required.",
+          "aliases": []
+        },
+        {
+          "title": "ABN AMRO Open",
+          "start": "2027-02-06",
+          "end": "2027-02-14",
+          "officialUrl": "https://www.ahoy.nl/agenda",
+          "category": "sports",
+          "expectedImportance": "High",
+          "reason": "Same annual Rotterdam tournament: official 2026 impact research documents visitors from across the Netherlands and abroad, 91 percent from outside Rotterdam.",
+          "aliases": [],
+          "demandUrls": [
+            "https://www.abnamro-open.nl/nieuws/headlines/54e-editie/abn-amro-open-bewijst-de-impact-van-jaarlijkse-evenementen"
+          ]
+        },
+        {
+          "title": "A State of Trance",
+          "start": "2027-02-26",
+          "end": "2027-02-27",
+          "officialUrl": "https://www.ahoy.nl/agenda",
+          "category": "festivals",
+          "expectedImportance": null,
+          "reason": "Two dated programme days; demand ground truth pending.",
+          "aliases": []
+        },
+        {
+          "title": "Maintenance Next",
+          "start": "2027-04-20",
+          "end": "2027-04-22",
+          "officialUrl": "https://www.maintenancenext.nl/contact/faq",
+          "category": "expos",
+          "expectedImportance": null,
+          "reason": "Trade fair dates confirmed.",
+          "aliases": []
+        },
+        {
+          "title": "Sabaton",
+          "start": "2027-04-24",
+          "end": "2027-04-24",
+          "officialUrl": "https://www.ahoy.nl/agenda",
+          "category": "concerts",
+          "expectedImportance": null,
+          "reason": "Single-night concert must be discovered; capacity/audience requires verification.",
+          "aliases": []
+        },
+        {
+          "title": "Europort",
+          "start": "2027-11-02",
+          "end": "2027-11-05",
+          "officialUrl": "https://www.ahoy.nl/agenda",
+          "category": "expos",
+          "expectedImportance": "High",
+          "reason": "Comparable Rotterdam maritime exhibition: official 2025 edition attracted 23,113 professionals from 86 countries; historical figures are not 2027 attendance.",
+          "aliases": [],
+          "demandUrls": [
+            "https://www.europort.nl/",
+            "https://www.europort.nl/exhibitor"
+          ]
+        }
+      ],
+      "radiusKm": 25
+    },
+    {
+      "city": "Groningen",
+      "latitude": 53.2194,
+      "longitude": 6.5665,
+      "events": [
+        {
+          "title": "Eurosonic Noorderslag",
+          "start": "2027-01-13",
+          "end": "2027-01-16",
+          "officialUrl": "https://esns.nl/",
+          "category": "festivals",
+          "expectedImportance": "High",
+          "reason": "European showcase and industry conference; official series evidence.",
+          "aliases": [
+            "ESNS"
+          ]
+        },
+        {
+          "title": "Bachelor Open Dag",
+          "start": "2027-01-29",
+          "end": "2027-01-29",
+          "officialUrl": "https://www.rug.nl/education/events/",
+          "category": "university",
+          "expectedImportance": null,
+          "reason": "Physical open day; do not use registration period.",
+          "aliases": [
+            "Bachelor's Open Day"
+          ]
+        },
+        {
+          "title": "Master Open Dag",
+          "start": "2027-03-12",
+          "end": "2027-03-12",
+          "officialUrl": "https://www.rug.nl/education/events/",
+          "category": "university",
+          "expectedImportance": null,
+          "reason": "Physical event; excludes online master week.",
+          "aliases": [
+            "Master's Open Day"
+          ]
+        },
+        {
+          "title": "Groningen Sustainability Conference",
+          "start": "2027-04-05",
+          "end": "2027-04-10",
+          "officialUrl": "https://www.rug.nl/research/esrig/news/groningen-sustainability-conference-2027?lang=en",
+          "category": "conferences",
+          "expectedImportance": "High",
+          "reason": "Official invitation to global researchers; full programme includes early-career days and field tour.",
+          "aliases": [
+            "GSC"
+          ]
+        },
+        {
+          "title": "Groningen TRT Symposium",
+          "start": "2027-04-07",
+          "end": "2027-04-09",
+          "officialUrl": "https://umcgresearch.org/w/groningen-trt-symposium-2027",
+          "category": "conferences",
+          "expectedImportance": null,
+          "reason": "Confirmed at DOT Groningen; separate audience assessment.",
+          "aliases": []
+        },
+        {
+          "title": "BSides Groningen",
+          "start": "2027-04-09",
+          "end": "2027-04-09",
+          "officialUrl": "https://bsidesgrunn.org/",
+          "category": "conferences",
+          "expectedImportance": null,
+          "reason": "Confirmed at Kinepolis; not automatically High.",
+          "aliases": [
+            "BSidesGrunn"
+          ]
+        }
+      ],
+      "radiusKm": 25
+    },
+    {
+      "city": "Amsterdam",
+      "latitude": 52.3676,
+      "longitude": 4.9041,
+      "events": [
+        {
+          "title": "Horecava",
+          "start": "2027-01-11",
+          "end": "2027-01-14",
+          "officialUrl": "https://www.horecava.nl/en/faq",
+          "category": "expos",
+          "expectedImportance": null,
+          "reason": "Trade visitors; travelling audience needs research.",
+          "aliases": []
+        },
+        {
+          "title": "Jumping Amsterdam",
+          "start": "2027-01-28",
+          "end": "2027-01-31",
+          "officialUrl": "https://www.jumpingamsterdam.nl/",
+          "category": "sports",
+          "expectedImportance": "High",
+          "reason": "Official FEI world cups with world-class participants; old programme heading must not override new dates.",
+          "aliases": []
+        },
+        {
+          "title": "Negenmaandenbeurs",
+          "start": "2027-02-17",
+          "end": "2027-02-20",
+          "officialUrl": "https://www.negenmaandenbeurs.nl/veelgestelde-vragen",
+          "category": "expos",
+          "expectedImportance": null,
+          "reason": "Consumer exhibition; duration alone is insufficient demand evidence.",
+          "aliases": []
+        },
+        {
+          "title": "Editors",
+          "start": "2027-02-18",
+          "end": "2027-02-18",
+          "officialUrl": "https://ziggodome.nl/",
+          "category": "concerts",
+          "expectedImportance": null,
+          "reason": "Single-night show, venue capacity and audience independently assessed.",
+          "aliases": []
+        },
+        {
+          "title": "Huishoudbeurs",
+          "start": "2027-02-20",
+          "end": "2027-02-27",
+          "officialUrl": "https://www.huishoudbeurs.nl/praktische-info",
+          "category": "expos",
+          "expectedImportance": null,
+          "reason": "Consumer exhibition; repeated day visitors must not be classified by duration alone.",
+          "aliases": []
+        },
+        {
+          "title": "Money20/20 Europe",
+          "start": "2027-06-08",
+          "end": "2027-06-10",
+          "officialUrl": "https://europe.money2020.com/",
+          "category": "conferences",
+          "expectedImportance": "High",
+          "reason": "International industry event; dates shown alongside an old registration heading.",
+          "aliases": [
+            "Money 20/20"
+          ]
+        }
+      ],
+      "radiusKm": 25
+    }
+  ],
+  "negativeCases": [
+    {
+      "city": "Groningen",
+      "title": "Online Masterweek",
+      "url": "https://www.rug.nl/education/events/",
+      "reason": "Online only, not hotel demand"
+    },
+    {
+      "city": "Groningen",
+      "title": "Bachelor Open Dag aanmelding",
+      "url": "https://www.rug.nl/education/bachelor/bachelor-open-day/",
+      "reason": "Registration interval is not the event"
+    },
+    {
+      "city": "Groningen",
+      "title": "Web Classes",
+      "url": "https://www.rug.nl/education/events/",
+      "reason": "Online course dates"
+    },
+    {
+      "city": "Groningen",
+      "title": "Schooldecanendag",
+      "url": "https://www.rug.nl/education/events/",
+      "reason": "No established High/Peak overnight signal"
+    },
+    {
+      "city": "Amsterdam",
+      "title": "Intertraffic Americas 2027",
+      "url": "https://www.intertraffic.com/",
+      "reason": "Mexico City dates must not use Amsterdam organizer address"
+    },
+    {
+      "city": "Amsterdam",
+      "title": "ISE 2027",
+      "url": "https://www.iseurope.org/?sfid=ise",
+      "reason": "Barcelona, not historical Amsterdam location"
+    },
+    {
+      "city": "Eindhoven",
+      "title": "GLOW 2027",
+      "url": "https://gloweindhoven.nl/",
+      "reason": "Unresolved future dates; this is not a claim no announcement exists"
+    },
+    {
+      "city": "Eindhoven",
+      "title": "ASML Marathon 2027",
+      "url": "https://asmlmarathoneindhoven.nl/",
+      "reason": "Unresolved future dates; no year-shifting"
+    }
+  ],
+  "demandGroundTruthCheckedAt": "2026-09-07"
+}

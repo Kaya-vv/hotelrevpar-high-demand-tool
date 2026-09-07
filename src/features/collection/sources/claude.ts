@@ -3,9 +3,11 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import type { MessageCreateParamsNonStreaming } from "@anthropic-ai/sdk/resources/messages/messages";
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import { geocodeCity, createLocationResolver } from "../research-location";
+import { fetchedDocumentText, eventFactsSchema, evidenceInstructions, verifyEventEvidence, supportedAudience } from "@/features/events/evidence";
 
 import type { DemandTriage, EvidenceReview } from "@/features/events/hotel-demand";
-import { meaningfulTokens, normalizeText } from "@/features/events/normalize";
+import { meaningfulTokens, normalizeText, localParts, performanceTime } from "@/features/events/normalize";
 import { overnightAudiences, type EventCandidate } from "@/features/events/types";
 import { getAddressById, searchAddresses } from "@/features/portfolio/geocode";
 
@@ -34,6 +36,13 @@ const SEARCH_BUDGET = 36;
 export type ClaudeUsageEvent = {
   phase: "discovery" | "discovery_fetch" | "demand_triage" | "demand_verification";
   model: string;
+  requestId?: string;
+  marketKey?: string;
+  horizon?: string;
+  cacheWriteTokens?: number;
+  cacheReadTokens?: number;
+  billingMode?: string;
+  estimatedCostUsd?: number;
   inputTokens: number;
   outputTokens: number;
   webSearchRequests: number;
@@ -49,14 +58,14 @@ export const outputSchema = z.object({
       title: z.string(),
       category: z.string(),
       venue: z.string().nullable(),
-      latitude: z.number().nullable(),
-      longitude: z.number().nullable(),
-      regionScope: z.string().nullable(),
+      latitude: z.number().nullable().default(null),
+      longitude: z.number().nullable().default(null),
+      regionScope: z.string().nullable().default(null),
       startAt: z.string(),
       endAt: z.string(),
       status: z.enum(["active", "cancelled", "postponed"]),
       ownerType: z.enum([...ownerTypes, "other"]),
-      evidenceText: z.string().nullable(),
+      evidenceText: z.string().nullable().default(null),
       attendance: z.number().int().nullable(),
       venueCapacity: z.number().int().nullable(),
       impactPoints: z.number().int().nullable(),
@@ -64,9 +73,19 @@ export const outputSchema = z.object({
       titleConfirmed: z.boolean(),
       dateConfirmed: z.boolean(),
       locationConfirmed: z.boolean(),
+      facts: eventFactsSchema.nullable().optional(),
     }),
   ).max(1),
 });
+
+// Keep the transport schema within the provider's optional/union limits. Application parsing
+// still accepts legacy records; coordinates and summary text are derived locally from facts.
+export const eventWireSchema = outputSchema.shape.events.element.omit({ latitude: true, longitude: true, regionScope: true, evidenceText: true }).extend({
+  facts: eventFactsSchema.required().extend({
+    demand: z.array(eventFactsSchema.shape.demand.element.required()).max(4),
+  }),
+});
+export const eventWireOutputSchema = z.object({ events: z.array(eventWireSchema).max(1) });
 
 const discoverySchema = z.object({
   candidates: z.array(z.object({
@@ -256,14 +275,19 @@ function supportedObservedUrl(value: string | null, evidenceText: string, observ
   return publicObserved.length === 1 ? publicObserved[0] : null;
 }
 
-export function claudeProviderEventId(event: Pick<EventCandidate, "sourceUrl" | "title" | "startAt" | "venue">) {
-  const identity = [event.sourceUrl, normalizeText(event.title), event.startAt.slice(0, 10), normalizeText(event.venue ?? "")].join("|");
+export function claudeProviderEventId(event: Pick<EventCandidate, "sourceUrl" | "title" | "startAt" | "venue"> & { category?: string }) {
+  const identity = [event.sourceUrl, normalizeText(event.title), localParts(event.startAt).date, normalizeText(event.venue ?? ""), ...(event.category && performanceTime({ category: event.category, startAt: event.startAt }) ? [performanceTime({ category: event.category, startAt: event.startAt })] : [])].join("|");
   return `claude:${createHash("sha256").update(identity).digest("hex").slice(0, 24)}`;
 }
 
 export async function geocodeVenue(query: string) {
   try {
-    const [suggestion] = await searchAddresses(query);
+    const suggestions = await searchAddresses(query);
+    // A venue name can match several street addresses. Do not select an arbitrary building.
+    const addressKey = (value: string) => normalizeText(value).replace(/[^a-z0-9]/g, "");
+    const postcode = query.match(/\b[1-9]\d{3}\s?[a-z]{2}\b/i);
+    const exact = postcode ? suggestions.filter((item) => addressKey(item.label).startsWith(addressKey(query.slice(0, postcode.index! + postcode[0].length)))) : [];
+    const suggestion = exact.length === 1 ? exact[0] : suggestions.length === 1 ? suggestions[0] : null;
     if (!suggestion) return null;
     const address = await getAddressById(suggestion.id);
     return { latitude: address.latitude, longitude: address.longitude };
@@ -286,6 +310,9 @@ export function usageEvent(message: Anthropic.Message, phase: ClaudeUsageEvent["
   return {
     phase,
     model,
+    requestId: billed ? message.id : undefined,
+    cacheWriteTokens: billed ? message.usage.cache_creation_input_tokens ?? 0 : 0,
+    cacheReadTokens: billed ? message.usage.cache_read_input_tokens ?? 0 : 0,
     inputTokens: billed ? message.usage.input_tokens : 0,
     outputTokens: billed ? message.usage.output_tokens : 0,
     webSearchRequests: billed ? message.usage.server_tool_use?.web_search_requests ?? 0 : 0,
@@ -451,7 +478,7 @@ async function triageDiscoveries(input: {
 }
 
 export function verificationInstructions(input: { start: string; end: string; location: string; radiusKm: number }) {
-  return `Controleer titel, datum, locatie en status. Gebruik status active, cancelled of postponed. Neem maximaal één evenement op, alleen tussen ${input.start} en ${input.end} en binnen ${input.radiusKm} km van ${input.location}. Baseer je uitsluitend op de tekst van de pagina's die je met web_fetch hebt opgehaald; een zoekfragment kan verouderd zijn, dus als een fragment een eerdere editie noemt en de opgehaalde pagina de huidige data toont, gelden de data van de opgehaalde pagina. Geef als sourceUrl altijd de gewone pagina-URL zonder #-fragment en zonder #:~:text=. Als de opgehaalde pagina het evenement bevestigt maar de data of een beslissend vraagsignaal van de huidige editie niet noemt, mag je de tweede web_fetch gebruiken voor een andere officiële eigenaarspagina, zoals de organisator, gemeente, sportbond, locatie of ticketverkoper. Een uitagenda, blog, wiki of zoekpagina telt daarvoor niet. Leid data nooit af uit een terugkerend patroon zoals "het tweede weekend van oktober"; zet dateConfirmed dan op false. Neem bij een echte meerdaagse huidige editie de eerste en laatste bevestigde datum over; maak van een bevestigde meerdaagse editie geen eendaagse 00:00-23:59-vermelding. Een reeks losse concerten, musicals of theatervoorstellingen is geen meerdaags evenement: beoordeel de vraag per voorstelling en gebruik de speelreeks niet als verblijfsduur. Classificeer aantoonbare extra overnachtingsvraag voor hotels: 35 Medium, 45 High of 60 Piek. Een bezoekersaantal is nuttig maar niet verplicht. Geef 45 High alleen als de huidige editie ten minste één sterk signaal heeft: aantoonbaar landelijke of internationale bezoekers of deelnemers, officiële hotel- of verblijfsinformatie, stadsbrede uitstraling, een actueel bezoekers- of deelnemersaantal van minstens 5.000, of gebruik van een officieel bevestigde zaalcapaciteit van minstens 10.000 voor deze uitvoering. Meerdaagse duur alleen is geen sterk signaal. Een internationale artiest, organisator, evenementnaam of vakinhoud bewijst geen internationale bezoekersstroom. Vul attendance alleen met een aantal voor de huidige editie. Vul venueCapacity alleen met de officiële capaciteit van de gebruikte zaal of opstelling; neem niet aan dat het evenement uitverkocht is. Gebruik alleen feiten over de huidige editie. Negeer cumulatieve bezoekersaantallen van eerdere edities en algemene marketingclaims. Reserveer 60 Piek voor stadsbrede evenementen of een uitzonderlijke combinatie van omvang, meerdere dagen en internationale toestroom. Geef een bevestigd actief evenement zonder sterk vraagsignaal terug met 35 Medium, zodat een eerdere High-score kan worden herzien; laat alleen een onbevestigd of Low evenement weg. Geef een specifieke locatie zodat die gegeocodeerd kan worden. Gebruik ownerType other voor een agenda, blog, wiki, zoekpagina of andere pagina die de evenementinformatie niet bezit. Bepaal daarnaast overnightAudience: waar komt het publiek vandaan en moet het blijven slapen? Gebruik none als het publiek uit de stad zelf komt en na het programma naar huis gaat, regional als het publiek uit de omliggende provincie komt en binnen een uur naar huis rijdt, national als de pagina bezoekers uit heel Nederland aantoont, en international als de pagina buitenlandse bezoekers of deelnemers aantoont. Beoordeel dit los van impactPoints en los van de duur: een markt of familiefestival dat twee dagen achter elkaar van 10:00 tot 17:00 open is, trekt twee dagen dezelfde dagbezoekers en is dus none of regional, terwijl één avond die om 02:00 eindigt met een landelijke line-up national is. Een voorstelling in een stadstheater is none of regional tenzij de pagina landelijke toestroom aantoont. Gebruik null als de opgehaalde pagina geen aanwijzing over de herkomst van het publiek geeft; verzin dan geen herkomst om High te rechtvaardigen.`;
+  return `${evidenceInstructions} Controleer titel, datum, locatie en status. Gebruik status active, cancelled of postponed. Neem maximaal één evenement op, alleen tussen ${input.start} en ${input.end} en binnen ${input.radiusKm} km van ${input.location}. Baseer je uitsluitend op de tekst van de pagina's die je met web_fetch hebt opgehaald; een zoekfragment kan verouderd zijn, dus als een fragment een eerdere editie noemt en de opgehaalde pagina de huidige data toont, gelden de data van de opgehaalde pagina. Geef als sourceUrl altijd de gewone pagina-URL zonder #-fragment en zonder #:~:text=. Als de opgehaalde pagina het evenement bevestigt maar de data of een beslissend vraagsignaal van de huidige editie niet noemt, mag je de tweede web_fetch gebruiken voor een andere officiële eigenaarspagina, zoals de organisator, gemeente, sportbond, locatie of ticketverkoper. Een uitagenda, blog, wiki of zoekpagina telt daarvoor niet. Leid data nooit af uit een terugkerend patroon zoals "het tweede weekend van oktober"; zet dateConfirmed dan op false. Neem bij een echte meerdaagse huidige editie de eerste en laatste bevestigde datum over; maak van een bevestigde meerdaagse editie geen eendaagse 00:00-23:59-vermelding. Een reeks losse concerten, musicals of theatervoorstellingen is geen meerdaags evenement: beoordeel de vraag per voorstelling en gebruik de speelreeks niet als verblijfsduur. Classificeer aantoonbare extra overnachtingsvraag voor hotels: 35 Medium, 45 High of 60 Piek. Een bezoekersaantal is nuttig maar niet verplicht. Geef 45 High alleen bij ten minste één aantoonbaar toepasselijk vraagsignaal voor deze editie, de vergelijkbare serie of een vergelijkbare historische editie: aantoonbaar landelijke of internationale bezoekers of deelnemers, officiële hotel- of verblijfsinformatie, stadsbrede uitstraling, een actueel bezoekers- of deelnemersaantal van minstens 5.000, of gebruik van een officieel bevestigde zaalcapaciteit van minstens 10.000 voor deze uitvoering. Meerdaagse duur alleen is geen sterk signaal. Een internationale artiest, organisator, evenementnaam of vakinhoud bewijst geen internationale bezoekersstroom. Vul attendance alleen met een aantal voor de huidige editie. Vul venueCapacity alleen met de officiële capaciteit van de gebruikte zaal of opstelling; neem niet aan dat het evenement uitverkocht is. Gebruik officiële serie- of historische vraagfeiten alleen bij aantoonbaar vergelijkbare serie, gaststad en opzet. Vermeld hun scope en jaar apart; attendance blijft uitsluitend voor de huidige editie. Reserveer 60 Piek voor stadsbrede evenementen of een uitzonderlijke combinatie van omvang, meerdere dagen en internationale toestroom. Geef een bevestigd actief evenement zonder sterk vraagsignaal terug met 35 Medium, zodat een eerdere High-score kan worden herzien; laat alleen een onbevestigd of Low evenement weg. Geef een specifieke locatie zodat die gegeocodeerd kan worden. Gebruik ownerType other voor een agenda, blog, wiki, zoekpagina of andere pagina die de evenementinformatie niet bezit. Bepaal daarnaast overnightAudience: waar komt het publiek vandaan en moet het blijven slapen? Gebruik none als het publiek uit de stad zelf komt en na het programma naar huis gaat, regional als het publiek uit de omliggende provincie komt en binnen een uur naar huis rijdt, national als de pagina bezoekers uit heel Nederland aantoont, en international als de pagina buitenlandse bezoekers of deelnemers aantoont. Beoordeel dit los van impactPoints en los van de duur: een markt of familiefestival dat twee dagen achter elkaar van 10:00 tot 17:00 open is, trekt twee dagen dezelfde dagbezoekers en is dus none of regional, terwijl één avond die om 02:00 eindigt met aangetoonde landelijke bezoekers national is. Een voorstelling in een stadstheater is none of regional tenzij de pagina landelijke toestroom aantoont. Gebruik null als de opgehaalde pagina geen aanwijzing over de herkomst van het publiek geeft; verzin dan geen herkomst om High te rechtvaardigen.`;
 }
 
 function usageTotals(
@@ -494,6 +521,7 @@ type CollectClaudeInput = CollectionWindow & {
   discoveryModel?: string;
   client?: Anthropic;
   onUsage?: UsageObserver;
+  geocodeCity?: typeof geocodeCity;
   geocode?: (query: string) => Promise<{ latitude: number; longitude: number } | null>;
   triage?: (candidates: DiscoveredCandidate[]) => Promise<Map<number, string>>;
   knownUrls?: string[];
@@ -522,12 +550,16 @@ export function marketResultIsShareable(usage: Record<string, number>) {
 
 /** Both horizons share verification and persistence; a failed sweep must not discard the other. */
 export async function collectClaudeCalendar(
-  input: CollectClaudeInput & { longRangeSeeds?: LongRangeSeed[]; longRangeEnabled?: boolean; runNearTerm?: boolean },
+  input: CollectClaudeInput & { longRangeSeeds?: LongRangeSeed[]; longRangeEnabled?: boolean; longRangeMarkets?: string[]; runNearTerm?: boolean },
   collect = collectClaude,
   // Dynamic: long-range.ts imports this module, so a static import here is a require cycle.
   collectFuture = async (future: CollectClaudeInput & { seeds?: LongRangeSeed[] }) => (await import("./long-range")).collectLongRange(future),
 ): Promise<SourceResult> {
   if (!(input.longRangeEnabled ?? process.env.LONG_RANGE_DISCOVERY === "enabled")) return collect(input);
+  const markets = input.longRangeMarkets ?? process.env.LONG_RANGE_MARKETS?.split(",").map((market) => market.trim()).filter(Boolean);
+  if (markets?.length && !markets.some((market) => normalizeText(market) === normalizeText(input.location))) {
+    return input.runNearTerm === false ? { source: "claude", candidates: [], requests: 0, usage: { longRangeOutsidePilot: 1 } } : collect(input);
+  }
   const settled = await Promise.allSettled([
     input.runNearTerm === false ? Promise.resolve<SourceResult>({ source: "claude", candidates: [], requests: 0, usage: {} }) : collect({ ...input, agendaSeedUrls: [] }),
     collectFuture({ ...input, ...longRangeWindow(input), seeds: input.longRangeSeeds }),
@@ -548,7 +580,16 @@ export async function collectClaudeCalendar(
     if (index === 0 && input.runNearTerm !== false) {
       merged.usage.nearTermSucceeded = Number(!value.error && !(value.usage.completedSearches < value.usage.plannedSearches));
     }
-    merged.candidates.push(...value.candidates);
+    for (const candidate of value.candidates) {
+      const existingIndex = candidate.providerEventId ? merged.candidates.findIndex((old) => old.providerEventId === candidate.providerEventId) : -1;
+      if (existingIndex < 0) merged.candidates.push(candidate);
+      else {
+        const previous = merged.candidates[existingIndex];
+        // Cached long-range evidence can overlap a fresh near-term cancellation.
+        const verifiedAt = (event: EventCandidate) => event.evidence?.dateText ? Date.parse(event.evidence.checkedAt) || 0 : 0;
+        if (verifiedAt(candidate) > verifiedAt(previous)) merged.candidates[existingIndex] = candidate;
+      }
+    }
     merged.requests += value.requests;
     merged.invalidatedUrls!.push(...(value.invalidatedUrls ?? []));
     if (value.quarantinedProviderEventIds?.length) merged.quarantinedProviderEventIds = [...(merged.quarantinedProviderEventIds ?? []), ...value.quarantinedProviderEventIds];
@@ -1012,7 +1053,7 @@ async function collectClaudeFresh(
             ? { thinking: { type: "disabled" as const } }
             : {}),
           tools,
-          output_config: { format: zodOutputFormat(outputSchema) },
+          output_config: { format: zodOutputFormat(eventWireOutputSchema) },
           messages: [{
             role: "user",
             content: retry
@@ -1126,7 +1167,8 @@ async function collectClaudeFresh(
           recordDrop(label, "verification", `Geen aantoonbare hotelvraag (impactPoints ${event.impactPoints}).`);
           return [];
         }
-        return [{ ...event, sourceUrl, primarySourceConfirmed }];
+        const evidence = verifyEventEvidence(event.facts, sourceUrl, message.content.flatMap((block) => block.type === "web_fetch_tool_result" && block.content.type === "web_fetch_result" ? [{ url: block.content.url, text: fetchedDocumentText(block.content.content) }] : []), new Date().toISOString());
+        return [{ ...event, sourceUrl, primarySourceConfirmed: primarySourceConfirmed && Boolean(evidence?.locationText), evidence }];
       });
     } catch (error) {
       failedFetches += 1;
@@ -1141,31 +1183,32 @@ async function collectClaudeFresh(
   });
   if (!parsedFetches && firstFailure) throw firstFailure;
   const geocode = input.geocode ?? geocodeVenue;
+  const resolveLocation = createLocationResolver({ venue: geocode, city: input.geocodeCity });
   const candidates = await Promise.all(events.map(async (event) => {
-    const resolved = event.latitude === null || event.longitude === null
-      ? event.venue ? await geocode(`${event.venue}, ${input.location}`) : null
-      : null;
+    await resolveLocation(event);
+    const resolved = !event.evidence && (event.latitude === null || event.longitude === null) && event.venue ? await geocode(event.venue) : null;
     const candidate = {
       provider: "claude" as const,
       providerEventId: "",
       sourceUrl: event.sourceUrl,
+      evidence: event.evidence,
       title: event.title,
       category: event.category,
       venue: event.venue,
       latitude: event.latitude ?? resolved?.latitude ?? null,
       longitude: event.longitude ?? resolved?.longitude ?? null,
-      regionScope: event.regionScope,
+      regionScope: event.regionScope ?? event.evidence?.hostCity ?? null,
       startAt: event.startAt,
       endAt: event.endAt,
       sourceState: event.status,
       certainty: "confirmed" as const,
       localRank: null,
-      attendance: event.attendance,
-      venueCapacity: event.venueCapacity,
-      aiImpactPoints: event.impactPoints,
+      attendance: event.evidence?.demand.some((fact) => fact.scope === "edition") ? event.attendance : null,
+      venueCapacity: event.evidence?.demand.length ? event.venueCapacity : null,
+      aiImpactPoints: event.evidence?.demand.length ? event.impactPoints : null,
       assessmentVersion: CLAUDE_ASSESSMENT_VERSION,
-      overnightAudience: event.overnightAudience,
-      evidenceText: event.evidenceText,
+      overnightAudience: event.evidence?.demand.length ? supportedAudience(event.evidence, event.overnightAudience) : null,
+      evidenceText: event.evidenceText ?? event.evidence?.demand.map((fact) => fact.text).join(" ") ?? null,
       primarySourceConfirmed: event.primarySourceConfirmed,
     } satisfies EventCandidate;
     candidate.providerEventId = claudeProviderEventId(candidate);

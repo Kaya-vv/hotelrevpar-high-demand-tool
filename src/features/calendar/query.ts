@@ -1,3 +1,5 @@
+import { readEventEvidence } from "@/features/events/evidence";
+import { eventLocalDate } from "@/features/events/normalize";
 import { createServerClient } from "@/lib/supabase/server";
 import {
   isPublishableDemand,
@@ -108,8 +110,8 @@ export async function getCalendarData(
     .filter(
       (event) =>
         event.certainty === "confirmed" &&
-        event.start_at.slice(0, 10) <= bounds.end &&
-        event.end_at.slice(0, 10) >= bounds.start
+        eventLocalDate(event.start_at) <= bounds.end &&
+        eventLocalDate(event.end_at) >= bounds.start
     )
     .map((event) => {
       const decision = decisionsByEvent.get(event.id);
@@ -144,6 +146,10 @@ export async function getCalendarData(
         );
       return {
         id: event.id,
+        locationApproximate: sources.some((source) => {
+          const location = source.event_id === event.id ? readEventEvidence(source.evidence)?.locationResolution : undefined;
+          return location?.method === "city_centroid" && location.latitude === event.latitude && location.longitude === event.longitude;
+        }),
         title: decision?.override_title ?? event.title,
         category: event.category,
         venue: decision?.override_venue ?? event.venue,

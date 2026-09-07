@@ -38,6 +38,11 @@ export function localParts(value: string) {
   };
 }
 
+// Older all-day records used a UTC end-of-day placeholder; retain their intended date.
+export function eventLocalDate(value: string) {
+  return /T23:59:59(?:\.000)?(?:Z|\+00:00)$/.test(value) ? value.slice(0, 10) : localParts(value).date;
+}
+
 // A place qualifier in a title carries no identity: every comparison that uses these tokens has
 // already matched the event's date and place. Left in, they invent distinctions - "DigiMarCon
 // Amsterdam 2026", "DigiMarCon Europe 2026" and "DigiMarCon Netherlands 2026" became three rows
@@ -70,6 +75,12 @@ function placeKey(candidate: EventCandidate) {
   return normalizeText(candidate.venue ?? candidate.regionScope ?? "unknown");
 }
 
+export function performanceTime(candidate: Pick<EventCandidate, "category" | "startAt">) {
+  if (!/concert|musical|theat|performance/i.test(candidate.category)) return "";
+  const start = localParts(candidate.startAt);
+  return start.hour === 0 && start.minute === 0 || /T00:00:00(?:\.000)?Z$/.test(candidate.startAt) ? "" : `${start.hour}:${start.minute}`;
+}
+
 export function normalizeCandidate(candidate: EventCandidate): NormalizedCandidate {
   const localStartDate = localParts(candidate.startAt).date;
   const normalizedTitle = normalizeText(candidate.title);
@@ -84,7 +95,7 @@ export function normalizeCandidate(candidate: EventCandidate): NormalizedCandida
     localStartDate,
     localEndDate: candidate.endAt ? localParts(candidate.endAt).date : localStartDate,
     normalizedTitle,
-    normalizedIdentity: [identityTitle, localStartDate, placeKey(candidate)].join("|"),
+    normalizedIdentity: [identityTitle, localStartDate, placeKey(candidate), ...(performanceTime(candidate) ? [performanceTime(candidate)] : [])].join("|"),
   };
 }
 

@@ -33,8 +33,8 @@ describe("saved production response replay (no network)", () => {
     expect(replay.requests[2].tools).toHaveLength(1);
     expect(result.usage.evidenceRequests).toBe(1);
     if (completion === "fetched") {
-      expect(result.candidates[0]).toMatchObject({ title: "Dutch Design Week 2027", startAt: "2027-10-23T00:00:00Z",
-        endAt: "2027-10-31T23:59:59Z", aiImpactPoints: null });
+      expect(result.candidates[0]).toMatchObject({ title: "Dutch Design Week 2027", startAt: "2027-10-22T22:00:00.000Z",
+        endAt: "2027-10-31T22:59:59.000Z", aiImpactPoints: null });
       expect(state.leads[0].officialPage).toBe("https://ddw.nl/en/about-ddw");
     } else expect(result.candidates).toEqual([]);
   });

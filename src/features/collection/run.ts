@@ -1,3 +1,5 @@
+import { longRangeWindow } from "./sources/claude";
+import { eventLocalDate } from "@/features/events/normalize";
 import { distanceKm } from "@/features/events/distance";
 import {
   applyDemandTriage,
@@ -127,7 +129,7 @@ export function selectLongRangeSeeds(
   for (const row of rows) {
     const url = row.public_source_url ?? row.source_url;
     if (!/^https?:\/\//i.test(url)) continue;
-    const lastEditionEnd = (row.extracted_end_at ?? row.extracted_start_at).slice(0, 10);
+    const lastEditionEnd = eventLocalDate(row.extracted_end_at ?? row.extracted_start_at);
     if (lastEditionEnd < floor || lastEditionEnd > ceiling) continue;
     const stored = byEvent.get(row.event_id);
     if (!stored || stored.lastEditionEnd < lastEditionEnd || (stored.lastEditionEnd === lastEditionEnd && (row.ai_impact_points ?? 0) > (stored.historicalDemandPoints ?? 0))) {
@@ -182,7 +184,7 @@ export type CollectionRepository = {
   ) => Promise<void>;
   quarantineClaudeEditions: (context: CollectionContext, providerEventIds: string[]) => Promise<void>;
   shouldRunClaudeDiscovery: (context: CollectionContext) => Promise<boolean>;
-  recalculateScores: (context: CollectionContext) => Promise<void>;
+  recalculateScores: (context: CollectionContext) => Promise<void | Record<string, number>>;
   recordUsage: (
     runId: string,
     source: SourceName,
@@ -254,8 +256,8 @@ function defaultCollectors(
   onUsage: (source: SourceName, usage: ClaudeUsageEvent) => Promise<void>
 ): Partial<Record<SourceName, Collector>> {
   return {
-    rijksoverheid: (context) => collectRijksoverheid(context.window),
-    openholidays: (context) => collectOpenHolidays(context.window),
+    rijksoverheid: (context) => collectRijksoverheid({ start: context.window.start, end: longRangeWindow(context.window).end }),
+    openholidays: (context) => collectOpenHolidays({ start: context.window.start, end: longRangeWindow(context.window).end }),
     ticketmaster: (context) =>
       collectTicketmaster({
         ...context.window,
@@ -708,7 +710,9 @@ export async function runCollection(
         ...(result.value.funnel ? { funnel: result.value.funnel } : {}),
       };
     }
-    await repository.recalculateScores(context);
+    const publication = await repository.recalculateScores(context);
+    const claudeResult = sourceResults.claude as { usage?: Record<string, number> } | undefined;
+    if (publication && claudeResult?.usage) for (const [key, value] of Object.entries(publication)) claudeResult.usage[`longRange_${key}`] = value;
   } catch (error) {
     failed = true;
     fatalError = error;

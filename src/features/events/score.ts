@@ -1,3 +1,4 @@
+import { hasDemandEvidence } from "./evidence";
 import { distanceKm } from "./distance";
 import { localParts } from "./normalize";
 import type { DemandScore, EventCandidate } from "./types";
@@ -42,9 +43,10 @@ export function impact(input: {
   aiImpactPoints?: number | null;
   category: string;
   title?: string;
+  evidence?: EventCandidate["evidence"];
 }): { points: number; basis: DemandScore["impactBasis"] } {
   const capSport = (points: number) =>
-    input.category === "sports" && !marqueeSport(input.category, input.title)
+    input.category === "sports" && !marqueeSport(input.category, input.title) && !(input.evidence?.majorCompetition && hasDemandEvidence(input))
       ? Math.min(points, 45)
       : points;
   if (input.aiImpactPoints !== undefined && input.aiImpactPoints !== null) {
@@ -139,10 +141,9 @@ export function scoreHotelEvent({
       candidate.endAt.slice(11, 16) === "23:59");
   // A programme finishing before dawn is still the same evening, not a second day.
   const programmeEndDate = end.hour < 6 ? previousDate(end.date) : end.date;
-  const multiDay =
-    !allDayPlaceholder &&
-    !repeatedPerformance(candidate.category) &&
-    programmeEndDate > start.date;
+  const multiDay = !repeatedPerformance(candidate.category) && (candidate.evidence?.continuous
+    ? end.date > start.date
+    : !allDayPlaceholder && programmeEndDate > start.date);
   let stayPressurePoints = multiDay ? 6 : 0;
   // A programme ending after midnight is a stronger overnight signal than one
   // ending at 20:00, so both earn the evening-finish bonus.
@@ -171,7 +172,8 @@ export function scoreHotelEvent({
   );
   const routineSport =
     candidate.category === "sports" &&
-    !marqueeSport(candidate.category, candidate.title, candidate.regionScope ?? "");
+    !marqueeSport(candidate.category, candidate.title, candidate.regionScope ?? "")
+    && !(candidate.evidence?.majorCompetition && hasDemandEvidence(candidate));
   const people = candidate.attendance ?? candidate.venueCapacity;
   // An explicit assessment from the source beats every proxy below it: a
   // two-day daytime market is multi-day without generating a single booking.
@@ -200,7 +202,9 @@ export function scoreHotelEvent({
   const contextOnly =
     candidate.category === "school_holiday" ||
     candidate.category === "public_holiday";
-  const total = routineSport || contextOnly || !overnightSignal
+  const missingClaudeEvidence = candidate.provider === "claude" && candidate.evidence !== undefined && !hasDemandEvidence(candidate);
+  const outsideRadius = !contextOnly && (measuredDistance === null || measuredDistance > hotel.demandRadiusKm);
+  const total = routineSport || contextOnly || outsideRadius || !overnightSignal || missingClaudeEvidence
     ? Math.min(69, rawTotal)
     : rawTotal;
 

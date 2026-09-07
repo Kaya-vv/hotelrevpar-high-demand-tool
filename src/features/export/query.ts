@@ -1,3 +1,4 @@
+import { localDateBoundary } from "@/features/events/evidence";
 import type { DemandLevel } from "@/features/events/importance";
 import { createServerClient } from "@/lib/supabase/server";
 import { fetchInBatches } from "@/lib/supabase/fetch-in-batches";
@@ -54,7 +55,7 @@ export async function loadExportEvents(accountId: string, range: ExportRange, se
   const areaIds = areas.map((area) => area.id);
   const [exportEvents, scores, links, sources] = eventIds.length
     ? await Promise.all([
-        fetchInBatches(eventIds, (ids) => supabase.from("events").select("id, title, start_at, end_at, certainty").in("id", ids).lte("start_at", `${range.end}T23:59:59Z`).gte("end_at", `${range.start}T00:00:00Z`)),
+        fetchInBatches(eventIds, (ids) => supabase.from("events").select("id, title, start_at, end_at, certainty").in("id", ids).lte("start_at", localDateBoundary(range.end, true)).gte("end_at", localDateBoundary(range.start))),
         fetchInBatches(eventIds, (ids) => supabase.from("hotel_event_scores").select("event_id, hotel_id, suggested_importance, importance_override, impact_basis").in("event_id", ids).in("hotel_id", selectedHotelIds)),
         areaIds.length
           ? fetchInBatches(areaIds, (ids) => supabase.from("account_event_areas").select("event_id, collection_area_id").eq("account_id", accountId).in("collection_area_id", ids))

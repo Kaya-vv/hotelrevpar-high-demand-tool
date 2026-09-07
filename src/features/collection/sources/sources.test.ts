@@ -1,3 +1,5 @@
+// Explicit offline location responses for adapter rule tests.
+vi.mock("@/features/portfolio/geocode", () => ({ searchAddresses: vi.fn(async () => [{ id: "recorded-test-address", label: "Test venue" }]), getAddressById: vi.fn(async () => ({ latitude: 51.44, longitude: 5.48 })) }));
 import { describe, expect, it, vi, type Mock } from "vitest";
 import {
   APIConnectionTimeoutError,
@@ -11,10 +13,12 @@ import rijksoverheidFixture from "../../../../tests/fixtures/rijksoverheid.json"
 import ticketmasterFixture from "../../../../tests/fixtures/ticketmaster.json";
 import type { BatchRow, BatchStore } from "../anthropic-batches";
 import { LongRangeLeaseError } from "../long-range-store";
+import { searchAddresses, getAddressById } from "@/features/portfolio/geocode";
 import {
   claudeProviderEventId,
   collectClaude,
   collectClaudeCalendar,
+  geocodeVenue,
   longRangeWindow,
   marketResultIsShareable,
   triagePredictHqCandidates,
@@ -30,6 +34,17 @@ import { collectTicketmaster } from "./ticketmaster";
 const jsonResponse = (value: unknown) =>
   new Response(JSON.stringify(value), { status: 200 });
 const window = { start: "2027-01-01", end: "2027-12-31" };
+
+it("resolves an exact official address among other street-number suggestions", async () => {
+  vi.mocked(searchAddresses).mockResolvedValueOnce([
+    { id: "exact", label: "Emmasingel 14, 5611AZ Eindhoven, Eindhoven (Noord-Brabant)" },
+    { id: "other", label: "Emmasingel 31-141, 5611AZ Eindhoven, Eindhoven (Noord-Brabant)" },
+  ]);
+  expect(await geocodeVenue("Emmasingel 14, 5611AZ, Eindhoven")).toEqual({ latitude: 51.44, longitude: 5.48 });
+  expect(getAddressById).toHaveBeenLastCalledWith("exact");
+  vi.mocked(searchAddresses).mockResolvedValueOnce([{ id: "a", label: "Venue 1" }, { id: "b", label: "Venue 2" }]);
+  expect(await geocodeVenue("Venue, Eindhoven")).toBeNull();
+});
 
 it("covers the gap after ninety days through the end of next year, including August", () => {
   expect(longRangeWindow({ start: "2026-09-05", end: "2026-12-04" })).toEqual({ start: "2026-12-05", end: "2027-12-31" });
@@ -68,6 +83,17 @@ it("propagates a busy market to the collection job retry path", async () => {
   const near = vi.fn().mockResolvedValue({ source: "claude", candidates: [], requests: 0, usage: {} });
   const future = vi.fn().mockRejectedValue(new LongRangeLeaseError());
   await expect(collectClaudeCalendar({ start: "2026-09-05", end: "2026-12-04", location: "Eindhoven", radiusKm: 25, longRangeEnabled: true }, near, future)).rejects.toBeInstanceOf(LongRangeLeaseError);
+});
+
+it("limits pilot rollout without changing the near-term collection schedule", async () => {
+  const near = vi.fn().mockResolvedValue({ source: "claude", candidates: [], requests: 1, usage: {} });
+  const future = vi.fn();
+  const input = { start: "2026-09-07", end: "2026-12-06", location: "Utrecht", radiusKm: 25, longRangeEnabled: true, longRangeMarkets: ["Eindhoven", "Rotterdam", "Groningen", "Amsterdam"] };
+  await collectClaudeCalendar(input, near, future);
+  expect(near).toHaveBeenCalledOnce();
+  expect(future).not.toHaveBeenCalled();
+  await collectClaudeCalendar({ ...input, runNearTerm: false }, near, future);
+  expect(near).toHaveBeenCalledOnce();
 });
 
 it("discovers an unknown design event next August with four broad city searches", async () => {
@@ -127,7 +153,7 @@ const claudeWindow = { start: "2027-08-01", end: "2027-10-30" };
 
 const fetchResult = (url: string) => ({
   type: "web_fetch_tool_result",
-  content: { type: "web_fetch_result", url },
+  content: { type: "web_fetch_result", url, content: { text: "Official edition dates and host venue. International visitors stay in local hotels." } },
 });
 
 const discoveredCandidate = (overrides: Record<string, unknown> = {}) => ({
@@ -190,6 +216,8 @@ const agendaResponse = (url: string, candidates: Array<Record<string, unknown>>)
 });
 
 const verifiedEvent = (overrides: Record<string, unknown> = {}) => ({
+  facts: { dateText: "Official edition dates and host venue.", locationText: "Official edition dates and host venue.", hostCity: "Eindhoven", locationScope: "venue", continuous: true, majorCompetition: false,
+    demand: [{ sourceUrl: String(overrides.sourceUrl ?? "https://organizer.example/event"), text: "International visitors stay in local hotels.", scope: "edition", year: 2027, comparable: true }] },
   sourceUrl: "https://organizer.example/event",
   title: "Dutch Design Week",
   category: "festival",
@@ -383,6 +411,7 @@ describe("source adapters", () => {
         verificationResponse(official, [
           verifiedEvent({
             sourceUrl: "https://invented.example/event",
+            facts: { ...verifiedEvent({ sourceUrl: official }).facts },
             title: "Vakbeurs Utrecht",
             category: "expos",
             venue: "Jaarbeurs",

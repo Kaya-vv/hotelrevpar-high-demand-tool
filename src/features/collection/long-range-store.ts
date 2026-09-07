@@ -4,7 +4,7 @@ import type { Json } from "@/lib/supabase/database.types";
 
 export const LONG_RANGE_VERSION = 2;
 /** Editions this account already confirmed, used to seed leads without paying for a search. */
-export type LongRangeSeed = { title: string; url: string; lastEditionStart?: string; lastEditionEnd: string; historicalDemandPoints?: number };
+export type LongRangeSeed = { title: string; url: string; officialPages?: string[]; lastEditionStart?: string; lastEditionEnd: string; historicalDemandPoints?: number; previousLocation?: { venue: string | null; text: string; sourceUrl: string; checkedAt: string; evidence?: EventCandidate["evidence"] } };
 export type SeriesEdition = { start: string; end: string; sourceUrl: string };
 export type ProjectedEdition = {
   status: "projected";
@@ -16,6 +16,12 @@ export type ProjectedEdition = {
   basedOn: SeriesEdition;
 };
 export type Lead = {
+  knownEdition?: LongRangeSeed;
+  officialPages?: string[];
+  pendingStage?: "url" | "retrieval" | "extraction" | "location" | "demand" | "conflict";
+  firstSeenAt?: string;
+  discoveryGroups?: number[];
+  pageCache?: Record<string, { text?: string; links?: { url: string; label: string }[]; hash: string; version: number; cursor: number; complete: boolean; chunks: number; checkedAt: string }>;
   key: string;
   title: string;
   url: string | null;
@@ -41,7 +47,9 @@ export type Lead = {
   editions: EventCandidate[];
   notes: string[];
 };
-export type LongRangeState = { version: number; discoveredAt: string | null; discoveryAttemptAt?: string; lastPassAt?: string; lastSweepAt?: string; leads: Lead[] };
+export type LongRangeState = { locations?: Record<string, { latitude: number; longitude: number }>;  retrievalFailures?: Record<string, { checkedAt: string; message: string }>; pageCache?: Lead["pageCache"]; searchCycle?: { dueAt: string; broad: boolean; completed: string[] }; version: number; storageVersion?: number; announcementSearchAt?: string; discoveredAt: string | null; discoveryAttemptAt?: string; lastPassAt?: string; lastSweepAt?: string; leads: Lead[];
+  budget?: { month: string; spentEur: number; reservations: Record<string, number>; billedIds: string[] };
+};
 export type LongRangeStore = {
   acquire: (key: string) => Promise<boolean>;
   release: (key: string) => Promise<void>;
