@@ -184,7 +184,8 @@ export async function getCalendarData(
       if (error) throw error;
       const { createLongRangeStore, longRangeMarketKey } = await import("../collection/long-range-store");
       const state = await createLongRangeStore().load(longRangeMarketKey(area.search_location, area.radius_km));
-      researchPending = !state?.publishedAt || state.publishedAt < runResult.data.started_at || Boolean(state.publicationPending);
+      const { researchIsPending } = await import("../collection/research-status");
+      researchPending = researchIsPending(true, runResult.data.started_at, state);
     }
     latestRun = {
       startedAt: runResult.data.started_at,

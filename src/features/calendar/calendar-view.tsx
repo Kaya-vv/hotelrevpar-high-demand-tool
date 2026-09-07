@@ -422,7 +422,9 @@ function RunStatus({ latestRun }: { latestRun: LatestRun }) {
     <p
       className={latestRun.hadErrors ? "updated-at warning-text" : "updated-at"}
     >
-      {latestRun.finishedAt
+      {latestRun.researchPending
+        ? "Bijwerken bezig: onderzoek en publicatie van toekomstige evenementen lopen nog."
+        : latestRun.finishedAt
         ? `Bijgewerkt op ${new Date(latestRun.finishedAt).toLocaleString(
             "nl-NL"
           )}${latestRun.hadErrors ? ". Een bron was niet bereikbaar." : ""}`
@@ -432,7 +434,7 @@ function RunStatus({ latestRun }: { latestRun: LatestRun }) {
             hour: "2-digit",
             minute: "2-digit",
           })}.`}
-      {latestRun.researchPending && " Onderzoek naar toekomstige evenementen loopt nog; nieuwe resultaten verschijnen automatisch."}
+      {latestRun.researchPending && " Nieuwe resultaten verschijnen automatisch."}
     </p>
   );
 }

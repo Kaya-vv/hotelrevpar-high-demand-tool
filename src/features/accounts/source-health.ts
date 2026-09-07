@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 import { currentSourceError } from "./source-health-state";
 import { longRangeMarketKey, type LongRangeState } from "../collection/long-range-store";
+import { researchIsPending } from "../collection/research-status";
 
 export async function getMarketResearchHealth() {
   const admin = createAdminClient();
@@ -45,6 +46,7 @@ export type SourceHealth = {
 };
 
 export type SourceHealthRun = {
+  researchPending?: boolean;
   id: string;
   accountName: string;
   areaName: string;
@@ -55,6 +57,7 @@ export type SourceHealthRun = {
 };
 
 type RawSource = {
+  researchPending?: boolean;
   state?: string;
   error?: string;
   candidates?: number;
@@ -74,14 +77,17 @@ function sourceEntries(value: unknown) {
 
 export async function getSourceHealthRuns(): Promise<SourceHealthRun[]> {
   const admin = createAdminClient();
-  const [runsResult, accountsResult, areasResult] = await Promise.all([
+  const [runsResult, accountsResult, areasResult, marketsResult] = await Promise.all([
     admin.from("collection_runs").select("*").order("started_at", { ascending: false }).limit(100),
     admin.from("accounts").select("id, name"),
-    admin.from("collection_areas").select("id, name, enabled_sources"),
+    admin.from("collection_areas").select("id, name, enabled_sources, search_location, radius_km"),
+    admin.from("long_range_markets").select("market_key, state"),
   ]);
   if (runsResult.error) throw runsResult.error;
   if (accountsResult.error) throw accountsResult.error;
   if (areasResult.error) throw areasResult.error;
+  if (marketsResult.error) throw marketsResult.error;
+  const markets = new Map(marketsResult.data.map((market) => [market.market_key, market.state as unknown as LongRangeState]));
 
   const runIds = runsResult.data.map((run) => run.id);
   const usageResult = runIds.length
@@ -122,6 +128,8 @@ export async function getSourceHealthRuns(): Promise<SourceHealthRun[]> {
       areaName: area?.name ?? "Onbekende regio",
       startedAt: run.started_at,
       finishedAt: run.finished_at,
+      researchPending: researchIsPending(Boolean(storedSources.get("claude")?.researchPending), run.started_at,
+        area ? markets.get(longRangeMarketKey(area.search_location, area.radius_km)) : null),
       errorSummary: run.error_summary === "[object Object]" ? "Run afgebroken door een technische fout" : run.error_summary,
       sources: sourceNames.map((name) => {
         const source = storedSources.get(name);

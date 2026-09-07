@@ -1,9 +1,14 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { SourceHealthTable } from "./page";
+import { SourceHealthTable, runStatusLabel } from "./page";
 
 describe("SourceHealthTable", () => {
+  it("only shows completed after background research and publication finish", () => {
+    const run = { id: "research", accountName: "Robert", areaName: "The Match", startedAt: "2026-09-08T10:00:00Z", finishedAt: "2026-09-08T10:00:15Z", errorSummary: null, sources: [], researchPending: true };
+    expect(runStatusLabel(run)).toBe("Bezig: onderzoek en publicatie");
+    expect(runStatusLabel({ ...run, researchPending: false })).toBe("Voltooid");
+  });
   it("shows collection and Anthropic usage evidence", () => {
     render(<SourceHealthTable runs={[{
       id: "run-1",

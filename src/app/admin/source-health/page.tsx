@@ -1,9 +1,11 @@
 import type { SourceHealthRun } from "@/features/accounts/source-health";
 import { RefreshAllForm } from "@/features/collection/refresh-all-form";
 import { RefreshHotelForm } from "@/features/collection/refresh-hotel-form";
+import { RefreshRunStatus } from "@/features/collection/refresh-run-status";
 
 export function runStatusLabel(run: SourceHealthRun) {
   if (!run.finishedAt) return "Bezig";
+  if (run.researchPending) return "Bezig: onderzoek en publicatie";
   if (run.errorSummary) return run.errorSummary;
   return run.sources.some((source) =>
     ["partial", "error", "failed", "unlicensed"].includes(source.state)
@@ -71,6 +73,7 @@ export default async function SourceHealthPage() {
         <RefreshAllForm />
       </div>
       <SourceHealthTable runs={runs} />
+      <RefreshRunStatus pending={runs.some((run) => !run.finishedAt || run.researchPending)} />
       {markets.length > 0 && <section className="panel">
         <h2>Onderzoek naar toekomstige evenementen</h2>
         <p>Gedeeld per stad en straal. Hotelverversingen wachten niet op dit onderzoek.</p>

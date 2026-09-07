@@ -111,4 +111,17 @@ describe("CalendarView", () => {
     act(() => vi.advanceTimersByTime(3_000));
     expect(refresh).toHaveBeenCalledOnce();
   });
+  it("keeps refreshing after collection finishes until background publication finishes", () => {
+    vi.useFakeTimers();
+    const run = { startedAt: "2027-10-01T10:00:00Z", finishedAt: "2027-10-01T10:00:15Z", researchPending: true };
+    const { rerender } = render(<CalendarView month="2027-10" events={events} latestRun={run} />);
+    expect(screen.getByText(/Bijwerken bezig: onderzoek en publicatie/)).toBeInTheDocument();
+    expect(screen.queryByText(/Bijgewerkt op/)).not.toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(3_000));
+    expect(refresh).toHaveBeenCalledOnce();
+    rerender(<CalendarView month="2027-10" events={events} latestRun={{ ...run, researchPending: false }} />);
+    expect(screen.getByText(/Bijgewerkt op/)).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(3_000));
+    expect(refresh).toHaveBeenCalledOnce();
+  });
 });
