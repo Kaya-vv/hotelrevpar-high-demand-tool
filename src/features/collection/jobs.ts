@@ -22,7 +22,7 @@ export async function publishCollectionJob(
   }
   const { send } = await import("@vercel/queue");
   await send(COLLECTION_TOPIC, message, {
-    idempotencyKey: "jobId" in message ? message.jobId : `${message.runId}:${message.kind}`,
+    idempotencyKey: "jobId" in message ? message.jobId : `${message.runId}:${message.kind}:${message.requestedAt}`,
     // Anthropic batches may use their full 24-hour processing window before a retry completes.
     retentionSeconds: 172_800,
   });

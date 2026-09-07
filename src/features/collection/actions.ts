@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requirePlatformAdmin } from "@/lib/auth/require-account";
 import { createServerClient } from "@/lib/supabase/server";
 
-import { enqueueCollectionAreas } from "./jobs";
+import { enqueueCollectionAreas, publishCollectionJob } from "./jobs";
 
 export type RefreshState = {
   message?: string;
@@ -56,6 +56,15 @@ export async function refreshHotel(
   if (error) throw error;
   if (!area)
     return { error: true, message: "Hotel niet gevonden in dit account." };
+
+  if (formData.get("operation") === "publication") {
+    const { data: run, error } = await (await createServerClient()).from("collection_runs").select("id").eq("account_id", accountId).eq("collection_area_id", area.id).order("started_at", { ascending: false }).limit(1).maybeSingle();
+    if (error) throw error;
+    if (!run) return { error: true, message: "Er zijn nog geen opgeslagen resultaten." };
+    // A new queue message targets this deployment; retries of an older message stay pinned.
+    await publishCollectionJob({ kind: "market-publication", accountId, areaId: area.id, runId: run.id, requestedAt: new Date().toISOString() });
+    return { message: "Opgeslagen resultaten worden gepubliceerd. Er wordt geen nieuw onderzoek gestart." };
+  }
 
   let result: Awaited<ReturnType<typeof enqueueCollectionAreas>>;
   try {
