@@ -205,6 +205,10 @@ function parseMessage<T>(message: Anthropic.Message, schema: z.ZodType<T>): T {
 
 type Job = Omit<ResearchJob, "leadKey"> & { lead: Lead };
 class ResearchDeferredError extends Error {}
+// Two distinct causes with different remedies: a spend ceiling that a higher budget lifts, and a
+// per-cycle wave allowance that only the next cycle lifts. Source health must tell them apart.
+const BUDGET_DEFERRED = "Research budget exhausted";
+const CYCLE_DEFERRED = "Research cycle allowance reached";
 
 function unfetchedEvidenceUrl(lead: Lead, message: Anthropic.Message) {
   const root = fetchTarget(lead);
@@ -314,9 +318,10 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
 
   async function dispatch(phase: "search" | "verification", tasks: Parameters<typeof requestMessages>[2], jobs?: ResearchJob[], preparationErrors?: Record<number, string>) {
     let manifest = workCycle.pending;
-    const results: PromiseSettledResult<Anthropic.Message>[] = tasks.map(() => ({ status: "rejected", reason: new ResearchDeferredError("Research budget exhausted or cycle allowance reached") }));
+    const deferAll = (reason: string) => tasks.map((): PromiseSettledResult<Anthropic.Message> => ({ status: "rejected", reason: new ResearchDeferredError(reason) }));
+    const results = deferAll(BUDGET_DEFERRED);
     if (!manifest) {
-      if (!tasks.length || workCycle.waves >= 3 || workCycle.finished) return results;
+      if (!tasks.length || workCycle.waves >= 3 || workCycle.finished) return deferAll(CYCLE_DEFERRED);
       const indices: number[] = [], reservations: string[] = [];
       tasks.forEach((task, index) => {
         const reservation = budget.reserve(task.params, batching.enabled);
@@ -337,7 +342,11 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
         await observe(result.value, phase === "search" ? "discovery" : "verification", manifest.requests[index].params.model);
         budget.settle(manifest.reservations[offset], usageEvent(result.value, "discovery_fetch", manifest.requests[index].params.model), batching.enabled);
       }
-      else if (result.reason instanceof Anthropic.APIError && [400, 401, 403, 404, 422, 429].includes(result.reason.status ?? 0)) budget.releaseUnbilled(manifest!.reservations[offset]);
+      // runAnthropicBatch throws BatchPendingError while a batch is still processing, so any
+      // per-request rejection reaching here comes from a batch that has terminally ended
+      // (errored, canceled or expired). Those requests are never billed, and decodeResults
+      // reports them as a plain Error, so an APIError check leaks the reservation forever.
+      else budget.releaseUnbilled(manifest!.reservations[offset]);
     }
     // The manifest remains until the caller checkpoints evidence and queue progress.
     await store.save(key, state);
@@ -858,7 +867,8 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
   usage.demandAccepted = candidates.filter((event) => (event.aiImpactPoints ?? 0) >= 45).length;
   usage.unresolved = unresolved;
   usage.overdueLeads = deferred;
-  usage.budgetDeferred = new Set(drops.filter((drop) => drop.reason.includes("Research budget exhausted")).map((drop) => drop.title)).size;
+  usage.budgetDeferred = new Set(drops.filter((drop) => drop.reason.includes(BUDGET_DEFERRED)).map((drop) => drop.title)).size;
+  usage.cycleDeferred = new Set(drops.filter((drop) => drop.reason.includes(CYCLE_DEFERRED)).map((drop) => drop.title)).size;
   usage.cachedLeads = state.leads.length - due.length - toResolve.length;
   usage.sweep = sweepDue ? 1 : 0;
   if (state.research) {

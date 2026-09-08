@@ -22,8 +22,9 @@ export function estimatedCostUsd(event: ClaudeUsageEvent, batch: boolean) {
 export function researchBudget(state: LongRangeState, now: Date, ceilingEur = 5) {
   const month = now.toISOString().slice(0, 7);
   if (!state.budget || state.budget.month !== month) {
-    // Unknown in-flight spend survives a month boundary until reconciled.
-    state.budget = { month, spentEur: 0, reservations: state.budget?.reservations ?? {}, billedIds: state.budget?.billedIds ?? [] };
+    // Anthropic batches expire within 24h, so a reservation made in a previous month cannot
+    // correspond to live in-flight work; carrying it would only shrink this month's ceiling.
+    state.budget = { month, spentEur: 0, reservations: {}, billedIds: state.budget?.billedIds ?? [] };
   }
   const ledger = state.budget;
   return {

@@ -513,7 +513,7 @@ describe("coordinated long-range research", () => {
     expect(await geocodeCity("Bergen", fetcher)).toBeNull();
   });
 
-  it("reserves before dispatch, deduplicates billed IDs and carries uncertain spend across months", () => {
+  it("reserves before dispatch, deduplicates billed IDs and drops stale reservations at month rollover", () => {
     const state: LongRangeState = { version: 2003, discoveredAt: null, leads: [] };
     const budget = researchBudget(state, now);
     const request = { model: "claude-sonnet-5", max_tokens: 100, messages: [{ role: "user" as const, content: "test" }] };
@@ -525,10 +525,51 @@ describe("coordinated long-range research", () => {
     budget.settle(key, usage, false);
     expect(state.budget!.spentEur).toBe(spent);
     budget.reserve(request, false);
-    const nextMonth = researchBudget(state, new Date("2026-10-01"));
     expect(Object.keys(state.budget!.reservations)).toHaveLength(1);
+    const nextMonth = researchBudget(state, new Date("2026-10-01"));
+    // An Anthropic batch expires within 24h, so no reservation can outlive its own month.
+    expect(state.budget!.reservations).toEqual({});
     nextMonth.settle(key, usage, false);
     expect(state.budget!.spentEur).toBe(0);
     expect(state.budget!.billedIds).toEqual(["same"]);
+  });
+
+  it("releases the reservation for a batch request that terminally errored", async () => {
+    const test = setup();
+    let row: Awaited<ReturnType<BatchStore["get"]>> = null;
+    let params: { requests: { custom_id: string }[] };
+    const batchStore: BatchStore = {
+      removeExpired: async () => {}, get: async () => row,
+      claim: async () => { row = { status: "creating", batch_id: null, results: null, error: null, created_at: new Date().toISOString() }; return true; },
+      attach: async (_key, _owner, batchId) => { row = { ...row!, status: "processing", batch_id: batchId }; },
+      complete: async (_key, results) => { row = { ...row!, status: "completed", results }; },
+      fail: async () => {}, release: async () => {}, claimUsage: async () => false,
+    };
+    const client = { messages: { batches: {
+      create: vi.fn(async (input: { requests: { custom_id: string }[] }) => { params = input; return { id: "errored-batch" }; }),
+      retrieve: async () => ({ processing_status: "ended" }),
+      // A canceled, expired or errored batch reports per-request failures, never an APIError.
+      results: async function* () { for (const request of params.requests) yield { custom_id: request.custom_id, result: { type: "errored", error: { type: "invalid_request_error" } } }; },
+    } } } as unknown as Anthropic;
+
+    await collectLongRange({ ...test.input, client, batching: { enabled: true, store: batchStore } });
+
+    expect(Object.keys(test.state().budget?.reservations ?? {})).toHaveLength(0);
+  });
+
+  it("attributes a spend-ceiling stop to the budget and not to the research cycle", async () => {
+    const test = setup();
+
+    const starved = await collectLongRange({ ...test.input, budgetEur: 0 });
+    expect(starved.usage.budgetDeferred).toBeGreaterThan(0);
+    expect(starved.usage.cycleDeferred).toBe(0);
+
+    // The wave cap stops work before dispatch is reached (long-range.ts:687), so a capped cycle
+    // must not borrow the budget's reason for the leads it leaves due.
+    test.state().cycle!.waves = 3;
+    const capped = await collectLongRange(test.input);
+    expect(test.create).not.toHaveBeenCalled();
+    expect(capped.usage.budgetDeferred).toBe(0);
+    expect(capped.usage.overdueLeads).toBeGreaterThan(0);
   });
 });

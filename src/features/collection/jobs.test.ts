@@ -19,6 +19,8 @@ function selectable(data: unknown) {
   return query;
 }
 
+const delivery = (deliveryCount: number) => ({ deliveryCount, expiresAt: new Date(Date.now() + 86_400_000) });
+
 describe("collection jobs", () => {
   afterEach(() => vi.unstubAllEnvs());
 
@@ -28,7 +30,7 @@ describe("collection jobs", () => {
 
     await publishCollectionJob({ jobId: "job-1" }, processor);
 
-    await vi.waitFor(() => expect(processor).toHaveBeenCalledWith({ jobId: "job-1" }, 1));
+    await vi.waitFor(() => expect(processor).toHaveBeenCalledWith({ jobId: "job-1" }, { deliveryCount: 1, expiresAt: expect.any(Date) }));
   });
 
   it("queues only hotels that belong to the requested account", async () => {
@@ -65,7 +67,7 @@ describe("collection jobs", () => {
     adminHolder.current = { from: vi.fn(() => jobQuery) };
     const run = vi.fn();
 
-    await processCollectionJob({ jobId: "job-1" }, 2, run);
+    await processCollectionJob({ jobId: "job-1" }, delivery(2), run);
 
     expect(run).not.toHaveBeenCalled();
   });
@@ -106,12 +108,13 @@ describe("collection jobs", () => {
     };
     const run = vi.fn().mockResolvedValue({ runId: "run-2", status: "completed" });
 
-    await processCollectionJob({ jobId: "job-1" }, 2, run);
+    await processCollectionJob({ jobId: "job-1" }, delivery(2), run);
 
     expect(run).toHaveBeenCalledWith({
       accountId: "account-1",
       areaId: "area-1",
       trigger: "manual",
+      resume: false,
     });
     expect(runQuery.update).toHaveBeenCalledWith(expect.objectContaining({
       error_summary: "Vorige poging afgebroken door een time-out; batch wordt hervat.",
@@ -144,7 +147,7 @@ describe("collection jobs", () => {
     };
     const run = vi.fn().mockRejectedValue(new Error("provider unavailable"));
 
-    await expect(processCollectionJob({ jobId: "job-1" }, 3, run)).rejects.toThrow("provider unavailable");
+    await expect(processCollectionJob({ jobId: "job-1" }, delivery(3), run)).rejects.toThrow("provider unavailable");
     expect(updates).toEqual([
       expect.objectContaining({ status: "running", attempts: 3 }),
       expect.objectContaining({ status: "failed", attempts: 3, error_summary: "provider unavailable" }),

@@ -324,6 +324,7 @@ export type Database = {
           error_summary: string | null;
           finished_at: string | null;
           id: string;
+          pending_since: string | null;
           started_at: string | null;
           status: Database["public"]["Enums"]["collection_job_status"];
           trigger: Database["public"]["Enums"]["run_trigger"];
@@ -339,6 +340,7 @@ export type Database = {
           error_summary?: string | null;
           finished_at?: string | null;
           id?: string;
+          pending_since?: string | null;
           started_at?: string | null;
           status?: Database["public"]["Enums"]["collection_job_status"];
           trigger: Database["public"]["Enums"]["run_trigger"];
@@ -354,6 +356,7 @@ export type Database = {
           error_summary?: string | null;
           finished_at?: string | null;
           id?: string;
+          pending_since?: string | null;
           started_at?: string | null;
           status?: Database["public"]["Enums"]["collection_job_status"];
           trigger?: Database["public"]["Enums"]["run_trigger"];

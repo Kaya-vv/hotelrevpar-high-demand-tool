@@ -237,6 +237,10 @@ export class BatchPendingError extends Error {
   constructor() { super("Batch is still processing; resume its saved request manifest."); }
 }
 
+// A batch takes hours; a worker invocation has minutes. Long enough to submit and briefly poll,
+// after which waiting is the queue retry directive's job rather than the worker's.
+export const BATCH_CHECK_BUDGET_MS = 90_000;
+
 export async function runAnthropicBatch(
   client: Anthropic,
   requests: MessageCreateParamsNonStreaming[],
@@ -254,11 +258,13 @@ export async function runAnthropicBatch(
   const pollMilliseconds = options.pollMilliseconds ?? 5_000;
   const key = cacheKey(requests);
   const now = new Date();
+  // Normalised, not optional: an unbounded poll burns the whole invocation and loses the run.
+  const deadline = options.deadline ?? Date.now() + BATCH_CHECK_BUDGET_MS;
   await store.removeExpired(key, now.toISOString());
   let row = await store.get(key);
 
   if (!row) {
-    if (options.deadline !== undefined && Date.now() >= options.deadline) throw new BatchPendingError();
+    if (Date.now() >= deadline) throw new BatchPendingError();
     const ownerToken = randomUUID();
     // The lease must outlive the stuck-creation check below. With both at five minutes the
     // expiry sweep deletes the row first, `attach` silently updates nothing, and the batch that
@@ -287,7 +293,7 @@ export async function runAnthropicBatch(
   }
 
   while (row) {
-    if (options.deadline !== undefined && Date.now() >= options.deadline) throw new BatchPendingError();
+    if (Date.now() >= deadline) throw new BatchPendingError();
     if (row.status === "completed" && row.results) {
       return decodeResults(row.results, options.usageHandledByCaller || await store.claimUsage(key));
     }

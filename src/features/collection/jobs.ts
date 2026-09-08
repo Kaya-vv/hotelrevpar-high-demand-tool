@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { BatchPendingError } from "./anthropic-batches";
 import { runCollection } from "./run";
 import { processMarketWork, type MarketWork } from "./market-research";
 
@@ -17,7 +18,7 @@ export async function publishCollectionJob(
 ) {
   if (process.env.NODE_ENV === "development") {
     // ponytail: local development gets one in-process attempt; Vercel Queues owns production retries.
-    setTimeout(() => void localProcessor(message, 1).catch(console.error), 0);
+    setTimeout(() => void localProcessor(message, { deliveryCount: 1, expiresAt: new Date(Date.now() + 86_400_000) }).catch(console.error), 0);
     return;
   }
   const { send } = await import("@vercel/queue");
@@ -124,21 +125,23 @@ export async function enqueueCollectionAreas(
 
 export async function processCollectionJob(
   messageBody: CollectionJobMessage,
-  deliveryCount: number,
+  metadata: { deliveryCount: number; expiresAt: Date },
   run = runCollection,
 ) {
   if ("kind" in messageBody) return processMarketWork(messageBody);
+  const { deliveryCount } = metadata;
   const { createAdminClient } = await import("@/lib/supabase/admin");
   const admin = createAdminClient();
   const { data: job, error: jobError } = await admin
     .from("collection_jobs")
-    .select("id, account_id, collection_area_id, trigger, status")
+    .select("id, account_id, collection_area_id, trigger, status, pending_since")
     .eq("id", messageBody.jobId)
     .maybeSingle();
   if (jobError) throw jobError;
   if (!job || ["succeeded", "partial", "skipped"].includes(job.status)) return;
 
-  if (deliveryCount > 1 && job.status === "running") {
+  // A pending continuation left its run open on purpose; only a killed worker needs recovery.
+  if (deliveryCount > 1 && job.status === "running" && !job.pending_since) {
     const finishedAt = new Date().toISOString();
     const errorSummary = "Vorige poging afgebroken door een time-out; batch wordt hervat.";
     const { error: runError } = await admin
@@ -168,21 +171,26 @@ export async function processCollectionJob(
         status: "failed",
         attempts: deliveryCount,
         finished_at: new Date().toISOString(),
+        pending_since: null,
         error_summary: "Account of hotel bestaat niet meer.",
       })
       .eq("id", job.id);
     return;
   }
 
+  const resume = Boolean(job.pending_since);
   await admin
     .from("collection_jobs")
-    .update({
-      status: "running",
-      attempts: deliveryCount,
-      started_at: new Date().toISOString(),
-      finished_at: null,
-      error_summary: null,
-    })
+    .update(resume
+      // Waking up to check a batch is not a new attempt, and it did not restart the work.
+      ? { status: "running" }
+      : {
+        status: "running",
+        attempts: deliveryCount,
+        started_at: new Date().toISOString(),
+        finished_at: null,
+        error_summary: null,
+      })
     .eq("id", job.id);
 
   try {
@@ -190,6 +198,7 @@ export async function processCollectionJob(
       accountId: job.account_id,
       areaId: job.collection_area_id,
       trigger: job.trigger,
+      resume,
     });
     const status = result.status === "completed"
       ? "succeeded"
@@ -202,15 +211,41 @@ export async function processCollectionJob(
         status,
         collection_run_id: result.runId || null,
         finished_at: new Date().toISOString(),
+        pending_since: null,
       })
       .eq("id", job.id);
   } catch (error) {
+    if (error instanceof BatchPendingError) {
+      // The retry directive is useless once the message stops being redelivered, so the last
+      // useful delivery closes the job itself instead of leaving it `running` forever.
+      if (Date.now() + 120_000 >= metadata.expiresAt.getTime()) {
+        const summary = "Anthropic batch niet voltooid binnen de berichtretentie.";
+        await admin
+          .from("collection_jobs")
+          .update({ status: "failed", pending_since: null, finished_at: new Date().toISOString(), error_summary: summary })
+          .eq("id", job.id);
+        const { error: runError } = await admin
+          .from("collection_runs")
+          .update({ finished_at: new Date().toISOString(), error_summary: summary })
+          .eq("account_id", job.account_id)
+          .eq("collection_area_id", job.collection_area_id)
+          .is("finished_at", null);
+        if (runError) throw runError;
+        return;
+      }
+      await admin
+        .from("collection_jobs")
+        .update({ pending_since: new Date().toISOString() })
+        .eq("id", job.id);
+      throw error;
+    }
     await admin
       .from("collection_jobs")
       .update({
         status: "failed",
         attempts: deliveryCount,
         finished_at: new Date().toISOString(),
+        pending_since: null,
         error_summary: message(error),
       })
       .eq("id", job.id);

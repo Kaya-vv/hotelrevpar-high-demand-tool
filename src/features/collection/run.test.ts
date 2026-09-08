@@ -158,6 +158,8 @@ function repository(overrides: Partial<CollectionRepository> = {}): CollectionRe
     shouldRunClaudeDiscovery: vi.fn().mockResolvedValue(true),
     recalculateScores: vi.fn().mockResolvedValue(undefined),
     recordUsage: vi.fn().mockResolvedValue(undefined),
+    loadSourceResults: vi.fn().mockResolvedValue({}),
+    recordSourceResult: vi.fn().mockResolvedValue(undefined),
     finishRun: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
@@ -382,7 +384,8 @@ describe("runCollection", () => {
       { repository: repo, collectors: { ticketmaster: vi.fn().mockResolvedValue({ source: "ticketmaster", candidates: [candidate], requests: 1, usage: {} }) } },
     )).rejects.toBe(databaseError);
 
-    expect(repo.finishRun).toHaveBeenCalledWith("run-1", {}, {}, "URI too long");
+    // Each source now checkpoints independently, so an unavailable collector still reports.
+    expect(repo.finishRun).toHaveBeenCalledWith("run-1", { claude: { state: "disabled", error: "claude is not configured." } }, {}, "URI too long");
   });
 
   it("uses cheap triage before persisting Claude-verified hotel demand", async () => {

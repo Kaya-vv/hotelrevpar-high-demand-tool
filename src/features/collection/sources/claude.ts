@@ -13,6 +13,7 @@ import { getAddressById, searchAddresses } from "@/features/portfolio/geocode";
 
 import type { CollectionWindow, DiscoveryDrop, SourceResult } from "../types";
 import {
+  BatchPendingError,
   CLAUDE_ASSESSMENT_VERSION,
   loadClaudeMarketResult,
   runAnthropicBatch,
@@ -613,7 +614,9 @@ export async function collectClaudeCalendar(
   settled.forEach((result, index) => {
     const horizon = index === 0 ? "nearTerm" : "longRange";
     if (result.status === "rejected") {
-      if (result.reason instanceof LongRangeLeaseError) throw result.reason;
+      // A pending batch is unfinished work, not a failed source: swallowing it into errors[]
+      // would ACK the queue message and orphan a batch this account has already paid for.
+      if (result.reason instanceof LongRangeLeaseError || result.reason instanceof BatchPendingError) throw result.reason;
       if (index === 0) merged.usage.nearTermSucceeded = 0;
       errors.push(`${horizon}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
       merged.usage[`${horizon}Failed`] = 1;

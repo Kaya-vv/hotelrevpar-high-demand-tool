@@ -47,7 +47,7 @@ export async function processMarketWork(work: MarketWork) {
   if (work.kind === "market-research") {
     await collectLongRange({
       ...longRangeWindow(collectionWindow()), location: context.area.searchLocation, radiusKm: context.area.radiusKm,
-      seeds: context.longRangeSeeds, batching: { enabled: true, deadline: Date.now() + 20 * 60_000 },
+      seeds: context.longRangeSeeds, batching: { enabled: true },
       requestedAt: work.requestedAt,
       onUsage: (usage) => repository.recordUsage(work.runId, "claude", usage),
     });

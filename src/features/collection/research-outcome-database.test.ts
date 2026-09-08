@@ -104,7 +104,7 @@ it.skipIf(!process.env.RESEARCH_LOCAL_KEY)("repairs the retained DDW edition and
     await marketStore.save(marketKey, state);
     await marketStore.release(marketKey);
     const work = { kind: "market-publication" as const, accountId, areaId: area.id, runId: refresh.runId, requestedAt: new Date().toISOString() };
-    await processCollectionJob(work, 1);
+    await processCollectionJob(work, { deliveryCount: 1, expiresAt: new Date(Date.now() + 86_400_000) });
     expect((await marketStore.load(marketKey))?.publicationPending).toBe(false);
     expect((await marketStore.load(marketKey))?.publishedAt).toBeTruthy();
     expect((await marketStore.load(marketKey))?.research?.usage?.announcementDateUnknown).toBeGreaterThan(0);

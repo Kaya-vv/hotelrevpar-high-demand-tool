@@ -75,6 +75,7 @@ function publicSourceUrl(candidate: EventCandidate) {
 
 export function createCollectionRepository(): CollectionRepository {
   const supabase = createAdminClient();
+  let sourceResultWrites: Promise<void> = Promise.resolve();
 
   return {
     async reuseNearTermEvidence(context) {
@@ -132,6 +133,22 @@ export function createCollectionRepository(): CollectionRepository {
       return reused;
     },
     async startRun(input: RunCollectionInput) {
+      // A pending continuation keeps its run open on purpose. Inserting here would hit the
+      // partial unique index, surface as `already_running`, and abandon the paid batch.
+      if (input.resume) {
+        const { data: open, error } = await supabase
+          .from("collection_runs")
+          .select("id")
+          .eq("account_id", input.accountId)
+          .eq("collection_area_id", input.areaId)
+          .is("finished_at", null)
+          .order("started_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (error) throw error;
+        if (open) return open.id;
+      }
+
       const staleBefore = new Date(Date.now() - 60 * 60 * 1000).toISOString();
       const { error: staleError } = await supabase
         .from("collection_runs")
@@ -853,6 +870,36 @@ export function createCollectionRepository(): CollectionRepository {
         web_fetch_requests: usage.webFetchRequests,
       }, { onConflict: "request_id", ignoreDuplicates: true });
       if (error) throw error;
+    },
+
+    async loadSourceResults(runId) {
+      const { data, error } = await supabase
+        .from("collection_runs")
+        .select("source_results")
+        .eq("id", runId)
+        .maybeSingle();
+      if (error) throw error;
+      return (data?.source_results as Record<string, unknown> | null) ?? {};
+    },
+
+    async recordSourceResult(runId, source, result) {
+      // Collectors settle concurrently, so the read-modify-write is serialised per repository
+      // instance; two overlapping writes would otherwise drop one source's checkpoint.
+      sourceResultWrites = sourceResultWrites.then(async () => {
+        const { data, error } = await supabase
+          .from("collection_runs")
+          .select("source_results")
+          .eq("id", runId)
+          .single();
+        if (error) throw error;
+        const merged = { ...((data.source_results as Record<string, unknown> | null) ?? {}), [source]: result };
+        const { error: writeError } = await supabase
+          .from("collection_runs")
+          .update({ source_results: merged as Json })
+          .eq("id", runId);
+        if (writeError) throw writeError;
+      });
+      await sourceResultWrites;
     },
 
     async finishRun(runId, sourceResults, costUsage, errorSummary) {

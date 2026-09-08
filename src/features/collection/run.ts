@@ -25,6 +25,7 @@ import { collectRijksoverheid } from "./sources/rijksoverheid";
 import { collectTicketmaster } from "./sources/ticketmaster";
 import type { CollectionWindow, SourceResult } from "./types";
 import { LongRangeLeaseError, type LongRangeSeed } from "./long-range-store";
+import { BatchPendingError } from "./anthropic-batches";
 
 export type CollectionAreaContext = {
   id: string;
@@ -191,6 +192,12 @@ export type CollectionRepository = {
     source: SourceName,
     usage: ClaudeUsageEvent
   ) => Promise<void>;
+  loadSourceResults: (runId: string) => Promise<Record<string, unknown>>;
+  recordSourceResult: (
+    runId: string,
+    source: SourceName,
+    result: unknown
+  ) => Promise<void>;
   finishRun: (
     runId: string,
     sourceResults: Record<string, unknown>,
@@ -231,6 +238,8 @@ export type RunCollectionInput = {
   accountId: string;
   areaId: string;
   trigger: "cron" | "manual";
+  /** Continue an open run whose previous delivery left an Anthropic batch pending. */
+  resume?: boolean;
 };
 export type CollectionRunSummary = {
   runId: string;
@@ -430,40 +439,48 @@ export async function runCollection(
         sourcesToRun.push(source);
       }
     }
-    const tasks = sourcesToRun.map(async (source) => {
-      const collector = collectors[source];
-      if (!collector)
-        throw new SourceUnavailableError(
-          "disabled",
-          `${source} is not configured.`
-        );
-      return collector(context);
-    });
-    const settled = await Promise.allSettled(tasks);
+    const completedSources = input.resume ? await repository.loadSourceResults(runId) : {};
+    // A continuation must not re-pay for a collector that already checkpointed its result.
+    for (const [source, value] of Object.entries(completedSources)) {
+      if ((value as { state?: string } | null)?.state) sourceResults[source] = value;
+    }
+    const checkpoint = async (source: SourceName, value: unknown) => {
+      sourceResults[source] = value;
+      await repository.recordSourceResult(runId, source, value);
+    };
 
-    for (let index = 0; index < settled.length; index += 1) {
-      const source = sourcesToRun[index];
-      const result = settled[index];
-      if (result.status === "rejected") {
-        if (result.reason instanceof LongRangeLeaseError) throw result.reason;
+    const collectSource = async (source: SourceName) => {
+      if (sourceResults[source] !== undefined) return;
+      let value: SourceResult;
+      try {
+        const collector = collectors[source];
+        if (!collector)
+          throw new SourceUnavailableError(
+            "disabled",
+            `${source} is not configured.`
+          );
+        value = await collector(context);
+      } catch (error) {
+        // Unfinished work, not a failed source: the queue handler resumes this submission.
+        if (error instanceof LongRangeLeaseError || error instanceof BatchPendingError) throw error;
         failed = true;
-        sourceResults[source] = errorState(result.reason);
-        continue;
+        await checkpoint(source, errorState(error));
+        return;
       }
 
-      const relevant = result.value.candidates.filter((event) =>
+      const relevant = value.candidates.filter((event) =>
         context.hotels.some((hotel) => relevantToHotel(event, hotel))
       );
-      if (source === "claude" && result.value.invalidatedUrls?.length) {
+      if (source === "claude" && value.invalidatedUrls?.length) {
         await repository.invalidateClaudeSources(
           context,
-          result.value.invalidatedUrls,
+          value.invalidatedUrls,
         );
       }
-      if (source === "claude" && result.value.quarantinedProviderEventIds?.length) {
-        await repository.quarantineClaudeEditions(context, result.value.quarantinedProviderEventIds);
+      if (source === "claude" && value.quarantinedProviderEventIds?.length) {
+        await repository.quarantineClaudeEditions(context, value.quarantinedProviderEventIds);
       }
-      const missingLocationCount = result.value.candidates.filter(
+      const missingLocationCount = value.candidates.filter(
         (event) =>
           !["school_holiday", "public_holiday"].includes(event.category) &&
           (event.latitude === null || event.longitude === null)
@@ -480,9 +497,9 @@ export async function runCollection(
       let provisionalCount = 0;
       let triageRequests = 0;
       let verificationRequests = 0;
-      let sourceError: string | null = result.value.error ?? null;
+      let sourceError: string | null = value.error ?? null;
       if (sourceError) failed = true;
-      const sourceUsage = { ...result.value.usage };
+      const sourceUsage = { ...value.usage };
 
       if (source === "predicthq") {
         const direct: EventCandidate[] = [];
@@ -521,11 +538,11 @@ export async function runCollection(
         if (stale.length) {
           if (!demandTriageReviewer) {
             failed = true;
-            sourceResults[source] = {
+            await checkpoint(source, {
               state: "unlicensed",
               error: "Anthropic is required to triage PredictHQ candidates.",
-            };
-            continue;
+            });
+            return;
           }
           let triaged: Awaited<ReturnType<DemandTriageReviewer>>;
           try {
@@ -554,8 +571,8 @@ export async function runCollection(
             });
           } catch (error) {
             failed = true;
-            sourceResults[source] = errorState(error);
-            continue;
+            await checkpoint(source, errorState(error));
+            return;
           }
           triageRequests = triaged.requests;
           Object.entries(triaged.usage).forEach(([key, value]) => {
@@ -706,17 +723,17 @@ export async function runCollection(
           canonicalReviewIds.add(persisted.eventId);
         if (persisted.duplicate) duplicateCount += 1;
       }
-      Object.entries(sourceUsage).forEach(([key, value]) => {
-        usage[key] = (usage[key] ?? 0) + value;
+      Object.entries(sourceUsage).forEach(([key, count]) => {
+        usage[key] = (usage[key] ?? 0) + count;
       });
-      sourceResults[source] = {
+      await checkpoint(source, {
         state: sourceError ? "partial" : candidates.length ? "success" : "zero",
         ...(sourceError ? { error: sourceError } : {}),
-        ...(result.value.researchPending ? { researchPending: true } : {}),
+        ...(value.researchPending ? { researchPending: true } : {}),
         candidates: candidates.length,
-        found: result.value.candidates.length,
+        found: value.candidates.length,
         unique: canonicalIds.size || candidates.length,
-        requests: result.value.requests + triageRequests + verificationRequests,
+        requests: value.requests + triageRequests + verificationRequests,
         triageRequests,
         verificationRequests,
         cached: cachedCount,
@@ -726,9 +743,11 @@ export async function runCollection(
         missingLocation: missingLocationCount,
         duplicates: duplicateCount,
         usage: sourceUsage,
-        ...(result.value.funnel ? { funnel: result.value.funnel } : {}),
-      };
-    }
+        ...(value.funnel ? { funnel: value.funnel } : {}),
+      });
+    };
+    const settled = await Promise.allSettled(sourcesToRun.map((source) => collectSource(source)));
+    for (const outcome of settled) if (outcome.status === "rejected") throw outcome.reason;
     const publication = await repository.recalculateScores(context);
     const claudeResult = sourceResults.claude as { usage?: Record<string, number> } | undefined;
     if (publication && claudeResult?.usage) for (const [key, value] of Object.entries(publication)) claudeResult.usage[`longRange_${key}`] = value;
