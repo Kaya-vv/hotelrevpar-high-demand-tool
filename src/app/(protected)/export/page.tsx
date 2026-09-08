@@ -29,16 +29,16 @@ export default async function ExportPage({ searchParams }: { searchParams: Promi
   const pageLink = (page: number) => `/export?${query}&historyPage=${page}#export-history`;
   return <div>
     <header className="page-title"><span className="eyebrow">RevControl</span><h1>Exporteren</h1><p>Exporteer nieuwe events per hotel of download een eerdere export opnieuw.</p></header>
-    <section className="panel export-panel"><form method="get" className="form-stack">
+    <section className="panel export-panel"><form method="get" className="export-settings">
       <input type="hidden" name="selection" value="1" />
       <div className="date-range"><label>Van<input name="from" type="date" defaultValue={range.start} required /></label><label>Tot en met<input name="to" type="date" defaultValue={range.end} required /></label></div>
       <fieldset className="checkbox-grid"><legend>Hotels</legend>{scope.hotels.map((hotel) => <label key={hotel.id}><input name="hotel" type="checkbox" value={hotel.id} defaultChecked={selectedHotelIds.includes(hotel.id)} />{hotel.name}</label>)}</fieldset>
-      <button type="submit" className="secondary" disabled={!scope.hotels.length}>Voorbeeld vernieuwen</button>
+      <button type="submit" className="secondary" disabled={!scope.hotels.length}>Selectie toepassen</button>
       {!scope.hotels.length && <p>Voeg eerst een hotel toe.</p>}
       {scope.hotels.length > 0 && !selectedHotelIds.length && <p>Kies minstens één hotel.</p>}
     </form></section>
     {selectedHotelIds.length > 0 && <ExportControls key={query.toString()} events={events} hotelIds={selectedHotelIds} hotelNames={hotelNames} from={range.start} to={range.end} />}
-    <section className="panel" id="export-history"><h2>Exportgeschiedenis</h2><p>Een opgeslagen export bevestigt niet dat het bestand in RevControl is geïmporteerd. Download opnieuw om een onderbroken import te herhalen.</p>
+    <details className="panel export-disclosure export-history" open={typeof params.historyPage === "string"}><summary>Exportgeschiedenis <span className="muted">· {history.length}{history.length === 20 ? "+" : ""} exports{page > 0 ? " op deze pagina" : ""}</span>{history.some((batch) => batch.items.some((item) => item.latest && item.changed)) && <span className="export-history-changes"> · Gewijzigd sinds export</span>}</summary><div id="export-history"><p>Een opgeslagen export bevestigt niet dat het bestand in RevControl is geïmporteerd. Download opnieuw om een onderbroken import te herhalen.</p>
       {!history.length && <p>Nog geen exports.</p>}
       {history.map((batch) => {
         const selection = batch.selection as { from: string; to: string; hotelIds: string[] };
@@ -51,6 +51,6 @@ export default async function ExportPage({ searchParams }: { searchParams: Promi
         </details>;
       })}
       <nav aria-label="Exportgeschiedenis pagina’s">{page > 0 && <a href={pageLink(page - 1)}>Nieuwere exports</a>} {history.length === 20 && <a href={pageLink(page + 1)}>Oudere exports</a>}</nav>
-    </section>
+    </div></details>
   </div>;
 }
