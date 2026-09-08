@@ -164,6 +164,27 @@ function repository(overrides: Partial<CollectionRepository> = {}): CollectionRe
 }
 
 describe("runCollection", () => {
+  it("scores shared evidence and reloads history before continuing discovery", async () => {
+    const repo = repository({ reuseNearTermEvidence: vi.fn().mockResolvedValue(1) });
+    const original = await repo.loadContext("account-1", "area-1");
+    const knownEvents = [{ title: "Shared event", startDate: "2026-09-20", endDate: "2026-09-21" }];
+    vi.mocked(repo.loadContext).mockReset().mockResolvedValueOnce(original)
+      .mockResolvedValueOnce({ ...original, knownEvents });
+    const collector = vi.fn(async (context) => {
+      expect(context.knownEvents).toEqual(knownEvents);
+      expect(repo.recalculateScores).toHaveBeenCalledOnce();
+      return { source: "claude" as const, candidates: [{ ...candidate, provider: "claude" as const }], requests: 1, usage: {} };
+    });
+    const result = await runCollection({ accountId: "account-1", areaId: "area-1", trigger: "manual" }, {
+      repository: repo, collectors: {
+        claude: collector,
+        ticketmaster: async () => ({ source: "ticketmaster", candidates: [], requests: 0, usage: {} }),
+      },
+    });
+    expect(collector).toHaveBeenCalledOnce();
+    expect(repo.persistCandidate).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ title: candidate.title }));
+    expect(result.sourceResults.sharedEvidence).toMatchObject({ reusedEditions: 1, requests: 0 });
+  });
   it("persists successful horizon results while marking the failed horizon partial", async () => {
     const repo = repository();
     const result = await runCollection(

@@ -22,6 +22,29 @@ export function isPublishableDemand(
   );
 }
 
+/**
+ * Beyond the near-term horizon a demand grade cannot be earned yet: a future edition has no
+ * attendance of its own and organisers rarely publish audience information a year ahead. An
+ * edition whose demand WAS assessed from evidence is still worth announcing, without a level.
+ * Unassessed editions (impactBasis "default") stay hidden — that is league fixtures and open days.
+ */
+export function isAnnouncedLongRange(input: {
+  startDate: string;
+  nearTermHorizon: string;
+  demandRadiusKm: number | null;
+  scores: { importance: DemandLevel; impactBasis: string; distanceKm: number | null }[];
+}) {
+  if (input.startDate <= input.nearTermHorizon) return false;
+  if (input.scores.some((score) => isPublishableDemand(score.importance, score.impactBasis))) return false;
+  return input.scores.some(
+    (score) =>
+      score.impactBasis === "ai_assessment" &&
+      score.distanceKm !== null &&
+      input.demandRadiusKm !== null &&
+      score.distanceKm <= input.demandRadiusKm,
+  );
+}
+
 export function publishableReviewEventIds(
   decisions: { event_id: string; state: string }[],
   scores: {

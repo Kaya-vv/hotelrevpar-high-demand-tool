@@ -41,6 +41,8 @@ export type CalendarEvent = {
   endAt: string;
   sources: CalendarSource[];
   hotelScores: CalendarHotelScore[];
+  /** Confirmed beyond the near-term horizon, demand assessed but not yet gradeable. */
+  announced?: boolean;
 };
 
 export type LatestRun = {
@@ -107,6 +109,9 @@ function EventDetails({
             {demandLabels[score.importance]}
           </span>
         )}
+        {!score && event.announced && (
+          <span className="importance announced">Aangekondigd</span>
+        )}
       </header>
       <p className="event-date">
         {dateLabel(event.startAt, true)} tot {dateLabel(event.endAt, true)}
@@ -121,6 +126,13 @@ function EventDetails({
               : `${event.locationApproximate ? "Ca. " : ""}${score.distanceKm.toFixed(1)} km van het hotel${event.locationApproximate ? " (stadscentrum)" : ""}`}
           </span>
         </div>
+      )}
+      {!score && event.announced && (
+        <p className="demand-pending">
+          Datum en locatie zijn bevestigd door de officiële bron. De vraagindicatie
+          volgt zodra de organisator publieksinformatie publiceert, uiterlijk zodra
+          het evenement binnen 90 dagen valt.
+        </p>
       )}
       {primarySource && (
         <a
@@ -231,6 +243,9 @@ function EventOverview({
                 {demandLabels[score.importance]}
               </span>
             )}
+            {!score && event.announced && (
+              <span className="importance announced">Aangekondigd</span>
+            )}
             {score && (
               <strong className="event-overview-score">
                 {score.total}
@@ -261,6 +276,12 @@ function EventOverview({
             <span>{demandLabels[level]}</span>
           </div>
         ))}
+        {events.some((event) => event.announced) && (
+          <div>
+            <strong>{events.filter((event) => event.announced).length}</strong>
+            <span>Aangekondigd</span>
+          </div>
+        )}
       </div>
       {!events.length && (
         <p className="empty-state">
@@ -344,7 +365,8 @@ export function CalendarView({
                       return (
                         <button
                           className={`calendar-chip ${
-                            score?.importance.toLowerCase() ?? ""
+                            score?.importance.toLowerCase() ??
+                            (event.announced ? "announced" : "")
                           } ${
                             event.id === selectedEvent?.id ? "selected" : ""
                           }`}
@@ -397,6 +419,9 @@ export function CalendarView({
                         </span>
                         <strong className="agenda-score">{score.total}</strong>
                       </>
+                    )}
+                    {!score && event.announced && (
+                      <span className="importance announced">Aangekondigd</span>
                     )}
                   </button>
                 );

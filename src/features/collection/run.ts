@@ -153,6 +153,7 @@ export type StoredDemandTriage = DemandTriage & { fingerprint: string };
 export type StoredEvidenceReview = EvidenceReview & { fingerprint: string };
 
 export type CollectionRepository = {
+  reuseNearTermEvidence?: (context: CollectionContext) => Promise<number>;
   startRun: (input: RunCollectionInput) => Promise<string>;
   loadContext: (
     accountId: string,
@@ -392,7 +393,13 @@ export async function runCollection(
   let fatalError: unknown;
 
   try {
-    const context = await repository.loadContext(input.accountId, input.areaId);
+    let context = await repository.loadContext(input.accountId, input.areaId);
+    const reused = await repository.reuseNearTermEvidence?.(context) ?? 0;
+    if (reused) {
+      await repository.recalculateScores(context);
+      context = await repository.loadContext(input.accountId, input.areaId);
+      sourceResults.sharedEvidence = { state: "success", reusedEditions: reused, requests: 0 };
+    }
     const observeUsage = (source: SourceName, event: ClaudeUsageEvent) =>
       repository.recordUsage(runId, source, event);
     const collectors =

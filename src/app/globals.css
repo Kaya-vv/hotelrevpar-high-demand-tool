@@ -673,6 +673,11 @@ a {
   background: #fff0ec;
 }
 
+.calendar-chip.announced {
+  border-left-color: #b6c0cd;
+  border-left-style: dashed;
+}
+
 .calendar-chip:hover,
 .calendar-chip.selected {
   color: var(--white);
@@ -869,6 +874,22 @@ a {
 .importance.low {
   color: #155f44;
   background: #e5f6ef;
+}
+
+/* Confirmed date, demand not gradeable yet: neutral so it never reads as a demand level. */
+.importance.announced {
+  color: #3c4a5a;
+  background: #eef1f5;
+  border: 1px dashed #b6c0cd;
+}
+
+.demand-pending {
+  color: #4a5a6b;
+  font-size: 0.92rem;
+  background: #f5f7fa;
+  border-left: 3px solid #b6c0cd;
+  margin: 0;
+  padding: 10px 12px;
 }
 
 .hotel-scores {

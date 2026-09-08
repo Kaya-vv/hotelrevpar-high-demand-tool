@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { distanceKm } from "./distance";
 import {
+  isAnnouncedLongRange,
   isPublishableDemand,
   publishableDemandLevels,
   publishableReviewEventIds,
@@ -654,6 +655,66 @@ describe("event domain", () => {
     }).suggestedImportance).toBe("High");
   });
 
+  it("lets a comparable prior edition's audience justify High for an announced edition", () => {
+    const hotel = {
+      latitude: 52.37,
+      longitude: 4.9,
+      demandRadiusKm: 25,
+      holidayRegion: "north" as const,
+    };
+    // A future edition never carries its own attendance, so the series' last edition is the
+    // only audience scale that can exist for it.
+    const evidence = {
+      dateText: "Van 26 t/m 30 mei 2027",
+      locationText: "Muziekgebouw Eindhoven",
+      hostCity: "Eindhoven",
+      locationScope: "venue" as const,
+      continuous: true,
+      majorCompetition: false,
+      dateSourceUrl: "https://example.com/event",
+      checkedAt: "2026-09-07",
+      demand: [{
+        sourceUrl: "https://example.com/event",
+        text: "Van woensdag 27 t/m zondag 31 mei 2026 genoten bijna 20.000 gitaarliefhebbers van concerten van wereldklasse",
+        scope: "historical" as const,
+        year: 2026,
+        comparable: true,
+        applicability: "Same festival series, same host city and same multi-day format",
+      }],
+    };
+    const announced = {
+      ...candidate,
+      provider: "claude" as const,
+      title: "BRIDGE Guitar Festival 2027",
+      category: "festival",
+      aiImpactPoints: 45,
+      attendance: null,
+      venueCapacity: null,
+      overnightAudience: null,
+      regionScope: null,
+      latitude: hotel.latitude,
+      longitude: hotel.longitude,
+      startAt: "2027-05-26T10:00:00+02:00",
+      endAt: "2027-05-30T23:00:00+02:00",
+      evidence,
+    };
+
+    expect(scoreHotelEvent({ candidate: announced, hotel, overlaps: [] }).suggestedImportance)
+      .toBe("High");
+    // An uncomparable fact is not inheritable evidence.
+    expect(scoreHotelEvent({
+      candidate: { ...announced, evidence: { ...evidence, demand: [{ ...evidence.demand[0], comparable: false }] } },
+      hotel,
+      overlaps: [],
+    }).suggestedImportance).toBe("Medium");
+    // A bare year beside an audience noun is not a crowd size.
+    expect(scoreHotelEvent({
+      candidate: { ...announced, evidence: { ...evidence, demand: [{ ...evidence.demand[0], text: "In 2026 kwamen de bezoekers uit de regio" }] } },
+      hotel,
+      overlaps: [],
+    }).suggestedImportance).toBe("Medium");
+  });
+
   it("does not award a multi-day bonus to a run of separate performances", () => {
     const score = scoreHotelEvent({
       candidate: {
@@ -816,6 +877,29 @@ describe("event domain", () => {
       overlaps: [],
     });
     expect(score.distancePoints).toBe(25);
+  });
+
+  describe("announced long-range band", () => {
+    const assessed = { importance: "Medium" as const, impactBasis: "ai_assessment", distanceKm: 2 };
+    const base = { startDate: "2027-06-01", nearTermHorizon: "2026-12-06", demandRadiusKm: 25, scores: [assessed] };
+
+    it("announces an assessed edition beyond the horizon that cannot be graded yet", () =>
+      expect(isAnnouncedLongRange(base)).toBe(true));
+
+    it("leaves near-term editions to the normal demand gate", () =>
+      expect(isAnnouncedLongRange({ ...base, startDate: "2026-11-01" })).toBe(false));
+
+    it("does not announce an unassessed edition", () =>
+      expect(isAnnouncedLongRange({ ...base, scores: [{ ...assessed, impactBasis: "default" }] })).toBe(false));
+
+    it("does not announce an edition outside the hotel's radius", () =>
+      expect(isAnnouncedLongRange({ ...base, scores: [{ ...assessed, distanceKm: 90 }] })).toBe(false));
+
+    it("does not announce an edition with no resolved location", () =>
+      expect(isAnnouncedLongRange({ ...base, scores: [{ ...assessed, distanceKm: null }] })).toBe(false));
+
+    it("leaves an already gradeable edition to its demand level", () =>
+      expect(isAnnouncedLongRange({ ...base, scores: [{ ...assessed, importance: "High" }] })).toBe(false));
   });
 
   it.each([

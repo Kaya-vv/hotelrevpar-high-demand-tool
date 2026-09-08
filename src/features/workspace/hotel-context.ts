@@ -8,7 +8,7 @@ export async function getHotelScope(accountId: string, requestedHotelId?: string
   const supabase = await createServerClient();
   const { data: hotels, error: hotelError } = await supabase
     .from("hotels")
-    .select("id, name")
+    .select("id, name, demand_radius_km")
     .eq("account_id", accountId)
     .order("name");
   if (hotelError) throw hotelError;

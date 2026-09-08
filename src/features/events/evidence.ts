@@ -111,6 +111,28 @@ export function hasDemandEvidence(candidate: Pick<EventCandidate, "evidence">) {
   return Boolean(candidate.evidence?.demand.some((fact) => fact.comparable && fact.text && fact.sourceUrl));
 }
 
+/**
+ * People count documented by a comparable demand fact. A future edition can never carry
+ * edition-scope attendance, so a comparable prior edition of the same series is the only
+ * audience scale that can exist for it. This is a demand signal, never this edition's attendance.
+ */
+export function evidencedAudienceScale(evidence: EventEvidence | undefined) {
+  if (!evidence) return null;
+  // A bare four-digit number next to an audience noun is usually the edition year, not a crowd.
+  const year = (value: number) => value >= 1900 && value <= 2099;
+  const counted = /\b(\d{1,3}(?:[.,]\d{3})+|\d{4,6})\b(?=[^.!?\n]{0,30}?(?:visitor|bezoeker|audience|publiek|attend|deelnemer|delegate|exhibitor|exposant|liefhebber|enthusiast|music lover|fans|gast))/gi;
+  let largest: number | null = null;
+  for (const fact of evidence.demand) {
+    if (!fact.comparable) continue;
+    for (const [, digits] of fact.text.matchAll(counted)) {
+      const people = Number(digits.replace(/[.,]/g, ""));
+      if (!Number.isFinite(people) || (!/[.,]/.test(digits) && year(people))) continue;
+      if (largest === null || people > largest) largest = people;
+    }
+  }
+  return largest;
+}
+
 /** A copied legacy edition must not overwrite newer verified evidence from another lead. */
 export function uniqueEvidenceEditions(events: EventCandidate[]) {
   const editions = new Map<string, EventCandidate>();

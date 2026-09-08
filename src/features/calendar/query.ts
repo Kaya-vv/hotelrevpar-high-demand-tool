@@ -2,6 +2,7 @@ import { readEventEvidence } from "@/features/events/evidence";
 import { eventLocalDate } from "@/features/events/normalize";
 import { createServerClient } from "@/lib/supabase/server";
 import {
+  isAnnouncedLongRange,
   isPublishableDemand,
   publishableReviewEventIds,
   type DemandLevel,
@@ -106,6 +107,12 @@ export async function getCalendarData(
   const selectedHotelName =
     hotels.find((hotel) => hotel.id === selectedHotelId)?.name ?? "Hotel";
   const bounds = monthBounds(filters.month);
+  // Same boundary the collector uses to split near-term verification from long-range research.
+  const nearTermHorizon = new Date(Date.now() + 90 * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  const selectedRadiusKm =
+    hotels.find((hotel) => hotel.id === selectedHotelId)?.demand_radius_km ?? null;
   const mapped: CalendarEvent[] = scopedEvents
     .filter(
       (event) =>
@@ -127,7 +134,7 @@ export async function getCalendarData(
           state: source.source_state,
           primarySourceConfirmed: source.primary_source_confirmed,
         }));
-      const hotelScores = scores
+      const eventScores = scores
         .filter((score) => score.event_id === event.id)
         .map((score) => ({
           hotelId: score.hotel_id,
@@ -140,10 +147,16 @@ export async function getCalendarData(
           distancePoints: score.distance_points,
           stayPressurePoints: score.stay_pressure_points,
           distanceKm: score.distance_km,
-        }))
-        .filter((score) =>
-          isPublishableDemand(score.importance, score.impactBasis)
-        );
+        }));
+      const hotelScores = eventScores.filter((score) =>
+        isPublishableDemand(score.importance, score.impactBasis)
+      );
+      const announced = isAnnouncedLongRange({
+        startDate: eventLocalDate(event.start_at),
+        nearTermHorizon,
+        demandRadiusKm: selectedRadiusKm,
+        scores: eventScores,
+      });
       return {
         id: event.id,
         locationApproximate: sources.some((source) => {
@@ -157,10 +170,11 @@ export async function getCalendarData(
         endAt: decision?.override_end_at ?? event.end_at,
         sources: publishedSources,
         hotelScores,
+        announced,
       };
     })
     .filter((event) => event.sources.length > 0)
-    .filter((event) => event.hotelScores.length > 0)
+    .filter((event) => event.hotelScores.length > 0 || event.announced)
     .filter((event) => !filters.category || event.category === filters.category)
     .filter(
       (event) =>

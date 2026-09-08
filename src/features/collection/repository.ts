@@ -1,4 +1,5 @@
 import { readEventEvidence } from "@/features/events/evidence";
+import { distanceKm } from "@/features/events/distance";
 import { normalizeCandidate, eventLocalDate } from "@/features/events/normalize";
 import { fetchInBatches } from "@/lib/supabase/fetch-in-batches";
 import { classifyMatch } from "@/features/events/match";
@@ -76,6 +77,60 @@ export function createCollectionRepository(): CollectionRepository {
   const supabase = createAdminClient();
 
   return {
+    async reuseNearTermEvidence(context) {
+      if (!context.area.enabledSources.includes("claude")) return 0;
+      const cutoff = new Date(Date.now() - 30 * 86_400_000).toISOString();
+      const { data: links, error: linkError } = await supabase.from("account_event_areas")
+        .select("event_id").eq("account_id", context.area.accountId).eq("collection_area_id", context.area.id);
+      if (linkError) throw linkError;
+      const linked = new Set(links.map((link) => link.event_id));
+      let reused = 0;
+      // Page through public facts, not another account's scores or inclusion decisions.
+      // Exact distance below handles different hotel centres and radii.
+      for (let offset = 0; ; offset += 500) {
+        const { data: events, error } = await supabase.from("events").select("*")
+          .eq("certainty", "confirmed")
+          .lte("start_at", `${context.window.end}T23:59:59Z`)
+          .gte("end_at", `${context.window.start}T00:00:00Z`)
+          .order("id").range(offset, offset + 499);
+        if (error) throw error;
+        const nearby = events.filter((event) => !linked.has(event.id)
+          && event.latitude !== null && event.longitude !== null
+          && context.hotels.some((hotel) => distanceKm(hotel.latitude, hotel.longitude, event.latitude!, event.longitude!) <= hotel.demandRadiusKm));
+        const sources = await fetchInBatches(nearby.map((event) => event.id), (ids) => supabase.from("event_sources")
+          .select("*").eq("provider", "claude").in("event_id", ids));
+        // A recorded date/identity conflict is unresolved research, not reusable evidence.
+        const conflicts = await fetchInBatches(nearby.map((event) => event.id), (ids) => supabase.from("account_events")
+          .select("event_id").eq("state", "needs_review")
+          .in("review_reason", ["date_conflict", "changed_date", "changed_venue", "duplicate_uncertain"]).in("event_id", ids));
+        for (const event of nearby) {
+          if (conflicts.some((row) => row.event_id === event.id)) continue;
+          const source = selectScoreEvidence(sources.filter((row) => row.event_id === event.id), ["claude"]);
+          if (!source || source.checked_at < cutoff || source.assessment_version < CLAUDE_ASSESSMENT_VERSION) continue;
+          if (sources.some((row) => row.event_id === event.id && row.checked_at >= source.checked_at
+            && (row.source_state !== "active" || (row.primary_source_confirmed
+              && (Date.parse(row.extracted_start_at) !== Date.parse(event.start_at)
+                || Date.parse(row.extracted_end_at ?? row.extracted_start_at) !== Date.parse(event.end_at ?? event.start_at)))))) continue;
+          if (Date.parse(source.extracted_start_at) !== Date.parse(event.start_at)
+            || Date.parse(source.extracted_end_at ?? source.extracted_start_at) !== Date.parse(event.end_at ?? event.start_at)) continue;
+          const candidate = storedCandidate(event, source);
+          if (validateCandidate(candidate, context.window, null).state !== "active") continue;
+          // Insert only: preserve this account's exclusions, reviews and manual decisions.
+          const decision = await supabase.from("account_events").upsert({
+            account_id: context.area.accountId, event_id: event.id, state: "active",
+          }, { onConflict: "account_id,event_id", ignoreDuplicates: true });
+          if (decision.error) throw decision.error;
+          const link = await supabase.from("account_event_areas").upsert({
+            account_id: context.area.accountId, collection_area_id: context.area.id, event_id: event.id,
+          });
+          if (link.error) throw link.error;
+          // Never rewrite the source or advance checked_at merely because it was reused.
+          reused += 1;
+        }
+        if (events.length < 500) break;
+      }
+      return reused;
+    },
     async startRun(input: RunCollectionInput) {
       const staleBefore = new Date(Date.now() - 60 * 60 * 1000).toISOString();
       const { error: staleError } = await supabase
@@ -210,8 +265,8 @@ export function createCollectionRepository(): CollectionRepository {
         ),
         knownEvents: knownEvents.map((event) => ({
           title: event.title,
-          startDate: event.start_at.slice(0, 10),
-          endDate: event.end_at?.slice(0, 10) ?? null,
+          startDate: eventLocalDate(event.start_at),
+          endDate: event.end_at ? eventLocalDate(event.end_at) : null,
         })),
         longRangeSeeds: seedRows.flatMap((row) => {
           const storedEvent = seedTitles.find((event) => event.id === row.eventId);

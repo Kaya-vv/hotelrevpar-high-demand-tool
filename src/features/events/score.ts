@@ -1,4 +1,4 @@
-import { hasDemandEvidence } from "./evidence";
+import { hasDemandEvidence, evidencedAudienceScale } from "./evidence";
 import { distanceKm } from "./distance";
 import { localParts } from "./normalize";
 import type { DemandScore, EventCandidate } from "./types";
@@ -177,9 +177,12 @@ export function scoreHotelEvent({
   const people = candidate.attendance ?? candidate.venueCapacity;
   // An explicit assessment from the source beats every proxy below it: a
   // two-day daytime market is multi-day without generating a single booking.
+  // A comparable prior edition of the same series counts here: next year's edition cannot
+  // document its own attendance yet, so requiring it would cap every announced series.
   const assessedDemandSignal =
     (candidate.attendance !== null && candidate.attendance >= 5_000) ||
     (candidate.venueCapacity !== null && candidate.venueCapacity >= 10_000) ||
+    (evidencedAudienceScale(candidate.evidence) ?? 0) >= 5_000 ||
     marqueeSport(
       candidate.category,
       candidate.title,
