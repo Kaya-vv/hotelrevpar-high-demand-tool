@@ -1011,6 +1011,7 @@ describe("source adapters", () => {
       },
       fail: async () => undefined,
       release: async (key) => { rows.delete(key); },
+      discard: async (key) => { rows.delete(key); },
       claimUsage: async (key) => {
         if (usageClaimed.has(key)) return false;
         usageClaimed.add(key);

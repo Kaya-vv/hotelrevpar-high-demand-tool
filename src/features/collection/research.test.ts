@@ -141,7 +141,7 @@ describe("coordinated long-range research", () => {
       claim: async () => { row = { status: "creating", batch_id: null, results: null, error: null, created_at: new Date().toISOString() }; return true; },
       attach: async (_key, _owner, batchId) => { row = { ...row!, status: "processing", batch_id: batchId }; },
       complete: async (_key, results) => { row = { ...row!, status: "completed", results }; },
-      fail: async () => {}, release: async () => {}, claimUsage: vi.fn(async () => { throw new Error("Per-request accounting owns research usage"); }),
+      fail: async () => {}, release: async () => {}, discard: async () => { row = null; }, claimUsage: vi.fn(async () => { throw new Error("Per-request accounting owns research usage"); }),
     };
     const create = vi.fn(async (input) => { params = input; return { id: "durable-batch" }; });
     const client = { messages: { batches: { create, retrieve: async () => ({ processing_status: ended ? "ended" : "in_progress" }), results: async function* () {
@@ -582,8 +582,10 @@ describe("coordinated long-range research", () => {
     expect(state.budget!.billedIds).toEqual(["same"]);
   });
 
-  it("releases the reservation for a batch request that terminally errored", async () => {
+  it("releases the reservation for a partly cancelled batch and keeps the billed one", async () => {
     const test = setup();
+    test.state().leads = [makeLead({ key: "arts", title: "Arts Week", url }), makeLead({ key: "second", title: "Arts Fringe", url: `${url}/2` })];
+    test.pageFetcher.mockImplementation(async (requested: string) => parseOfficialPage(text, requested));
     let row: Awaited<ReturnType<BatchStore["get"]>> = null;
     let params: { requests: { custom_id: string }[] };
     const batchStore: BatchStore = {
@@ -591,17 +593,50 @@ describe("coordinated long-range research", () => {
       claim: async () => { row = { status: "creating", batch_id: null, results: null, error: null, created_at: new Date().toISOString() }; return true; },
       attach: async (_key, _owner, batchId) => { row = { ...row!, status: "processing", batch_id: batchId }; },
       complete: async (_key, results) => { row = { ...row!, status: "completed", results }; },
-      fail: async () => {}, release: async () => {}, claimUsage: async () => false,
+      fail: async () => {}, release: async () => {}, discard: async () => { row = null; }, claimUsage: async () => false,
     };
     const client = { messages: { batches: {
-      create: vi.fn(async (input: { requests: { custom_id: string }[] }) => { params = input; return { id: "errored-batch" }; }),
+      create: vi.fn(async (input: { requests: { custom_id: string }[] }) => { params = input; return { id: "partial-batch" }; }),
       retrieve: async () => ({ processing_status: "ended" }),
-      // A canceled, expired or errored batch reports per-request failures, never an APIError.
-      results: async function* () { for (const request of params.requests) yield { custom_id: request.custom_id, result: { type: "errored", error: { type: "invalid_request_error" } } }; },
+      // A cancelled batch reports per-request failures as plain errors, never as an APIError, so
+      // the reservation for the cancelled half has to be released on that shape alone.
+      results: async function* () {
+        for (const [index, request] of params.requests.entries()) {
+          yield index === 0
+            ? { custom_id: request.custom_id, result: { type: "succeeded", message: await test.create() } }
+            : { custom_id: request.custom_id, result: { type: "canceled" } };
+        }
+      },
     } } } as unknown as Anthropic;
 
     await collectLongRange({ ...test.input, client, batching: { enabled: true, store: batchStore } });
 
+    expect(params!.requests.length).toBeGreaterThan(1);
+    expect(Object.keys(test.state().budget?.reservations ?? {})).toHaveLength(0);
+  });
+
+  it("clears the cache and releases reservations when nothing in a batch succeeded", async () => {
+    const test = setup();
+    const rows = new Map<string, Awaited<ReturnType<BatchStore["get"]>>>();
+    let params: { requests: { custom_id: string }[] };
+    const batchStore: BatchStore = {
+      removeExpired: async () => {}, get: async (key) => rows.get(key) ?? null,
+      claim: async (key) => { rows.set(key, { status: "creating", batch_id: null, results: null, error: null, created_at: new Date().toISOString() }); return true; },
+      attach: async (key, _owner, batchId) => { rows.set(key, { ...rows.get(key)!, status: "processing", batch_id: batchId }); },
+      complete: async (key, results) => { rows.set(key, { ...rows.get(key)!, status: "completed", results }); },
+      fail: async () => {}, release: async () => {}, discard: async (key) => { rows.delete(key); }, claimUsage: async () => false,
+    };
+    const create = vi.fn(async (input: { requests: { custom_id: string }[] }) => { params = input; return { id: `cancelled-${create.mock.calls.length}` }; });
+    const client = { messages: { batches: {
+      create,
+      retrieve: async () => ({ processing_status: "ended" }),
+      results: async function* () { for (const request of params.requests) yield { custom_id: request.custom_id, result: { type: "canceled" } }; },
+    } } } as unknown as Anthropic;
+    const input = { ...test.input, client, batching: { enabled: true, store: batchStore } };
+    const first = await collectLongRange(input);
+    expect(first.candidates).toEqual([]);
+    // Caching the cancellation would replay it for 30 days; the row must be gone instead.
+    expect(rows.size).toBe(0);
     expect(Object.keys(test.state().budget?.reservations ?? {})).toHaveLength(0);
   });
 

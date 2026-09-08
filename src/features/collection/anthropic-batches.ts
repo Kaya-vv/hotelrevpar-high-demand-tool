@@ -33,6 +33,8 @@ export type BatchStore = {
   complete: (cacheKey: string, results: Json) => Promise<void>;
   fail: (cacheKey: string, error: string) => Promise<void>;
   release: (cacheKey: string, ownerToken: string) => Promise<void>;
+  /** Drop a cache row whose batch produced nothing billable, so the next attempt resubmits. */
+  discard: (cacheKey: string) => Promise<void>;
   claimUsage: (cacheKey: string) => Promise<boolean>;
 };
 
@@ -122,6 +124,14 @@ export function createBatchStore(client?: Awaited<ReturnType<typeof adminClient>
         .eq("owner_token", ownerToken);
       if (error) throw error;
     },
+    async discard(cacheKey) {
+      const admin = await getClient();
+      const { error } = await admin
+        .from("anthropic_batch_cache")
+        .delete()
+        .eq("cache_key", cacheKey);
+      if (error) throw error;
+    },
     async claimUsage(cacheKey) {
       const admin = await getClient();
       const { data, error } = await admin
@@ -208,6 +218,14 @@ export async function saveClaudeMarketResult(
     expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
   });
   if (error) throw error;
+}
+
+/** Per-request outcome of a batch entry, narrowed rather than asserted. */
+function resultType(entry: unknown) {
+  if (!entry || typeof entry !== "object" || !("result" in entry)) return "unknown";
+  const result = entry.result;
+  if (!result || typeof result !== "object" || !("type" in result)) return "unknown";
+  return typeof result.type === "string" ? result.type : "unknown";
 }
 
 function decodeResults(value: Json, billable: boolean): BatchedMessageResult[] {
@@ -328,6 +346,15 @@ export async function runAnthropicBatch(
       const error = `Anthropic batch gaf ${results.length} van ${requests.length} resultaten terug.`;
       await store.fail(key, error);
       throw new Error(error);
+    }
+    if (!results.some((entry) => resultType(entry) === "succeeded")) {
+      // Cancellation, expiry and provider outages are transient conditions, not answers. Caching a
+      // batch where nothing succeeded replays its rejections for every later call with the same
+      // request set until the row expires 30 days later, which silently failed two markets for a
+      // day. Nothing succeeded means nothing was billed, so resubmitting costs nothing. The
+      // rejections are still returned so the caller records its drops and releases reservations.
+      await store.discard(key);
+      return decodeResults(results as Json, false);
     }
     await store.complete(key, results as Json);
     row = await store.get(key);

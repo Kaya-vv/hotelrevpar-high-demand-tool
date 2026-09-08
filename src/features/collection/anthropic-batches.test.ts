@@ -53,6 +53,7 @@ describe("Anthropic batch cache", () => {
       }),
       fail: vi.fn().mockResolvedValue(undefined),
       release: vi.fn().mockResolvedValue(undefined),
+      discard: vi.fn(async () => { row = null; }),
       claimUsage: vi.fn(async () => {
         if (usageReported) return false;
         usageReported = true;
@@ -89,5 +90,52 @@ describe("Anthropic batch cache", () => {
     expect(first.map((result) => result.status === "fulfilled" && result.value.billable)).toEqual([true, true]);
     expect(cached.map((result) => result.status === "fulfilled" && result.value.billable)).toEqual([false, false]);
     expect(store.complete).toHaveBeenCalledOnce();
+  });
+
+  it("resubmits instead of replaying a batch in which nothing succeeded", async () => {
+    let row: Awaited<ReturnType<BatchStore["get"]>> = null;
+    const store: BatchStore = {
+      removeExpired: vi.fn().mockResolvedValue(undefined),
+      get: vi.fn(async () => row),
+      claim: vi.fn(async () => {
+        row = { batch_id: null, created_at: new Date().toISOString(), error: null, results: null, status: "creating" };
+        return true;
+      }),
+      attach: vi.fn(async (_key, _owner, batchId) => { row = { ...row!, batch_id: batchId, status: "processing" }; }),
+      complete: vi.fn(async (_key, results) => { row = { ...row!, results, status: "completed" }; }),
+      fail: vi.fn().mockResolvedValue(undefined),
+      release: vi.fn().mockResolvedValue(undefined),
+      discard: vi.fn(async () => { row = null; }),
+      claimUsage: vi.fn().mockResolvedValue(false),
+    };
+    const create = vi.fn(async () => ({ id: `batch-${create.mock.calls.length}` }));
+    const client = {
+      messages: {
+        batches: {
+          create,
+          retrieve: vi.fn().mockResolvedValue({ processing_status: "ended" }),
+          results: vi.fn(async function* () {
+            yield { custom_id: "request-0", result: { type: "canceled" } };
+          }),
+        },
+      },
+    } as unknown as Anthropic;
+    const requests = [{
+      model: "claude-sonnet-5",
+      max_tokens: 10,
+      messages: [{ role: "user", content: "only" }],
+    }] satisfies MessageCreateParamsNonStreaming[];
+
+    const first = await runAnthropicBatch(client, requests, { store, wait: async () => undefined });
+
+    // The rejection still reaches the caller so it can drop the lead and release its reservation.
+    expect(first).toHaveLength(1);
+    expect(first[0].status).toBe("rejected");
+    expect(store.discard).toHaveBeenCalledOnce();
+    expect(store.complete).not.toHaveBeenCalled();
+
+    // A cancellation is transient: the same request set must submit again, not replay for 30 days.
+    await runAnthropicBatch(client, requests, { store, wait: async () => undefined });
+    expect(create).toHaveBeenCalledTimes(2);
   });
 });
