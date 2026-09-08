@@ -297,6 +297,22 @@ describe("coordinated long-range research", () => {
     const globalEvidence = verifyEventEvidence({ ...facts, demand: [{ ...facts.demand[0], text: worldwide }] }, url, [{ url, text: `${text} ${worldwide}` }], now.toISOString());
     expect(supportedAudience(globalEvidence, "international")).toBe("international");
   });
+  it("accepts travelling competitors as audience evidence, not only spectators", () => {
+    // The real World Swimming Trials evidence: a reach word and a participant noun, no spectator
+    // noun and no headcount. Before the noun list matched the extraction filter this scored 69.
+    const quote = "International swimmers travelling to Eindhoven for the championships fill the stands.";
+    const evidence = verifyEventEvidence({ ...facts, demand: [{ ...facts.demand[0], text: quote }] },
+      url, [{ url, text: `${text} ${quote}` }], now.toISOString());
+    expect(evidence?.demand).toHaveLength(1);
+    expect(supportedAudience(evidence, "international")).toBe("international");
+
+    // The noun requirement still stands: reach wording alone must not carry an audience claim.
+    const cargo = "International freight travelling to Eindhoven arrives all week.";
+    const noAudience = verifyEventEvidence({ ...facts, demand: [{ ...facts.demand[0], text: cargo }] },
+      url, [{ url, text: `${text} ${cargo}` }], now.toISOString());
+    expect(supportedAudience(noAudience, "international")).toBeNull();
+  });
+
 
   it("preserves the boundary between an official street number and postcode", () => {
     const page = parseOfficialPage('<p><span>Dommelstraat 2</span><span>5611 CK<!-- --> <!-- -->Eindhoven</span></p>', url);

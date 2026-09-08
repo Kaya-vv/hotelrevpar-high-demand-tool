@@ -755,12 +755,16 @@ export async function runCollection(
     failed = true;
     fatalError = error;
   } finally {
-    await repository.finishRun(
-      runId,
-      sourceResults,
-      usage,
-      fatalError ? errorMessage(fatalError) : undefined
-    );
+    // A queued batch is still running. Keep its run open so the continuation can
+    // resume the saved source checkpoints instead of creating a fresh run.
+    if (!(fatalError instanceof BatchPendingError)) {
+      await repository.finishRun(
+        runId,
+        sourceResults,
+        usage,
+        fatalError ? errorMessage(fatalError) : undefined
+      );
+    }
   }
 
   if (fatalError) throw fatalError;

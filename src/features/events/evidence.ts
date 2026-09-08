@@ -99,9 +99,16 @@ export function verifyEventEvidence(
   return evidence;
 }
 
+/**
+ * A demand fact only supports a national/international audience claim when it names who travels
+ * AND how far. The noun list mirrors the extraction filter above, which already accepts
+ * exhibitors, and adds competitors: a swimmer qualifying for a world championship travels and
+ * sleeps over by definition, and omitting that vocabulary silently capped every championship
+ * whose evidence described participants rather than spectators.
+ */
 export function supportedAudience(evidence: EventEvidence | undefined, audience: EventCandidate["overnightAudience"]) {
   if (!evidence || !audience || (audience === "none" || audience === "regional")) return audience ?? null;
-  return evidence.demand.some((fact) => /visitor|bezoek|audience|publiek|attend|delegate|deelnemer|liefhebber|enthusiast|music lover|\bfans\b/i.test(fact.text)
+  return evidence.demand.some((fact) => /visitor|bezoek|audience|publiek|attend|delegate|deelnemer|exhibitor|exposant|liefhebber|enthusiast|music lover|\bfans\b|athlete|atleet|zwemmer|swimmer|competitor|deelnemend|renner|rider|speler|player|\bteams?\b/i.test(fact.text)
     && (audience === "international"
       ? /international|internationa|countries|landen|abroad|buitenland|(?:around|across|all over) the (?:world|globe)|wereldwijd|over de hele wereld/i.test(fact.text)
       : /national|nationaal|countries|landen|abroad|buitenland|travell?ing|overnacht|overnight|hotel|accommodation|across.*netherlands/i.test(fact.text))) ? audience : null;
