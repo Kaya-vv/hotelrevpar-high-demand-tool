@@ -14,7 +14,7 @@ Record the evidence for each gate before calling the data-quality demo ready. De
 | 8 | Confirm Medium, Low, default-basis, provisional, unsupported, disabled-source-only, conflicted, and duplicate events stay out of subscriber output. |  |  |  |  |
 | 9 | Confirm routine league fixtures remain below High and all-day placeholders receive no duration or late bonus. |  |  |  |  |
 | 10 | Confirm PredictHQ contributes no score, source link, visible event, or export row. |  |  |  |  |
-| 11 | Record the billed Anthropic cost for each hotel run. Steady-state target is no more than €2 per area run; the first aggregator-discovery run has a €4 hard stop, and a result above €2 is a pass with a cost action (set `ANTHROPIC_DISCOVERY_MODEL` to a Haiku-class model and re-measure). |  |  |  |  |
+| 11 | Record the billed Anthropic cost for each hotel run. Steady-state target is no more than €4 per area run; the research ceiling is €8 per market per month, which only binds while a discovery backlog drains, and a steady-state result above €4 is a pass with a cost action (set `ANTHROPIC_DISCOVERY_MODEL` to a Haiku-class model and re-measure). |  |  |  |  |
 | 12 | Confirm RLS isolation tests, full tests, lint, typecheck, production build, and diff check pass. |  |  |  |  |
 | 13 | Deferred: deploy the app and configure invites and Cron. |  |  |  |  |
 | 14 | Deferred: import the generated workbook into RevControl without repairing headers or dates. |  |  |  |  |

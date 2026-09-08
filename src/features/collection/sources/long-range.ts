@@ -55,6 +55,9 @@ function targetWasRejected(message: Anthropic.Message, target: string | null) {
 const FETCH_SLOTS = 18;    // weekly lead checks
 const CALENDAR_SLOTS = 6;  // reserved inside FETCH_SLOTS for calendar hubs
 const SWEEP_DAYS = 28;
+// A cycle drains its backlog across weekly invocations; 18 left confirmed-but-unassessed leads
+// queued behind fresh discovery for months (pendingDemand 60 against demandAccepted 6).
+const CYCLE_LEAD_LIMIT = 30;
 
 // A lead URL only earns a fetch when it can own the event's dates. Aggregators, wikis and tourist
 // listings republish them, so a fetch there confirms nothing. Extend this list when a new host
@@ -166,9 +169,13 @@ function fairQueue(leads: Lead[]) {
   return result;
 }
 
-// Oldest due work first; prior demand and portfolio history only break ties.
+// Oldest due work first; prior demand and portfolio history only break ties. A lead that is
+// already confirmed but still unassessed outranks unchecked discovery: its evidence is paid for
+// and only the assessment stands between it and the calendar.
+const assessmentPending = (lead: Lead) => Number(lead.pendingStage === "demand" || lead.pendingStage === "extraction");
 function queueOrder(left: Lead, right: Lead) {
   return Number(repairPending(right)) - Number(repairPending(left))
+    || assessmentPending(right) - assessmentPending(left)
     || researchDueAt(left).localeCompare(researchDueAt(right))
     || Number(Boolean(left.checkedAt)) - Number(Boolean(right.checkedAt))
     || (left.attempts ?? 0) - (right.attempts ?? 0)
@@ -270,7 +277,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
   const client = input.client ?? new Anthropic();
   const batching = { ...(input.batching ?? { enabled: !input.client && process.env.ANTHROPIC_BATCHES !== "disabled" }), usageHandledByCaller: true };
   const usage: Record<string, number> = { inputTokens: 0, outputTokens: 0, webSearchRequests: 0, webFetchRequests: 0, estimatedCostUsd: 0 };
-  const budget = researchBudget(state, now, input.budgetEur ?? 5);
+  const budget = researchBudget(state, now, input.budgetEur);
   if (!state.cycle || (state.cycle.finished && now.getTime() - Date.parse(state.cycle.startedAt) >= 7 * day)) {
     state.cycle = { startedAt: now.toISOString(), waves: 0, leadKeys: [], queued: state.cycle?.queued ?? [] };
   }
@@ -467,9 +474,9 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
   const eligible = state.leads.filter((lead) => Date.parse(researchDueAt(lead)) <= now.getTime());
   const firstChecks = fairQueue(eligible.filter((lead) => !lead.checkedAt && !(lead.attempts ?? 0))).slice(0, 5);
   const available = [...firstChecks, ...fairQueue(eligible.filter((lead) => !firstChecks.includes(lead)))];
-  if (workCycle.finished && workCycle.waves < 3 && workCycle.leadKeys.length < 18 && available.some((lead) => !workCycle.leadKeys.includes(lead.key))) workCycle.finished = false;
+  if (workCycle.finished && workCycle.waves < 3 && workCycle.leadKeys.length < CYCLE_LEAD_LIMIT && available.some((lead) => !workCycle.leadKeys.includes(lead.key))) workCycle.finished = false;
   if (!workCycle.finished) for (const lead of available) {
-    if (workCycle.leadKeys.length >= 18) break;
+    if (workCycle.leadKeys.length >= CYCLE_LEAD_LIMIT) break;
     if (!workCycle.leadKeys.includes(lead.key)) workCycle.leadKeys.push(lead.key);
   }
   const due = available.filter((lead) => fetchTarget(lead) && workCycle.leadKeys.includes(lead.key) && !workCycle.finished);

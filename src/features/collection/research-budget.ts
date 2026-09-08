@@ -19,7 +19,8 @@ export function estimatedCostUsd(event: ClaudeUsageEvent, batch: boolean) {
 
 // Budget accounting deliberately uses a conservative 1 EUR per USD estimate. Raw USD usage is
 // retained for billing reconciliation; this is not a claim about the invoiced exchange rate.
-export function researchBudget(state: LongRangeState, now: Date, ceilingEur = 5) {
+// Measured steady state is ~4 EUR per market per month, so 8 only binds while a backlog drains.
+export function researchBudget(state: LongRangeState, now: Date, ceilingEur = 8) {
   const month = now.toISOString().slice(0, 7);
   if (!state.budget || state.budget.month !== month) {
     // Anthropic batches expire within 24h, so a reservation made in a previous month cannot

@@ -881,7 +881,8 @@ describe("event domain", () => {
 
   describe("announced long-range band", () => {
     const assessed = { importance: "Medium" as const, impactBasis: "ai_assessment", distanceKm: 2 };
-    const base = { startDate: "2027-06-01", nearTermHorizon: "2026-12-06", demandRadiusKm: 25, scores: [assessed] };
+    const base = { startDate: "2027-06-01", endDate: "2027-06-01", nearTermHorizon: "2026-12-06", demandRadiusKm: 25, hasConfirmedDateAndLocation: false, scores: [assessed] };
+    const unassessed = { ...base, scores: [{ ...assessed, impactBasis: "default" }] };
 
     it("announces an assessed edition beyond the horizon that cannot be graded yet", () =>
       expect(isAnnouncedLongRange(base)).toBe(true));
@@ -890,7 +891,7 @@ describe("event domain", () => {
       expect(isAnnouncedLongRange({ ...base, startDate: "2026-11-01" })).toBe(false));
 
     it("does not announce an unassessed edition", () =>
-      expect(isAnnouncedLongRange({ ...base, scores: [{ ...assessed, impactBasis: "default" }] })).toBe(false));
+      expect(isAnnouncedLongRange(unassessed)).toBe(false));
 
     it("does not announce an edition outside the hotel's radius", () =>
       expect(isAnnouncedLongRange({ ...base, scores: [{ ...assessed, distanceKm: 90 }] })).toBe(false));
@@ -900,6 +901,24 @@ describe("event domain", () => {
 
     it("leaves an already gradeable edition to its demand level", () =>
       expect(isAnnouncedLongRange({ ...base, scores: [{ ...assessed, importance: "High" }] })).toBe(false));
+
+    it("announces a confirmed multi-day edition that was never assessed", () =>
+      expect(isAnnouncedLongRange({ ...unassessed, endDate: "2027-06-04", hasConfirmedDateAndLocation: true })).toBe(true));
+
+    it("keeps a two-day confirmed edition hidden, so open days stay out", () =>
+      expect(isAnnouncedLongRange({ ...unassessed, endDate: "2027-06-02", hasConfirmedDateAndLocation: true })).toBe(false));
+
+    it("keeps a multi-day edition without confirmed primary evidence hidden", () =>
+      expect(isAnnouncedLongRange({ ...unassessed, endDate: "2027-06-04" })).toBe(false));
+
+    it("keeps a single-day fixture with no evidence hidden", () =>
+      expect(isAnnouncedLongRange({ ...unassessed, endDate: "2027-06-02" })).toBe(false));
+
+    it("keeps a confirmed multi-day edition outside the radius hidden", () =>
+      expect(isAnnouncedLongRange({ ...unassessed, endDate: "2027-06-04", hasConfirmedDateAndLocation: true, scores: [{ ...assessed, impactBasis: "default", distanceKm: 90 }] })).toBe(false));
+
+    it("still leaves a gradeable confirmed multi-day edition to its demand level", () =>
+      expect(isAnnouncedLongRange({ ...base, endDate: "2027-06-04", hasConfirmedDateAndLocation: true, scores: [{ ...assessed, importance: "High" }] })).toBe(false));
   });
 
   it.each([

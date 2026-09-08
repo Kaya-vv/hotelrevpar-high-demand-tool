@@ -153,8 +153,14 @@ export async function getCalendarData(
       );
       const announced = isAnnouncedLongRange({
         startDate: eventLocalDate(event.start_at),
+        endDate: eventLocalDate(event.end_at),
         nearTermHorizon,
         demandRadiusKm: selectedRadiusKm,
+        hasConfirmedDateAndLocation: sources.some((source) => {
+          if (source.event_id !== event.id || !isEnabledPrimarySource(source, enabledSources)) return false;
+          const evidence = readEventEvidence(source.evidence);
+          return Boolean(evidence?.dateText && evidence.locationText);
+        }),
         scores: eventScores,
       });
       return {
