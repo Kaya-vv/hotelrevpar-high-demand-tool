@@ -3,8 +3,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const adminHolder = vi.hoisted(() => ({ current: {} }));
 
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => adminHolder.current }));
+vi.mock("@vercel/queue", () => ({ send: vi.fn().mockResolvedValue({ messageId: "message" }) }));
 
 import { enqueueCollectionAreas, processCollectionJob, publishCollectionJob } from "./jobs";
+import { send } from "@vercel/queue";
 
 function selectable(data: unknown) {
   const query = {
@@ -23,6 +25,28 @@ const delivery = (deliveryCount: number) => ({ deliveryCount, expiresAt: new Dat
 
 describe("collection jobs", () => {
   afterEach(() => vi.unstubAllEnvs());
+
+  it("deduplicates research across refresh retries but allows another run", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.mocked(send).mockClear();
+    const work = { kind: "market-research" as const, accountId: "account", areaId: "area", runId: "run-1", requestedAt: "2026-09-08T10:00:00Z" };
+    await publishCollectionJob(work);
+    await publishCollectionJob({ ...work, requestedAt: "2026-09-08T10:05:00Z" });
+    await publishCollectionJob({ ...work, runId: "run-2" });
+    const keys = vi.mocked(send).mock.calls.map((call) => call[2]?.idempotencyKey);
+    expect(keys[0]).toBe(keys[1]);
+    expect(keys[2]).not.toBe(keys[0]);
+  });
+
+  it("keeps deliberate publication requests separate for the same run", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.mocked(send).mockClear();
+    const work = { kind: "market-publication" as const, accountId: "account", areaId: "area", runId: "run-1", requestedAt: "2026-09-08T10:00:00Z" };
+    await publishCollectionJob(work);
+    await publishCollectionJob({ ...work, requestedAt: "2026-09-08T10:05:00Z" });
+    const keys = vi.mocked(send).mock.calls.map((call) => call[2]?.idempotencyKey);
+    expect(keys[0]).not.toBe(keys[1]);
+  });
 
   it("processes a development job without Vercel authentication", async () => {
     vi.stubEnv("NODE_ENV", "development");

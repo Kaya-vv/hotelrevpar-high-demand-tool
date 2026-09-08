@@ -23,7 +23,11 @@ export async function publishCollectionJob(
   }
   const { send } = await import("@vercel/queue");
   await send(COLLECTION_TOPIC, message, {
-    idempotencyKey: "jobId" in message ? message.jobId : `${message.runId}:${message.kind}:${message.requestedAt}`,
+    // A pending hotel refresh revisits this publisher. Research belongs to the run,
+    // while an explicitly requested publication may be repeated for that same run.
+    idempotencyKey: "jobId" in message ? message.jobId
+      : message.kind === "market-research" ? `${message.runId}:${message.kind}`
+        : `${message.runId}:${message.kind}:${message.requestedAt}`,
     // Anthropic batches may use their full 24-hour processing window before a retry completes.
     retentionSeconds: 172_800,
   });
