@@ -5,6 +5,7 @@ import { useRef } from "react";
 export function CalendarFilters({
   month,
   view,
+  period,
   category,
   importance,
   categories,
@@ -12,6 +13,7 @@ export function CalendarFilters({
 }: {
   month: string;
   view: "list" | "calendar";
+  period: "3" | "12" | "all";
   category?: string;
   importance?: string;
   categories: string[];
@@ -22,18 +24,27 @@ export function CalendarFilters({
 
   return (
     <form
-      key={`${month}|${view}|${category ?? ""}|${importance ?? ""}`}
+      key={`${month}|${view}|${period}|${category ?? ""}|${importance ?? ""}`}
       ref={formRef}
       action="/calendar"
       className="filter-bar"
     >
       <input name="month" type="hidden" value={month} />
       <input name="view" type="hidden" value={view} />
+      {view === "list" ? (
+        <label>Periode
+          <select name="period" defaultValue={period} onChange={submit}>
+            <option value="3">Komende 3 maanden</option>
+            <option value="12">Komende 12 maanden</option>
+            <option value="all">Alle toekomstige events</option>
+          </select>
+        </label>
+      ) : <input name="period" type="hidden" value={period} />}
       <label>
         Categorie
         <select name="category" defaultValue={category ?? ""} onChange={submit}>
           <option value="">Alle categorieën</option>
-          {categories.map((item) => (
+          {[...new Set([...categories, ...(category ? [category] : [])])].sort().map((item) => (
             <option key={item} value={item}>
               {item}
             </option>

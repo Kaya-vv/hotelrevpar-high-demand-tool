@@ -50,6 +50,18 @@ const events: CalendarEvent[] = [
 ];
 
 describe("CalendarView", () => {
+  it("groups future events by month, skips empty months and links to the filtered calendar", () => {
+    render(<CalendarView month="2026-09" rangeStart="2026-09-08" events={[
+      { ...events[0], id: "ongoing", title: "Ongoing festival", startAt: "2026-08-30T12:00:00Z", endAt: "2026-09-10T12:00:00Z" },
+      ...events,
+    ]} monthHrefs={{ "2027-10": "/calendar?view=calendar&month=2027-10&category=festival&period=all" }} />);
+    expect(screen.getByRole("region", { name: "september 2026" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "oktober 2027" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "november 2026" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /oktober 2027/ })).toHaveAttribute("href", "/calendar?view=calendar&month=2027-10&category=festival&period=all");
+    expect(screen.getAllByText("1 evenement")).toHaveLength(2);
+  });
+
   afterEach(() => {
     cleanup();
     vi.useRealTimers();

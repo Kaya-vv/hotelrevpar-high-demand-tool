@@ -1,3 +1,4 @@
+import { calendarBounds, type OverviewPeriod } from "./navigation";
 import { calendarExportDates } from "@/features/export/history";
 import { readEventEvidence } from "@/features/events/evidence";
 import { eventLocalDate } from "@/features/events/normalize";
@@ -9,7 +10,7 @@ import {
   type DemandLevel,
 } from "@/features/events/importance";
 import { getHotelScope } from "@/features/workspace/hotel-context";
-import { fetchInBatches } from "@/lib/supabase/fetch-in-batches";
+import { fetchAllRows, fetchInBatches } from "@/lib/supabase/fetch-in-batches";
 import { isEnabledPrimarySource } from "@/features/events/source-evidence";
 
 import type { CalendarEvent, LatestRun } from "./calendar-view";
@@ -17,29 +18,24 @@ import type { ReviewEvent } from "@/features/review/review-list";
 
 export type CalendarFilters = {
   month: string;
+  view?: "list" | "calendar";
+  period?: OverviewPeriod;
   category?: string;
   importance?: DemandLevel;
 };
-
-function monthBounds(month: string) {
-  const [year, monthNumber] = month.split("-").map(Number);
-  const end = new Date(Date.UTC(year, monthNumber, 0))
-    .toISOString()
-    .slice(0, 10);
-  return { start: `${month}-01`, end };
-}
 
 async function loadAccountEvents(
   accountId: string,
   state: "active" | "needs_review"
 ) {
   const supabase = await createServerClient();
-  const { data: decisions, error: decisionError } = await supabase
+  const decisions = await fetchAllRows((from, to) => supabase
     .from("account_events")
     .select("*")
     .eq("account_id", accountId)
-    .eq("state", state);
-  if (decisionError) throw decisionError;
+    .eq("state", state)
+    .order("event_id")
+    .range(from, to));
   const eventIds = decisions.map((decision) => decision.event_id);
   if (!eventIds.length) return { decisions, events: [], sources: [] };
 
@@ -57,12 +53,13 @@ async function loadAccountEvents(
 async function linkedEventIds(accountId: string, areaId: string | null) {
   if (!areaId) return new Set<string>();
   const supabase = await createServerClient();
-  const { data, error } = await supabase
+  const data = await fetchAllRows((from, to) => supabase
     .from("account_event_areas")
     .select("event_id")
     .eq("account_id", accountId)
-    .eq("collection_area_id", areaId);
-  if (error) throw error;
+    .eq("collection_area_id", areaId)
+    .order("event_id")
+    .range(from, to));
   return new Set(data.map((link) => link.event_id));
 }
 
@@ -107,7 +104,7 @@ export async function getCalendarData(
   );
   const selectedHotelName =
     hotels.find((hotel) => hotel.id === selectedHotelId)?.name ?? "Hotel";
-  const bounds = monthBounds(filters.month);
+  const bounds = calendarBounds(filters.month, filters.view, filters.period);
   // Same boundary the collector uses to split near-term verification from long-range research.
   const nearTermHorizon = new Date(Date.now() + 90 * 86_400_000)
     .toISOString()
@@ -116,12 +113,7 @@ export async function getCalendarData(
     hotels.find((hotel) => hotel.id === selectedHotelId)?.demand_radius_km ?? null;
   const exportedDates = await calendarExportDates(accountId, selectedHotelId);
   const mapped: CalendarEvent[] = scopedEvents
-    .filter(
-      (event) =>
-        event.certainty === "confirmed" &&
-        eventLocalDate(event.start_at) <= bounds.end &&
-        eventLocalDate(event.end_at) >= bounds.start
-    )
+    .filter((event) => event.certainty === "confirmed")
     .map((event) => {
       const decision = decisionsByEvent.get(event.id);
       const publishedSources = sources
@@ -184,6 +176,9 @@ export async function getCalendarData(
     })
     .filter((event) => event.sources.length > 0)
     .filter((event) => event.hotelScores.length > 0 || event.announced)
+    .filter((event) => eventLocalDate(event.startAt) <= bounds.end && eventLocalDate(event.endAt) >= bounds.start);
+  const categories = [...new Set(mapped.map((event) => event.category))].sort();
+  const filtered = mapped
     .filter((event) => !filters.category || event.category === filters.category)
     .filter(
       (event) =>
@@ -218,11 +213,11 @@ export async function getCalendarData(
     };
   }
   return {
-    events: mapped,
+    events: filtered,
     latestRun,
     hotels,
     selectedHotelId,
-    categories: [...new Set(mapped.map((event) => event.category))].sort(),
+    categories,
   };
 }
 

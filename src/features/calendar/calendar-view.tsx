@@ -1,6 +1,9 @@
 "use client";
 import { eventLocalDate } from "@/features/events/normalize";
 
+import Link from "next/link";
+import { monthLabel, overviewMonth } from "./navigation";
+
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -206,9 +209,13 @@ function EventDetails({
 
 function EventOverview({
   events,
+  rangeStart,
+  monthHrefs,
   overrideImportanceAction,
 }: {
   events: CalendarEvent[];
+  rangeStart?: string;
+  monthHrefs?: Record<string, string>;
   overrideImportanceAction?: (formData: FormData) => void | Promise<void>;
 }) {
   const counts = Object.fromEntries(
@@ -292,19 +299,29 @@ function EventOverview({
           Geen bevestigde vraagmomenten voor deze filters.
         </p>
       )}
-      <div className="event-overview-list">{rows(events)}</div>
+      {[...new Set(events.map((event) => overviewMonth(event.startAt, rangeStart)))].sort().map((month) => {
+        const items = events.filter((event) => overviewMonth(event.startAt, rangeStart) === month);
+        return <section className="event-month-group" key={month} aria-label={monthLabel(month)}>
+          <header><h2><Link href={monthHrefs?.[month] ?? `/calendar?view=calendar&month=${month}`}>{monthLabel(month)} <span aria-hidden="true">›</span></Link></h2><span>{items.length} evenement{items.length === 1 ? "" : "en"}</span></header>
+          <div className="event-overview-list">{rows(items)}</div>
+        </section>;
+      })}
     </section>
   );
 }
 
 export function CalendarView({
   month,
+  rangeStart,
+  monthHrefs,
   events,
   latestRun,
   view = "list",
   overrideImportanceAction,
 }: {
   month: string;
+  rangeStart?: string;
+  monthHrefs?: Record<string, string>;
   events: CalendarEvent[];
   latestRun?: LatestRun | null;
   view?: "list" | "calendar";
@@ -323,6 +340,8 @@ export function CalendarView({
       <>
         {latestRun && <RunStatus latestRun={latestRun} pollExpired={pollExpired} />}
         <EventOverview
+          rangeStart={rangeStart}
+          monthHrefs={monthHrefs}
           events={events}
           overrideImportanceAction={overrideImportanceAction}
         />

@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { MonthNavigation } from "@/features/calendar/month-navigation";
+import { calendarBounds, overviewMonth } from "@/features/calendar/navigation";
 
 import { CalendarFilters } from "@/features/calendar/calendar-filters";
 import { CalendarView } from "@/features/calendar/calendar-view";
@@ -32,23 +34,6 @@ function value(
   return typeof item === "string" ? item : undefined;
 }
 
-function changeMonth(month: string, offset: number) {
-  const [year, monthNumber] = month.split("-").map(Number);
-  const date = new Date(Date.UTC(year, monthNumber - 1 + offset, 1));
-  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(
-    2,
-    "0"
-  )}`;
-}
-
-function monthLabel(month: string) {
-  return new Intl.DateTimeFormat("nl-NL", {
-    month: "long",
-    year: "numeric",
-    timeZone: "UTC",
-  }).format(new Date(`${month}-01T00:00:00Z`));
-}
-
 export default async function CalendarPage({
   searchParams,
 }: {
@@ -62,9 +47,14 @@ export default async function CalendarPage({
       ? rawMonth
       : currentMonth();
   const rawImportance = value(params, "importance");
-  const view = value(params, "view") === "list" ? "list" : "calendar";
+  const view = value(params, "view") === "calendar" ? "calendar" : "list";
+  const rawPeriod = value(params, "period");
+  const period = rawPeriod === "3" || rawPeriod === "12" ? rawPeriod : "all";
+  const bounds = calendarBounds(month, view, period);
   const filters: CalendarQueryFilters = {
     month,
+    view,
+    period,
     category: value(params, "category"),
     importance: publishableDemandLevels.includes(
       rawImportance as (typeof publishableDemandLevels)[number]
@@ -80,6 +70,7 @@ export default async function CalendarPage({
     const next = new URLSearchParams();
     next.set("month", month);
     next.set("view", view);
+    next.set("period", period);
     if (filters.category) next.set("category", filters.category);
     if (filters.importance) next.set("importance", filters.importance);
     Object.entries(changes).forEach(([key, item]) =>
@@ -100,23 +91,11 @@ export default async function CalendarPage({
         </header>
       </div>
       <div className="event-toolbar">
-        <nav className="month-navigation" aria-label="Maand kiezen">
-          <Link
-            className="secondary link-button"
-            href={href({ month: changeMonth(month, -1) })}
-            aria-label="Vorige maand"
-          >
-            ‹
-          </Link>
-          <strong>{monthLabel(month)}</strong>
-          <Link
-            className="secondary link-button"
-            href={href({ month: changeMonth(month, 1) })}
-            aria-label="Volgende maand"
-          >
-            ›
-          </Link>
-        </nav>
+        {view === "calendar" ? (
+          <MonthNavigation key={month} month={month} todayMonth={currentMonth()} baseHref={href({})} />
+        ) : (
+          <p className="muted">Van vandaag tot {new Intl.DateTimeFormat("nl-NL", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${bounds.end}T00:00:00Z`))}</p>
+        )}
         <nav className="view-switch" aria-label="Weergave kiezen">
           <Link
             href={href({ view: "list" })}
@@ -128,13 +107,14 @@ export default async function CalendarPage({
             href={href({ view: "calendar" })}
             aria-current={view === "calendar" ? "page" : undefined}
           >
-            Kalender
+            Maandkalender
           </Link>
         </nav>
       </div>
       <CalendarFilters
         month={month}
         view={view}
+        period={period}
         category={filters.category}
         importance={filters.importance}
         categories={data.categories}
@@ -164,6 +144,11 @@ export default async function CalendarPage({
       )}
       <CalendarView
         month={month}
+        rangeStart={bounds.start}
+        monthHrefs={Object.fromEntries(data.events.map((event) => {
+          const target = overviewMonth(event.startAt, bounds.start);
+          return [target, href({ month: target, view: "calendar" })];
+        }))}
         events={data.events}
         latestRun={data.latestRun}
         view={view}

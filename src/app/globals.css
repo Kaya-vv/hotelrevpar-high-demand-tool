@@ -545,10 +545,100 @@ a {
   gap: 10px;
 }
 
-.month-navigation strong {
-  min-width: 180px;
+.month-navigation {
+  flex-wrap: wrap;
+}
+
+.month-picker {
+  position: relative;
+}
+
+.month-picker > summary {
+  padding: 9px 6px;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
   text-align: center;
   text-transform: capitalize;
+}
+
+.month-picker > summary::-webkit-details-marker {
+  display: none;
+}
+
+.month-picker-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 10;
+  width: min(300px, calc(100vw - 100px));
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--white);
+  box-shadow: 0 8px 24px #102d4426;
+}
+
+.month-picker-panel label {
+  display: grid;
+  gap: 6px;
+}
+
+.month-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  margin-top: 12px;
+}
+
+.month-picker-grid a {
+  padding: 10px 3px;
+  border-radius: 5px;
+  font-size: 0.8rem;
+  text-align: center;
+  text-decoration: none;
+}
+
+.month-picker-grid a:hover {
+  background: #eaf2f5;
+}
+
+.month-picker-grid a[aria-current="date"] {
+  background: var(--blue);
+  color: var(--white);
+}
+
+.event-month-group {
+  margin-top: 24px;
+}
+
+.event-month-group > header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.event-month-group h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  text-transform: capitalize;
+}
+
+.event-month-group h2 a {
+  color: var(--blue);
+  text-decoration: none;
+}
+
+.event-month-group h2 a:hover {
+  text-decoration: underline;
+}
+
+.event-month-group > header > span {
+  color: var(--muted);
+  font-size: 0.85rem;
 }
 
 .view-switch {
