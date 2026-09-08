@@ -2,7 +2,7 @@
 import { eventLocalDate } from "@/features/events/normalize";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import {
   demandLabels,
@@ -10,6 +10,7 @@ import {
   publishableDemandLevels,
   type DemandLevel,
 } from "@/features/events/importance";
+import { useRunStatusPoll } from "@/features/collection/use-run-status-poll";
 
 export type CalendarSource = {
   id?: string;
@@ -306,21 +307,18 @@ export function CalendarView({
   view?: "list" | "calendar";
   overrideImportanceAction?: (formData: FormData) => void | Promise<void>;
 }) {
-  const router = useRouter();
   const [selectedId, setSelectedId] = useState(events[0]?.id ?? null);
   const selectedEvent =
     events.find((event) => event.id === selectedId) ?? events[0] ?? null;
 
-  useEffect(() => {
-    if (!latestRun || (latestRun.finishedAt && !latestRun.researchPending)) return;
-    const timer = window.setInterval(() => router.refresh(), 3_000);
-    return () => window.clearInterval(timer);
-  }, [latestRun, router]);
+  const pollExpired = useRunStatusPoll(
+    Boolean(latestRun) && !(latestRun!.finishedAt && !latestRun!.researchPending),
+  );
 
   if (view === "list") {
     return (
       <>
-        {latestRun && <RunStatus latestRun={latestRun} />}
+        {latestRun && <RunStatus latestRun={latestRun} pollExpired={pollExpired} />}
         <EventOverview
           events={events}
           overrideImportanceAction={overrideImportanceAction}
@@ -338,7 +336,7 @@ export function CalendarView({
 
   return (
     <>
-      {latestRun && <RunStatus latestRun={latestRun} />}
+      {latestRun && <RunStatus latestRun={latestRun} pollExpired={pollExpired} />}
       <div className="calendar-layout">
         <section className="month-panel" aria-label={`Maand ${month}`}>
           <div className="weekday-row" aria-hidden="true">
@@ -442,7 +440,8 @@ export function CalendarView({
   );
 }
 
-function RunStatus({ latestRun }: { latestRun: LatestRun }) {
+function RunStatus({ latestRun, pollExpired }: { latestRun: LatestRun; pollExpired: boolean }) {
+  const router = useRouter();
   return (
     <p
       className={latestRun.hadErrors ? "updated-at warning-text" : "updated-at"}
@@ -459,7 +458,15 @@ function RunStatus({ latestRun }: { latestRun: LatestRun }) {
             hour: "2-digit",
             minute: "2-digit",
           })}.`}
-      {latestRun.researchPending && " Nieuwe resultaten verschijnen automatisch."}
+      {latestRun.researchPending && !pollExpired && " Nieuwe resultaten verschijnen automatisch."}
+      {pollExpired && (
+        <>
+          {" "}Automatisch bijwerken is gestopt.{" "}
+          <button type="button" className="link-button" onClick={() => router.refresh()}>
+            Nu verversen
+          </button>
+        </>
+      )}
     </p>
   );
 }

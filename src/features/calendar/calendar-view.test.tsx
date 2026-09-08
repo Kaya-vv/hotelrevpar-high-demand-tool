@@ -108,7 +108,7 @@ describe("CalendarView", () => {
     );
 
     expect(screen.getByText(/bijwerken gestart/i)).toBeInTheDocument();
-    act(() => vi.advanceTimersByTime(3_000));
+    act(() => vi.advanceTimersByTime(15_000));
     expect(refresh).toHaveBeenCalledOnce();
   });
   it("keeps refreshing after collection finishes until background publication finishes", () => {
@@ -117,11 +117,25 @@ describe("CalendarView", () => {
     const { rerender } = render(<CalendarView month="2027-10" events={events} latestRun={run} />);
     expect(screen.getByText(/Bijwerken bezig: onderzoek en publicatie/)).toBeInTheDocument();
     expect(screen.queryByText(/Bijgewerkt op/)).not.toBeInTheDocument();
-    act(() => vi.advanceTimersByTime(3_000));
+    act(() => vi.advanceTimersByTime(15_000));
     expect(refresh).toHaveBeenCalledOnce();
     rerender(<CalendarView month="2027-10" events={events} latestRun={{ ...run, researchPending: false }} />);
     expect(screen.getByText(/Bijgewerkt op/)).toBeInTheDocument();
-    act(() => vi.advanceTimersByTime(3_000));
+    act(() => vi.advanceTimersByTime(15_000));
     expect(refresh).toHaveBeenCalledOnce();
+  });
+  it("stops watching a run that stays pending and offers a manual reload instead", () => {
+    vi.useFakeTimers();
+    const run = { startedAt: "2027-10-01T10:00:00Z", finishedAt: null, researchPending: true };
+    render(<CalendarView month="2027-10" events={events} latestRun={run} />);
+
+    // Ten minutes of watching, then the poll must stop rather than run for the batch's lifetime.
+    act(() => vi.advanceTimersByTime(10 * 60_000));
+    const polls = refresh.mock.calls.length;
+    expect(polls).toBe(39);
+    expect(screen.getByRole("button", { name: "Nu verversen" })).toBeInTheDocument();
+
+    act(() => vi.advanceTimersByTime(60 * 60_000));
+    expect(refresh).toHaveBeenCalledTimes(polls);
   });
 });
