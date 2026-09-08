@@ -7,6 +7,7 @@ import type { OfficialPage } from "./official-pages";
 
 export type ResearchJob = { leadKey: string; windowStart?: string; kind: "fetch" | "deep" | "resolve" | "evidence"; target?: string; providerFallback?: boolean; checkedAt?: string; pages?: OfficialPage[]; cached?: boolean; chunks?: { url: string; hash: string; index: number; total: number }[] };
 export type ResearchCycle = {
+  monitoringVersion?: number;
   startedAt: string; waves: number; leadKeys: string[]; finished?: boolean;
   retrieved?: Record<string, string[]>;
   queued: ResearchJob[];

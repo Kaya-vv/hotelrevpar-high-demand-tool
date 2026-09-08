@@ -1,3 +1,4 @@
+import { calendarExportDates } from "@/features/export/history";
 import { readEventEvidence } from "@/features/events/evidence";
 import { eventLocalDate } from "@/features/events/normalize";
 import { createServerClient } from "@/lib/supabase/server";
@@ -113,6 +114,7 @@ export async function getCalendarData(
     .slice(0, 10);
   const selectedRadiusKm =
     hotels.find((hotel) => hotel.id === selectedHotelId)?.demand_radius_km ?? null;
+  const exportedDates = await calendarExportDates(accountId, selectedHotelId);
   const mapped: CalendarEvent[] = scopedEvents
     .filter(
       (event) =>
@@ -165,6 +167,7 @@ export async function getCalendarData(
       });
       return {
         id: event.id,
+        exportedAt: exportedDates.get(event.id),
         locationApproximate: sources.some((source) => {
           const location = source.event_id === event.id ? readEventEvidence(source.evidence)?.locationResolution : undefined;
           return location?.method === "city_centroid" && location.latitude === event.latitude && location.longitude === event.longitude;

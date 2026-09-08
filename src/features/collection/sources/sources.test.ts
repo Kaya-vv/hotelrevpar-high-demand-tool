@@ -956,7 +956,7 @@ describe("source adapters", () => {
   it("honours a metadata exclusion only when it quotes the title it rejects", () => {
     const oneNight = { title: "Marillion", startDate: "2027-09-15", endDate: "2027-09-15" };
     const named = { decision: "exclude", excludeAs: "artist_show", act: "Marillion" };
-    expect(triageExclusionAllowed(named, oneNight)).toBe(true);
+    expect(triageExclusionAllowed(named, oneNight)).toBe(false);
 
     // Production: "Rock event (Helldorado) zonder verdere context, waarschijnlijk clubavond".
     expect(triageExclusionAllowed({ ...named, act: null }, oneNight)).toBe(false);

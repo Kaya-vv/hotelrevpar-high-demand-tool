@@ -33,6 +33,7 @@ export type CalendarHotelScore = {
 };
 
 export type CalendarEvent = {
+  exportedAt?: string;
   locationApproximate?: boolean;
   id: string;
   title: string;
@@ -104,6 +105,7 @@ function EventDetails({
         <div>
           <span className="eyebrow">{categoryLabel(event.category)}</span>
           <h2>{event.title}</h2>
+          {event.exportedAt && <p className="muted">Geëxporteerd {dateLabel(event.exportedAt, true)} · <a href="/export#export-history">Exportgeschiedenis</a></p>}
         </div>
         {score && (
           <span className={`importance ${score.importance.toLowerCase()}`}>
@@ -228,6 +230,7 @@ function EventOverview({
             </time>
             <span className="event-overview-name">
               <strong>{event.title}</strong>
+              {event.exportedAt && <small>Geëxporteerd {dateLabel(event.exportedAt, true)}</small>}
               <small>
                 {[event.venue, categoryLabel(event.category)]
                   .filter(Boolean)
@@ -407,7 +410,7 @@ export function CalendarView({
                     <time dateTime={event.startAt}>
                       {dateLabel(event.startAt)}
                     </time>
-                    <span>{event.title}</span>
+                    <span>{event.title}{event.exportedAt && <small> · Geëxporteerd {dateLabel(event.exportedAt, true)}</small>}</span>
                     {score && (
                       <>
                         <span

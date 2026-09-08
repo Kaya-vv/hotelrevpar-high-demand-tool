@@ -159,6 +159,7 @@ export function claudeMarketCacheKey(input: ClaudeMarketInput) {
   return createHash("sha256")
     .update(JSON.stringify({
       version: CLAUDE_ASSESSMENT_VERSION,
+      discoveryVersion: 2, // Artist shows now reach verification; old exclusions are not reusable.
       start: input.start,
       end: input.end,
       location: input.location.trim().toLocaleLowerCase("nl-NL"),

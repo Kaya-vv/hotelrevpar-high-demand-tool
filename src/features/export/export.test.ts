@@ -72,12 +72,12 @@ describe("RevControl export", () => {
     expect(mapRevControlRows(exportableEvents(events, ["hotel-1"]), ["hotel-1"])).toHaveLength(1);
   });
 
-  it("defaults the export range to the 90-day collection window", () => {
+  it("defaults the export range to the full research horizon", () => {
     const today = new Date("2026-09-03T12:00:00Z");
 
     expect(exportRange(null, null, today)).toEqual({
       start: "2026-09-03",
-      end: "2026-12-02",
+      end: "2027-12-31",
     });
     expect(exportRange("2026-10-01", "2027-01-31", today)).toEqual({
       start: "2026-10-01",

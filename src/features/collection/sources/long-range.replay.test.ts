@@ -55,7 +55,11 @@ describe("saved production response replay (no network)", () => {
     expect(replay.requests).toHaveLength(3);
     expect(JSON.stringify(replay.requests[2].messages)).toContain("Then read a SECOND page");
     expect(result.error).toContain("Replay has no recorded response");
-    expect(result.candidates).toEqual([]);
-    expect(state.leads[0].editions).toEqual([]);
+    // The current edition now falls inside monitoring, but the legacy response lacks
+    // verifiable facts. Keep it for repair without claiming a confirmed future edition.
+    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates[0].startAt).toMatch(/^2026-/);
+    expect(result.candidates[0].primarySourceConfirmed).toBe(false);
+    expect(state.leads[0].editions).toHaveLength(1);
   });
 });

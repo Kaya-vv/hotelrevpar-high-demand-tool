@@ -11,7 +11,7 @@ function excelDate(value: string) {
 
 function publishableHotels(event: ExportEvent, selected: Set<string>) {
   return event.hotels.filter(
-    (hotel) => selected.has(hotel.id) && isPublishableDemand(hotel.importance, hotel.impactBasis),
+    (hotel) => selected.has(hotel.id) && hotel.available !== false && (isPublishableDemand(hotel.importance, hotel.impactBasis) || (hotel.announced && hotel.manuallySelected && hotel.exportLevel)),
   );
 }
 
@@ -27,7 +27,8 @@ export function mapRevControlRows(events: ExportEvent[], selectedHotelIds: strin
     .flatMap((event) => {
       const groups = new Map<RevControlRow["importance"], string[]>();
       publishableHotels(event, selected).forEach((hotel) => {
-        const importance = hotel.importance === "Peak" ? "High" : hotel.importance;
+        const level = hotel.announced && hotel.manuallySelected && hotel.exportLevel ? hotel.exportLevel : hotel.importance;
+        const importance = level === "Peak" ? "High" : level;
         groups.set(importance, [...(groups.get(importance) ?? []), hotel.code]);
       });
       return [...groups].map(([importance, hotels]) => ({

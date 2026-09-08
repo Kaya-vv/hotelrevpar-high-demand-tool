@@ -1,5 +1,16 @@
 type BatchResult<T> = PromiseLike<{ data: T[] | null; error: unknown }>;
 
+/** Exhaust a deterministically ordered query instead of silently accepting the API row cap. */
+export async function fetchAllRows<T>(fetch: (from: number, to: number) => BatchResult<T>): Promise<T[]> {
+  const rows: T[] = [];
+  for (let from = 0; ; from += 500) {
+    const result = await fetch(from, from + 499);
+    if (result.error) throw result.error;
+    rows.push(...(result.data ?? []));
+    if ((result.data?.length ?? 0) < 500) return rows;
+  }
+}
+
 export async function fetchInBatches<T>(
   values: string[],
   fetch: (batch: string[]) => BatchResult<T>,

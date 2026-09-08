@@ -34,6 +34,34 @@ export type Database = {
   };
   public: {
     Tables: {
+      export_batches: {
+        Row: { id: string; account_id: string; created_by: string; created_at: string; request_key: string; request_hash: string; selection: Json; workbook: string };
+        Insert: { id?: string; account_id: string; created_by: string; created_at?: string; request_key: string; request_hash: string; selection: Json; workbook: string };
+        Update: { id?: string; account_id?: string; created_by?: string; created_at?: string; request_key?: string; request_hash?: string; selection?: Json; workbook?: string };
+        Relationships: [];
+      };
+
+      export_items: {
+        Row: { batch_id: string; account_id: string; hotel_id: string; event_id: string; snapshot: Json };
+        Insert: { batch_id: string; account_id: string; hotel_id: string; event_id: string; snapshot: Json };
+        Update: { batch_id?: string; account_id?: string; hotel_id?: string; event_id?: string; snapshot?: Json };
+        Relationships: [];
+      };
+
+      hotel_event_exports: {
+        Row: { account_id: string; hotel_id: string; event_id: string; canonical_event_id: string; latest_item_event_id: string; first_batch_id: string; latest_batch_id: string };
+        Insert: { account_id: string; hotel_id: string; event_id: string; canonical_event_id: string; latest_item_event_id: string; first_batch_id: string; latest_batch_id: string };
+        Update: { account_id?: string; hotel_id?: string; event_id?: string; canonical_event_id?: string; latest_item_event_id?: string; first_batch_id?: string; latest_batch_id?: string };
+        Relationships: [];
+      };
+
+      announcement_export_choices: {
+        Row: { account_id: string; hotel_id: string; event_id: string; importance: string };
+        Insert: { account_id: string; hotel_id: string; event_id: string; importance: string };
+        Update: { account_id?: string; hotel_id?: string; event_id?: string; importance?: string };
+        Relationships: [];
+      };
+
       long_range_markets: {
         Row: { market_key: string; state: Json; updated_at: string; lease_owner: string | null; lease_until: string | null };
         Insert: { market_key: string; state: Json; updated_at?: string; lease_owner?: string | null; lease_until?: string | null };
@@ -890,6 +918,11 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      commit_hotel_export: {
+        Args: { p_account: string; p_user: string; p_key: string; p_hash: string; p_selection: Json; p_workbook: string; p_items: Json; p_choices: Json };
+        Returns: string;
+      };
+
       claim_long_range_market: { Args: { target: string; owner: string }; Returns: boolean };
       save_long_range_market: { Args: { target: string; owner: string; value: Json }; Returns: boolean };
       release_long_range_market: { Args: { target: string; owner: string }; Returns: undefined };

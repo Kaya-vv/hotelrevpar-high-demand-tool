@@ -1,20 +1,23 @@
-import { localDateBoundary } from "@/features/events/evidence";
-import type { DemandLevel } from "@/features/events/importance";
+import { eventLocalDate } from "@/features/events/normalize";
+import { readEventEvidence } from "@/features/events/evidence";
+import { isAnnouncedLongRange, type DemandLevel } from "@/features/events/importance";
 import { createServerClient } from "@/lib/supabase/server";
-import { fetchInBatches } from "@/lib/supabase/fetch-in-batches";
+import { fetchAllRows, fetchInBatches } from "@/lib/supabase/fetch-in-batches";
 import { isEnabledPrimarySource } from "@/features/events/source-evidence";
 
 import type { ExportEvent } from "./types";
 
-const DAY = 24 * 60 * 60 * 1000;
-const isDate = (value: string | null | undefined): value is string =>
-  /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(value ?? "");
+
+const isDate = (value: string | null | undefined): value is string => {
+  if (!/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(value ?? "")) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+};
 
 export type ExportRange = { start: string; end: string };
 
 /**
- * Defaults to the 90-day window the collectors fill, so one export covers
- * everything the app knows rather than a single month.
+ * Default to the full research horizon; explicit date selections remain supported.
  */
 export function exportRange(
   from: string | null | undefined,
@@ -22,18 +25,16 @@ export function exportRange(
   today = new Date(),
 ): ExportRange {
   const start = isDate(from) ? from : today.toISOString().slice(0, 10);
-  const fallbackEnd = new Date(new Date(`${start}T00:00:00Z`).getTime() + 90 * DAY)
-    .toISOString()
-    .slice(0, 10);
+  const fallbackEnd = `${today.getUTCFullYear() + 1}-12-31`;
   const end = isDate(to) ? to : fallbackEnd;
   return end < start ? { start: end, end: start } : { start, end };
 }
 
-export async function loadExportEvents(accountId: string, range: ExportRange, selectedHotelIds: string[]) {
+export async function loadExportEvents(accountId: string, range: ExportRange, selectedHotelIds: string[], includeInactive = false) {
   const supabase = await createServerClient();
   const { data: hotels, error: hotelError } = await supabase
     .from("hotels")
-    .select("id, name, revcontrol_code")
+    .select("id, name, revcontrol_code, demand_radius_km")
     .eq("account_id", accountId)
     .in("id", selectedHotelIds);
   if (hotelError) throw hotelError;
@@ -45,22 +46,19 @@ export async function loadExportEvents(accountId: string, range: ExportRange, se
     .in("hotel_id", selectedHotelIds);
   if (areaError) throw areaError;
 
-  const { data: decisions, error: decisionError } = await supabase
-    .from("account_events")
-    .select("event_id, override_title, override_start_at, override_end_at")
-    .eq("account_id", accountId)
-    .eq("state", "active");
-  if (decisionError) throw decisionError;
+  const decisions = await fetchAllRows((from, to) => supabase.from("account_events")
+    .select("event_id, state, merged_into_event_id, override_title, override_start_at, override_end_at")
+    .eq("account_id", accountId).order("event_id").range(from, to));
   const eventIds = decisions.map((decision) => decision.event_id);
   const areaIds = areas.map((area) => area.id);
   const [exportEvents, scores, links, sources] = eventIds.length
     ? await Promise.all([
-        fetchInBatches(eventIds, (ids) => supabase.from("events").select("id, title, start_at, end_at, certainty").in("id", ids).lte("start_at", localDateBoundary(range.end, true)).gte("end_at", localDateBoundary(range.start))),
-        fetchInBatches(eventIds, (ids) => supabase.from("hotel_event_scores").select("event_id, hotel_id, suggested_importance, importance_override, impact_basis").in("event_id", ids).in("hotel_id", selectedHotelIds)),
+        fetchInBatches(eventIds, (ids) => supabase.from("events").select("id, title, start_at, end_at, certainty, source_state").in("id", ids)),
+        fetchInBatches(eventIds, (ids) => supabase.from("hotel_event_scores").select("event_id, hotel_id, suggested_importance, importance_override, impact_basis, distance_km").in("event_id", ids).in("hotel_id", selectedHotelIds)),
         areaIds.length
           ? fetchInBatches(areaIds, (ids) => supabase.from("account_event_areas").select("event_id, collection_area_id").eq("account_id", accountId).in("collection_area_id", ids))
           : Promise.resolve([]),
-        fetchInBatches(eventIds, (ids) => supabase.from("event_sources").select("event_id, provider, source_state, primary_source_confirmed, public_source_url").in("event_id", ids)),
+        fetchInBatches(eventIds, (ids) => supabase.from("event_sources").select("event_id, provider, source_state, primary_source_confirmed, public_source_url, evidence").in("event_id", ids)),
       ])
     : [[], [], [], []];
 
@@ -80,22 +78,41 @@ export async function loadExportEvents(accountId: string, range: ExportRange, se
       )
     );
   };
-  const events: ExportEvent[] = exportEvents.filter((event) => event.certainty === "confirmed").map((event) => {
+  const choices = await fetchAllRows((from, to) => supabase.from("announcement_export_choices").select("*").eq("account_id", accountId).in("hotel_id", selectedHotelIds).order("hotel_id").order("event_id").range(from, to));
+  const claims = await fetchAllRows((from, to) => supabase.from("hotel_event_exports").select("*").eq("account_id", accountId).in("hotel_id", selectedHotelIds).order("hotel_id").order("event_id").range(from, to));
+  const batchIds = [...new Set(claims.map((claim) => claim.latest_batch_id))];
+  const batches = batchIds.length ? await fetchInBatches(batchIds, (ids) => supabase.from("export_batches").select("id, created_at").in("id", ids)) : [];
+  const events: ExportEvent[] = exportEvents.map((event) => {
     const decision = decisionsByEvent.get(event.id);
+    const startAt = decision?.override_start_at ?? event.start_at;
+    const endAt = decision?.override_end_at ?? event.end_at;
+    const active = decision?.state === "active" && !decision.merged_into_event_id && event.source_state === "active" && event.certainty === "confirmed";
     return {
-      id: event.id,
-      title: decision?.override_title ?? event.title,
-      startAt: decision?.override_start_at ?? event.start_at,
-      endAt: decision?.override_end_at ?? event.end_at,
-      hotels: scores
-        .filter((score) => score.event_id === event.id && supported(event.id, score.hotel_id))
-        .map((score) => ({
-          id: score.hotel_id,
-          code: hotelCodes.get(score.hotel_id)!,
-          importance: (score.importance_override ?? score.suggested_importance) as DemandLevel,
-          impactBasis: score.impact_basis,
-        })),
+      id: event.id, title: decision?.override_title ?? event.title, startAt, endAt,
+      status: active ? "active" : event.source_state !== "active" ? event.source_state : decision?.state ?? "unavailable",
+      hotels: scores.filter((score) => score.event_id === event.id).map((score) => {
+        const hotel = hotels.find((hotel) => hotel.id === score.hotel_id)!;
+        const importance = (score.importance_override ?? score.suggested_importance) as DemandLevel;
+        const available = active && supported(event.id, score.hotel_id);
+        const announced = available && isAnnouncedLongRange({
+          startDate: eventLocalDate(startAt), endDate: eventLocalDate(endAt),
+          nearTermHorizon: new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10),
+          demandRadiusKm: hotel.demand_radius_km,
+          hasConfirmedDateAndLocation: sources.some((source) => {
+            if (source.event_id !== event.id || !isEnabledPrimarySource(source, areaByHotel.get(score.hotel_id)?.enabled_sources ?? [])) return false;
+            const evidence = readEventEvidence(source.evidence);
+            return Boolean(evidence?.dateText && evidence.locationText);
+          }),
+          scores: [{ importance, impactBasis: score.impact_basis, distanceKm: score.distance_km }],
+        });
+        const claim = claims.find((claim) => claim.event_id === event.id && claim.hotel_id === hotel.id);
+        return { id: hotel.id, code: hotelCodes.get(hotel.id)!, importance, impactBasis: score.impact_basis,
+          available, announced,
+          exportLevel: (choices.find((choice) => choice.event_id === event.id && choice.hotel_id === hotel.id)?.importance as DemandLevel | undefined) ?? null,
+          exportedAt: batches.find((batch) => batch.id === claim?.latest_batch_id)?.created_at ?? null,
+        };
+      }),
     };
-  });
+  }).filter((event) => includeInactive || (event.status === "active" && eventLocalDate(event.startAt) <= range.end && eventLocalDate(event.endAt) >= range.start));
   return { hotels, events };
 }

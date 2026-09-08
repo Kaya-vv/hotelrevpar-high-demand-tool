@@ -33,6 +33,51 @@ function setup() {
 }
 
 describe("coordinated long-range research", () => {
+  it.each([
+    ["Amsterdam", "Bruno Mars", "concert"],
+    ["Rotterdam", "Medical Congress", "conference"],
+    ["Eindhoven", "Design Festival", "festival"],
+    ["Utrecht", "University Congress", "university"],
+    ["Maastricht", "National Championships", "sport"],
+  ])("monitors short-notice and year-ahead editions together in %s (%s)", async (city, title, category) => {
+    const test = setup();
+    const locationText = `Across the city of ${city}.`;
+    const dateText = `${title} takes place 19 October 2026.`;
+    const near = { ...event, title, category, regionScope: city, startAt: "2026-10-19", endAt: "2026-10-19", facts: { ...facts, dateText, locationText, hostCity: city, continuous: false } };
+    const future = { ...event, regionScope: city, facts: { ...facts, locationText, hostCity: city } };
+    test.pageFetcher.mockResolvedValue(parseOfficialPage(`${dateText}\n${facts.dateText}\n${locationText}\n${facts.demand[0].text}`, url));
+    test.create.mockImplementation(async (...args: unknown[]) => {
+      expect(JSON.stringify(args[0])).toContain("between 2026-09-07 and 2027-12-31");
+      return { id: "full-horizon", stop_reason: "end_turn", usage: { input_tokens: 100, output_tokens: 100 }, content: [{ type: "text", text: JSON.stringify({ events: [near, future], reason: "Recorded-page extraction fixture", more: false }) }] };
+    });
+    const result = await collectLongRange({ ...test.input, location: city });
+    expect(result.candidates.map((item) => eventLocalDate(item.startAt)).sort()).toEqual(["2026-10-19", "2027-10-23"]);
+    expect(result.candidates.every((item) => item.primarySourceConfirmed)).toBe(true);
+    expect(result.usage.monthlySpentEur).toBeLessThanOrEqual(8);
+  });
+
+  it("upgrades an old completed extraction without dropping its evidence or billing ledger", async () => {
+    const test = setup();
+    await collectLongRange(test.input);
+    const state = test.state();
+    state.cycle!.monitoringVersion = 1;
+    state.cycle!.finished = true;
+    state.cycle!.queued = [{ leadKey: "arts", kind: "fetch", windowStart: test.input.start, target: url, cached: true, pages: [parseOfficialPage(text, url)] }];
+    test.pageFetcher.mockRejectedValue(new Error("Use the retained queued page during the upgrade"));
+    for (const entry of Object.values(state.pageCache ?? {})) entry.version = 12027;
+    const billed = [...state.budget!.billedIds];
+    const confirmed = state.leads[0].editions[0].providerEventId;
+    const requests = test.create.mock.calls.length;
+    await collectLongRange(test.input);
+    expect(test.create.mock.calls.length).toBeGreaterThan(requests);
+    expect(test.pageFetcher).toHaveBeenCalledTimes(1);
+    expect(test.state().budget!.billedIds).toEqual(expect.arrayContaining(billed));
+    expect(test.state().leads[0].editions.some((edition) => edition.providerEventId === confirmed)).toBe(true);
+    expect(Object.values(test.state().pageCache ?? {}).every((entry) => entry.version === 22027)).toBe(true);
+    const afterUpgrade = test.create.mock.calls.length;
+    await collectLongRange(test.input);
+    expect(test.create).toHaveBeenCalledTimes(afterUpgrade);
+  });
   it("repairs the actual production quotation from a contiguous dated passage, preserving scoped demand", () => {
     const event = productionDdw.event;
     const evidence = verifyEventEvidence(eventFactsSchema.parse(event.facts), event.sourceUrl, [productionDdw.page], productionDdw.checkedAt, event);
@@ -116,6 +161,7 @@ describe("coordinated long-range research", () => {
       const input = { ...test.input, start: "2027-10-31", client, store, onUsage, batching: { enabled: true, store: batchStore, deadline, wait: async () => { clock.mockReturnValue(deadline + 1); } } };
       await expect(collectLongRange(input)).rejects.toThrow(stage === "waiting" ? BatchPendingError : /interrupted/);
       expect(test.state().cycle?.pending?.jobs).toHaveLength(1);
+      delete test.state().cycle!.monitoringVersion; // Simulate an in-flight pre-upgrade manifest.
       ended = true;
       clock.mockRestore();
       test.pageFetcher.mockRejectedValue(new Error("Page must be restored from the manifest"));
@@ -454,7 +500,9 @@ describe("coordinated long-range research", () => {
     const current = { ...old, sourceState: "cancelled" as const, evidence: { ...old.evidence!, checkedAt: "2027-09-07T12:00:00Z" } };
     const collect = (candidate: typeof old) => vi.fn().mockResolvedValue({ ...cached, candidates: [candidate] });
     const input = { ...test.input, longRangeEnabled: true };
-    expect((await collectClaudeCalendar(input, collect(current), collect(old))).candidates).toEqual([current]);
+    const combined = await collectClaudeCalendar(input, collect(current), collect(old));
+    expect(combined.candidates).toEqual([current]);
+    expect(combined.usage).toMatchObject({ nearTermOnlyEditions: 0, monitoringOnlyEditions: 0, overlappingEditions: 1 });
     expect((await collectClaudeCalendar(input, collect({ ...current, evidence: undefined, primarySourceConfirmed: false }), collect(old))).candidates).toEqual([old]);
   });
 

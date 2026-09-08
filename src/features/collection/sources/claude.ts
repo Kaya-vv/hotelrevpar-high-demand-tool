@@ -180,8 +180,9 @@ export function triageExclusionAllowed(
   }
   const quoted = normalizeText(review.act ?? "");
   if (!quoted || !normalizeText(candidate.title).includes(quoted)) return false;
-  const multiDay = (candidate.endDate ?? candidate.startDate) !== candidate.startDate;
-  return review.excludeAs !== "artist_show" || !multiDay;
+  // A single-night stadium show can drive substantial hotel demand. Its format is
+  // not an exclusion signal; let evidence verification assess the audience.
+  return review.excludeAs !== "artist_show";
 }
 
 type VerificationEntry = {
@@ -478,7 +479,7 @@ async function triageDiscoveries(input: {
           output_config: { format: zodOutputFormat(discoveryTriageSchema) },
           messages: [{
             role: "user",
-            content: `Beoordeel op basis van alleen deze metadata welke kandidaten een webcontrole waard zijn voor een hotel in ${input.location} met een straal van ${input.radiusKm} km. Kies verify voor alles wat aannemelijk extra hotelovernachtingen veroorzaakt, en kies bij twijfel altijd verify. Kies exclude alleen met een categorie in excludeAs: artist_show voor een avond met een optredende artiest, band, dj of comedian; theatre_run voor een doorlopende theater- of bioscoopvoorstelling; market voor een waren-, rommel- of vintagemarkt; course voor een cursus of workshop. Zet bij elke exclude in act de woorden uit de titel die de categorie aantonen: bij artist_show de naam van de artiest, en bij de andere categorieën het woord of de merknaam waaruit de categorie blijkt. Neem die woorden letterlijk uit de titel over; kun je dat niet, kies dan verify. Een eigen merknaam zonder artiestennaam is een evenement en geen artist_show, ook als je de naam niet kent. Een competitiewedstrijd of professionele sportwedstrijd is nooit een exclude-categorie; kies dan verify. Geef voor elke index precies één beslissing met een korte reden. Kandidaten:\n${JSON.stringify(batch.map((candidate, index) => ({ index: offset + index, title: candidate.title, startDate: candidate.startDate, endDate: candidate.endDate, venue: candidate.venue, city: candidate.city, category: candidate.category })))}`,
+            content: `Beoordeel op basis van alleen deze metadata welke kandidaten een webcontrole waard zijn voor een hotel in ${input.location} met een straal van ${input.radiusKm} km. Kies verify voor alles wat aannemelijk extra hotelovernachtingen veroorzaakt, en kies bij twijfel altijd verify. Kies exclude alleen met een categorie in excludeAs: theatre_run voor een doorlopende theater- of bioscoopvoorstelling; market voor een waren-, rommel- of vintagemarkt; course voor een cursus of workshop. Zet bij elke exclude in act de woorden uit de titel die de categorie aantonen: bij artist_show de naam van de artiest, en bij de andere categorieën het woord of de merknaam waaruit de categorie blijkt. Neem die woorden letterlijk uit de titel over; kun je dat niet, kies dan verify. Een eigen merknaam zonder artiestennaam is een evenement en geen artist_show, ook als je de naam niet kent. Een artiestenshow of concert moet altijd naar verify, ook voor een enkele avond. Een competitiewedstrijd of professionele sportwedstrijd is nooit een exclude-categorie; kies dan verify. Geef voor elke index precies één beslissing met een korte reden. Kandidaten:\n${JSON.stringify(batch.map((candidate, index) => ({ index: offset + index, title: candidate.title, startDate: candidate.startDate, endDate: candidate.endDate, venue: candidate.venue, city: candidate.city, category: candidate.category })))}`,
           }],
         } satisfies MessageCreateParamsNonStreaming,
       },
@@ -610,6 +611,15 @@ export async function collectClaudeCalendar(
   ]);
   const merged: SourceResult = { source: "claude", candidates: [], requests: 0, usage: {}, invalidatedUrls: [],
     funnel: { namesDiscovered: 0, urlsResolved: 0, pagesVerified: 0, demandAccepted: 0, drops: [] } };
+  // Compare the near-term result with the monitoring evidence available on this run.
+  // These are candidate identities, not a claim of hotel publication or fresh recall.
+  if (input.runNearTerm !== false && settled[0].status === "fulfilled" && settled[1].status === "fulfilled") {
+    const near = new Set(settled[0].value.candidates.map((event) => event.providerEventId));
+    const monitored = new Set(settled[1].value.candidates.map((event) => event.providerEventId));
+    merged.usage.nearTermOnlyEditions = [...near].filter((id) => !monitored.has(id)).length;
+    merged.usage.monitoringOnlyEditions = [...monitored].filter((id) => !near.has(id)).length;
+    merged.usage.overlappingEditions = [...near].filter((id) => monitored.has(id)).length;
+  }
   const errors: string[] = [];
   settled.forEach((result, index) => {
     const horizon = index === 0 ? "nearTerm" : "longRange";
