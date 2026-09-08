@@ -16,6 +16,7 @@ import {
 } from "./run";
 import { shouldRefreshCanonical, sourceChange } from "./source-change";
 import { LongRangeLeaseError } from "./long-range-store";
+import { BatchPendingError } from "./anthropic-batches";
 
 const candidate: EventCandidate = {
   provider: "ticketmaster",
@@ -166,6 +167,28 @@ function repository(overrides: Partial<CollectionRepository> = {}): CollectionRe
 }
 
 describe("runCollection", () => {
+  it("keeps a pending batch open and resumes without rerunning completed sources", async () => {
+    const repo = repository();
+    const input = { accountId: "account-1", areaId: "area-1", trigger: "manual" as const };
+    const ticketmaster = vi.fn().mockResolvedValue({ source: "ticketmaster", candidates: [], requests: 1, usage: {} });
+    const claude = vi.fn().mockRejectedValueOnce(new BatchPendingError())
+      .mockResolvedValueOnce({ source: "claude", candidates: [], requests: 1, usage: {} });
+    const dependencies = { repository: repo, collectors: { ticketmaster, claude } };
+
+    await expect(runCollection(input, dependencies)).rejects.toBeInstanceOf(BatchPendingError);
+    expect(repo.finishRun).not.toHaveBeenCalled();
+    expect(repo.recalculateScores).not.toHaveBeenCalled();
+    expect(repo.recordSourceResult).toHaveBeenCalledWith("run-1", "ticketmaster", expect.objectContaining({ state: "zero" }));
+    const checkpoint = vi.mocked(repo.recordSourceResult).mock.calls.find((call) => call[1] === "ticketmaster")![2];
+    vi.mocked(repo.loadSourceResults).mockResolvedValue({ ticketmaster: checkpoint });
+
+    await expect(runCollection({ ...input, resume: true }, dependencies)).resolves.toMatchObject({ runId: "run-1", status: "completed" });
+    expect(ticketmaster).toHaveBeenCalledOnce();
+    expect(claude).toHaveBeenCalledTimes(2);
+    expect(repo.recalculateScores).toHaveBeenCalledOnce();
+    expect(repo.finishRun).toHaveBeenCalledOnce();
+  });
+
   it("scores shared evidence and reloads history before continuing discovery", async () => {
     const repo = repository({ reuseNearTermEvidence: vi.fn().mockResolvedValue(1) });
     const original = await repo.loadContext("account-1", "area-1");
