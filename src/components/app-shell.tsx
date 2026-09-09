@@ -3,7 +3,8 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { AppNavigation } from "@/components/app-navigation";
-import { CollectionProgress } from "@/components/collection-progress";
+import { StatusMonitor } from "@/features/collection/status-monitor";
+import type { CollectionStatus } from "@/features/collection/status";
 import { HotelSwitcher } from "@/components/hotel-switcher";
 import { selectHotel } from "@/features/workspace/actions";
 import type { BatchProgress } from "@/features/workspace/query";
@@ -16,6 +17,7 @@ type AppShellProps = {
   selectedHotelId: string | null;
   reviewCount: number;
   batch: BatchProgress | null;
+  collectionStatus?: CollectionStatus;
 };
 
 export function AppShell({
@@ -26,6 +28,7 @@ export function AppShell({
   selectedHotelId,
   reviewCount,
   batch,
+  collectionStatus,
 }: AppShellProps) {
   return (
     <div className="shell">
@@ -60,8 +63,9 @@ export function AppShell({
             action={selectHotel}
           />
         </header>
-        <CollectionProgress batch={batch} />
-        <div className="workspace-content">{children}</div>
+        <StatusMonitor initial={collectionStatus ?? { batch, pending: Boolean(batch?.active), revision: "", watchKey: batch?.batchId ?? "" }}>
+          <div className="workspace-content">{children}</div>
+        </StatusMonitor>
       </main>
     </div>
   );

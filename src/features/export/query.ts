@@ -2,7 +2,7 @@ import { eventLocalDate } from "@/features/events/normalize";
 import { readEventEvidence } from "@/features/events/evidence";
 import { isAnnouncedLongRange, type DemandLevel } from "@/features/events/importance";
 import { createServerClient } from "@/lib/supabase/server";
-import { fetchAllRows, fetchInBatches } from "@/lib/supabase/fetch-in-batches";
+import { fetchAllRows, fetchInBatches, fetchPagedInBatches } from "@/lib/supabase/fetch-in-batches";
 import { isEnabledPrimarySource } from "@/features/events/source-evidence";
 
 import type { ExportEvent } from "./types";
@@ -46,22 +46,29 @@ export async function loadExportEvents(accountId: string, range: ExportRange, se
     .in("hotel_id", selectedHotelIds);
   if (areaError) throw areaError;
 
-  const decisions = await fetchAllRows((from, to) => supabase.from("account_events")
+  const areaIds = areas.map(area => area.id);
+  const links = await fetchPagedInBatches(areaIds, (ids, from, to) => supabase.from("account_event_areas")
+    .select("event_id, collection_area_id").eq("account_id", accountId).in("collection_area_id", ids).order("collection_area_id").order("event_id").range(from, to));
+  // History also needs formerly linked canonical events to report changed/unavailable exports.
+  const historic = includeInactive ? await fetchAllRows((from, to) => supabase.from("hotel_event_exports")
+    .select("event_id, canonical_event_id").eq("account_id", accountId).in("hotel_id", selectedHotelIds).order("hotel_id").order("event_id").range(from, to)) : [];
+  const scopedIds = [...new Set([...links.map(link => link.event_id), ...historic.flatMap(claim => [claim.event_id, claim.canonical_event_id])])];
+  const decisions = await fetchInBatches(scopedIds, ids => supabase.from("account_events")
     .select("event_id, state, merged_into_event_id, override_title, override_start_at, override_end_at")
-    .eq("account_id", accountId).order("event_id").range(from, to));
-  const eventIds = decisions.map((decision) => decision.event_id);
-  const areaIds = areas.map((area) => area.id);
-  const [exportEvents, scores, links, sources] = eventIds.length
-    ? await Promise.all([
-        fetchInBatches(eventIds, (ids) => supabase.from("events").select("id, title, start_at, end_at, certainty, source_state").in("id", ids)),
-        fetchInBatches(eventIds, (ids) => supabase.from("hotel_event_scores").select("event_id, hotel_id, suggested_importance, importance_override, impact_basis, distance_km, demand_assessment").in("event_id", ids).in("hotel_id", selectedHotelIds)),
-        areaIds.length
-          ? fetchInBatches(areaIds, (ids) => supabase.from("account_event_areas").select("event_id, collection_area_id").eq("account_id", accountId).in("collection_area_id", ids))
-          : Promise.resolve([]),
-        fetchInBatches(eventIds, (ids) => supabase.from("event_sources").select("event_id, provider, source_state, primary_source_confirmed, public_source_url, evidence").in("event_id", ids)),
-      ])
-    : [[], [], [], []];
-
+    .eq("account_id", accountId).in("event_id", ids));
+  const datesById = new Map(decisions.map(decision => [decision.event_id, decision]));
+  const candidates = await fetchInBatches(decisions.map(decision => decision.event_id), ids => supabase.from("events")
+    .select("id, title, start_at, end_at, certainty, source_state").in("id", ids));
+  const exportEvents = candidates.filter(event => {
+    const decision = datesById.get(event.id);
+    return includeInactive || (eventLocalDate(decision?.override_start_at ?? event.start_at) <= range.end
+      && eventLocalDate(decision?.override_end_at ?? event.end_at) >= range.start);
+  });
+  const eventIds = exportEvents.map(event => event.id);
+  const [scores, sources] = await Promise.all([
+    fetchPagedInBatches(eventIds, (ids, from, to) => supabase.from("hotel_event_scores").select("event_id, hotel_id, suggested_importance, importance_override, impact_basis, distance_km, demand_assessment").in("event_id", ids).in("hotel_id", selectedHotelIds).order("hotel_id").order("event_id").range(from, to)),
+    fetchPagedInBatches(eventIds, (ids, from, to) => supabase.from("event_sources").select("event_id, provider, source_state, primary_source_confirmed, public_source_url, evidence").in("event_id", ids).order("id").range(from, to)),
+  ]);
   const decisionsByEvent = new Map(decisions.map((decision) => [decision.event_id, decision]));
   const hotelCodes = new Map(hotels.map((hotel) => [hotel.id, hotel.revcontrol_code]));
   const areaByHotel = new Map(areas.map((area) => [area.hotel_id, area]));
@@ -78,8 +85,8 @@ export async function loadExportEvents(accountId: string, range: ExportRange, se
       )
     );
   };
-  const choices = await fetchAllRows((from, to) => supabase.from("announcement_export_choices").select("*").eq("account_id", accountId).in("hotel_id", selectedHotelIds).order("hotel_id").order("event_id").range(from, to));
-  const claims = await fetchAllRows((from, to) => supabase.from("hotel_event_exports").select("*").eq("account_id", accountId).in("hotel_id", selectedHotelIds).order("hotel_id").order("event_id").range(from, to));
+  const choices = await fetchAllRows((from, to) => supabase.from("announcement_export_choices").select("event_id, hotel_id, importance").eq("account_id", accountId).in("hotel_id", selectedHotelIds).order("hotel_id").order("event_id").range(from, to));
+  const claims = await fetchAllRows((from, to) => supabase.from("hotel_event_exports").select("event_id, hotel_id, latest_batch_id").eq("account_id", accountId).in("hotel_id", selectedHotelIds).order("hotel_id").order("event_id").range(from, to));
   const batchIds = [...new Set(claims.map((claim) => claim.latest_batch_id))];
   const batches = batchIds.length ? await fetchInBatches(batchIds, (ids) => supabase.from("export_batches").select("id, created_at").in("id", ids)) : [];
   const events: ExportEvent[] = exportEvents.map((event) => {

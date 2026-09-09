@@ -1,5 +1,5 @@
 import { createServerClient } from "@/lib/supabase/server";
-import { fetchInBatches } from "@/lib/supabase/fetch-in-batches";
+import { fetchAllRows, fetchInBatches, fetchPagedInBatches } from "@/lib/supabase/fetch-in-batches";
 import { publishableReviewEventIds } from "@/features/events/importance";
 
 export type DashboardHotel = {
@@ -13,45 +13,31 @@ export type DashboardHotel = {
 
 export async function getDashboardData(accountId: string): Promise<DashboardHotel[]> {
   const supabase = await createServerClient();
-  const { data: hotels, error: hotelError } = await supabase
-    .from("hotels")
-    .select("id, name")
-    .eq("account_id", accountId)
-    .order("name");
-  if (hotelError) throw hotelError;
+  const hotels = await fetchAllRows((from, to) => supabase.from("hotels").select("id, name")
+    .eq("account_id", accountId).order("name").order("id").range(from, to));
   if (!hotels.length) return [];
 
   const hotelIds = hotels.map((hotel) => hotel.id);
-  const { data: areas, error: areaError } = await supabase
-    .from("collection_areas")
-    .select("id, hotel_id")
-    .eq("account_id", accountId)
-    .in("hotel_id", hotelIds);
-  if (areaError) throw areaError;
-  const areaIds = areas.map((area) => area.id);
-
-  const [linksResult, decisionsResult, scoresResult, runsResult, jobsResult] = await Promise.all([
-    areaIds.length
-      ? supabase.from("account_event_areas").select("collection_area_id, event_id").eq("account_id", accountId).in("collection_area_id", areaIds)
-      : Promise.resolve({ data: [], error: null }),
-    supabase.from("account_events").select("event_id, state, override_title, override_start_at, override_end_at").eq("account_id", accountId).in("state", ["active", "needs_review"]),
-    supabase.from("hotel_event_scores").select("hotel_id, event_id, suggested_importance, importance_override, impact_basis").in("hotel_id", hotelIds),
-    areaIds.length
-      ? supabase.from("collection_runs").select("collection_area_id, finished_at, error_summary").eq("account_id", accountId).in("collection_area_id", areaIds).order("started_at", { ascending: false })
-      : Promise.resolve({ data: [], error: null }),
-    areaIds.length
-      ? supabase.from("collection_jobs").select("collection_area_id, status").eq("account_id", accountId).in("collection_area_id", areaIds).order("created_at", { ascending: false })
-      : Promise.resolve({ data: [], error: null }),
+  const areas = await fetchInBatches(hotelIds, ids => supabase.from("collection_areas")
+    .select("id, hotel_id, collection_runs(finished_at, error_summary), collection_jobs(status)")
+    .eq("account_id", accountId).in("hotel_id", ids)
+    .order("started_at", { referencedTable: "collection_runs", ascending: false })
+    .limit(1, { referencedTable: "collection_runs" })
+    .order("created_at", { referencedTable: "collection_jobs", ascending: false })
+    .limit(1, { referencedTable: "collection_jobs" }));
+  const areaIds = areas.map(area => area.id);
+  const links = await fetchPagedInBatches(areaIds, (ids, from, to) => supabase.from("account_event_areas")
+    .select("collection_area_id, event_id").eq("account_id", accountId).in("collection_area_id", ids)
+    .order("collection_area_id").order("event_id").range(from, to));
+  const eventIds = [...new Set(links.map(link => link.event_id))];
+  const [decisions, scores] = await Promise.all([
+    fetchInBatches(eventIds, ids => supabase.from("account_events").select("event_id, state, override_title, override_start_at, override_end_at")
+      .eq("account_id", accountId).in("event_id", ids).in("state", ["active", "needs_review"])),
+    fetchPagedInBatches(eventIds, (ids, from, to) => supabase.from("hotel_event_scores").select("hotel_id, event_id, suggested_importance, importance_override, impact_basis")
+      .in("hotel_id", hotelIds).in("event_id", ids).order("hotel_id").order("event_id").range(from, to)),
   ]);
-  for (const result of [linksResult, decisionsResult, scoresResult, runsResult, jobsResult]) {
-    if (result.error) throw result.error;
-  }
-
-  const decisions = decisionsResult.data ?? [];
-  const links = linksResult.data ?? [];
-  const scores = scoresResult.data ?? [];
-  const runs = runsResult.data ?? [];
-  const activeJobs = jobsResult.data ?? [];
+  const runs = areas.flatMap(area => area.collection_runs.map(run => ({ ...run, collection_area_id: area.id })));
+  const activeJobs = areas.flatMap(area => area.collection_jobs.map(job => ({ ...job, collection_area_id: area.id })));
   const activeEventIds = decisions.filter((decision) => decision.state === "active").map((decision) => decision.event_id);
   const events = activeEventIds.length
     ? await fetchInBatches(activeEventIds, (ids) => supabase

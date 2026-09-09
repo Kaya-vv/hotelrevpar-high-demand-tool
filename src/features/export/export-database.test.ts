@@ -1,3 +1,7 @@
+import { getSourceHealthSummaries, getSourceHealthRuns } from "@/features/accounts/source-health";
+import { getMarketStatus } from "@/features/collection/market-status";
+import { getDashboardData } from "@/features/dashboard/query";
+import { getCollectionStatus } from "@/features/collection/status";
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createClient } from "@supabase/supabase-js";
@@ -9,6 +13,7 @@ import { exportSnapshots, selectExportEvents } from "./selection";
 import { buildRevControlWorkbook } from "./build-workbook";
 
 vi.mock("server-only", () => ({}));
+vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => db }));
 vi.mock("@/lib/supabase/server", () => ({ createServerClient: vi.fn() }));
 const enabled = Boolean(process.env.RESEARCH_LOCAL_KEY);
 const db = createClient<Database>("http://127.0.0.1:54421", process.env.RESEARCH_LOCAL_KEY ?? "disabled", { auth: { persistSession: false } });
@@ -16,6 +21,7 @@ const accountId = randomUUID(), otherAccount = randomUUID(), hotelId = randomUUI
 let userId: string, otherUserId: string;
 let member: ReturnType<typeof createClient<Database>>;
 const eventIds: string[] = [];
+const marketKeys: string[] = [];
 const password = randomUUID();
 function check<T extends { error: unknown }>(result: T): T { if (result.error) throw result.error; return result; }
 
@@ -35,6 +41,7 @@ beforeAll(async () => {
 afterAll(async () => {
   if (!enabled) return;
   check(await db.from("accounts").delete().in("id", [accountId, otherAccount]));
+  if (marketKeys.length) check(await db.from("long_range_markets").delete().in("market_key", marketKeys));
   if (eventIds.length) check(await db.from("events").delete().in("id", eventIds));
   if (userId) check(await db.auth.admin.deleteUser(userId));
   if (otherUserId) check(await db.auth.admin.deleteUser(otherUserId));
@@ -138,4 +145,50 @@ describe.skipIf(!enabled)("export transactions in isolated local Supabase", () =
     const changed = (await loadExportEvents(accountId, exportRange(null, null), [hotelId], true)).events;
     expect((await loadExportHistory(accountId, [hotelId], changed)).find((entry) => entry.id === batch)!.items[0]).toMatchObject({ latest: true, changed: true, eligible: false });
   });
+  it("reads latest nested dashboard jobs and denies foreign account status with RLS", async () => {
+    const area = check(await db.from("collection_areas").select("id").eq("hotel_id", hotelId).single()).data!;
+    const batchId = randomUUID();
+    check(await db.from("collection_jobs").insert({ account_id: accountId, collection_area_id: area.id, batch_id: batchId, trigger: "manual", status: "queued" }));
+    const status = await getCollectionStatus(accountId, area.id);
+    expect(status.batch).toMatchObject({ batchId, active: true, total: 1 });
+    expect(JSON.stringify(status).length).toBeLessThan(5000);
+    expect((await getCollectionStatus(otherAccount, area.id)).batch).toBeNull();
+    const dashboard = await getDashboardData(accountId);
+    expect(dashboard.find(hotel => hotel.id === hotelId)?.status).toBe("running");
+    const revision = status.revision;
+    check(await db.from("collection_jobs").update({ attempts: 2 }).eq("batch_id", batchId));
+    expect((await getCollectionStatus(accountId, area.id)).revision).toBe(revision);
+    check(await db.from("collection_jobs").update({ status: "succeeded", finished_at: new Date().toISOString() }).eq("batch_id", batchId));
+  });
+  it("applies manual dates before selecting export detail", async () => {
+    const id = await addEvent();
+    check(await db.from("account_events").update({ override_start_at: "2028-01-01T12:00:00Z", override_end_at: "2028-01-01T20:00:00Z" }).eq("account_id", accountId).eq("event_id", id));
+    expect((await loadExportEvents(accountId, { start: "2027-01-01", end: "2027-12-31" }, [hotelId])).events.some(event => event.id === id)).toBe(false);
+    expect((await loadExportEvents(accountId, { start: "2028-01-01", end: "2028-01-02" }, [hotelId])).events.some(event => event.id === id)).toBe(true);
+  });
+
+  it("projects research status without transferring saved research documents", async () => {
+    const key = randomUUID(); marketKeys.push(key);
+    check(await db.from("long_range_markets").insert({ market_key: key, state: { publishedAt: "2026-09-09T12:00:00Z", publicationPending: true, research: { requestedAt: "2026-09-09T11:00:00Z", usage: { large: 100 } }, pageCache: { large: "x".repeat(100_000) } } }));
+    const status = await getMarketStatus(key);
+    expect(status).toEqual({ publishedAt: "2026-09-09T12:00:00Z", publicationPending: true, research: { requestedAt: "2026-09-09T11:00:00Z" } });
+    expect(JSON.stringify(status).length).toBeLessThan(200);
+  });
+
+  it("keeps run summaries small and exhausts usage rows only in run details", async () => {
+    const area = check(await db.from("collection_areas").select("id").eq("hotel_id", hotelId).single()).data!;
+    const previousSuccess = new Date(Date.now() - 60_000).toISOString();
+    check(await db.from("collection_runs").insert({ account_id: accountId, collection_area_id: area.id, trigger: "manual", started_at: previousSuccess, finished_at: previousSuccess, source_results: { claude: { state: "success" } } }));
+    const runId = randomUUID();
+    check(await db.from("collection_runs").insert({ id: runId, account_id: accountId, collection_area_id: area.id, trigger: "manual", finished_at: new Date().toISOString(), source_results: { claude: { state: "partial", funnel: { drops: [{ title: "A detailed rejection", stage: "verification", reason: "x".repeat(10_000) }] } } } }));
+    check(await db.from("collection_usage_events").insert(Array.from({ length: 1001 }, () => ({ collection_run_id: runId, source: "claude", phase: "verify", model: "fixture", input_tokens: 1 }))));
+    const summary = (await getSourceHealthSummaries()).find(run => run.id === runId)!;
+    expect(summary.label).toBe("Deels voltooid");
+    expect(JSON.stringify(summary).length).toBeLessThan(1000);
+    expect(JSON.stringify(summary)).not.toContain("A detailed rejection");
+    const [detail] = await getSourceHealthRuns(0, runId);
+    expect(detail.sources.find(source => source.name === "claude")).toMatchObject({ usageCalls: 1001, inputTokens: 1001 });
+    expect(Date.parse(detail.sources.find(source => source.name === "claude")!.lastSuccess!)).toBe(Date.parse(previousSuccess));
+  });
+
 });

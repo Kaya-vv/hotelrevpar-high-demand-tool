@@ -1,10 +1,11 @@
+import { cache } from "react";
 import { cookies } from "next/headers";
 
 import { createServerClient } from "@/lib/supabase/server";
 
 export const SELECTED_HOTEL_COOKIE = "demandradar_selected_hotel";
 
-export async function getHotelScope(accountId: string, requestedHotelId?: string) {
+export const getHotelScope = cache(async function getHotelScope(accountId: string, requestedHotelId?: string) {
   const supabase = await createServerClient();
   const { data: hotels, error: hotelError } = await supabase
     .from("hotels")
@@ -40,4 +41,4 @@ export async function getHotelScope(accountId: string, requestedHotelId?: string
     areaId: area?.id ?? null,
     enabledSources: area?.enabled_sources ?? [],
   };
-}
+});

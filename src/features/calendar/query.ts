@@ -11,7 +11,7 @@ import {
   type DemandLevel,
 } from "@/features/events/importance";
 import { getHotelScope } from "@/features/workspace/hotel-context";
-import { fetchAllRows, fetchInBatches } from "@/lib/supabase/fetch-in-batches";
+import { fetchAllRows, fetchInBatches, fetchPagedInBatches } from "@/lib/supabase/fetch-in-batches";
 import { isEnabledPrimarySource } from "@/features/events/source-evidence";
 
 import type { CalendarEvent, LatestRun } from "./calendar-view";
@@ -27,27 +27,29 @@ export type CalendarFilters = {
 
 async function loadAccountEvents(
   accountId: string,
-  state: "active" | "needs_review"
+  state: "active" | "needs_review",
+  linkedIds: Set<string>,
+  bounds?: { start: string; end: string },
 ) {
   const supabase = await createServerClient();
-  const decisions = await fetchAllRows((from, to) => supabase
+  const decisions = await fetchInBatches([...linkedIds], ids => supabase
     .from("account_events")
-    .select("*")
-    .eq("account_id", accountId)
-    .eq("state", state)
-    .order("event_id")
-    .range(from, to));
-  const eventIds = decisions.map((decision) => decision.event_id);
-  if (!eventIds.length) return { decisions, events: [], sources: [] };
-
-  const [events, sources] = await Promise.all([
-    fetchInBatches(eventIds, (ids) =>
-      supabase.from("events").select("*").in("id", ids)
-    ),
-    fetchInBatches(eventIds, (ids) =>
-      supabase.from("event_sources").select("*").in("event_id", ids)
-    ),
-  ]);
+    .select("event_id, state, override_title, override_venue, override_start_at, override_end_at, review_target_event_id, review_source_id, review_reason")
+    .eq("account_id", accountId).eq("state", state).in("event_id", ids));
+  const eventIds = decisions.map(decision => decision.event_id);
+  const candidates = await fetchInBatches(eventIds, ids => supabase.from("events")
+    .select("id, title, category, venue, start_at, end_at, certainty, latitude, longitude").in("id", ids));
+  const byId = new Map(decisions.map(decision => [decision.event_id, decision]));
+  // Override dates can move an event into the window. Filter effective dates before
+  // loading its much larger evidence and score rows, never on original dates alone.
+  const events = candidates.filter(event => {
+    const decision = byId.get(event.id);
+    return !bounds || (eventLocalDate(decision?.override_start_at ?? event.start_at) <= bounds.end
+      && eventLocalDate(decision?.override_end_at ?? event.end_at) >= bounds.start);
+  });
+  const sources = await fetchPagedInBatches(events.map(event => event.id), (ids, from, to) => supabase.from("event_sources")
+    .select("id, event_id, provider, source_state, primary_source_confirmed, public_source_url, evidence, extracted_title, extracted_location, extracted_start_at, extracted_end_at")
+    .in("event_id", ids).order("id").range(from, to));
   return { decisions, events, sources };
 }
 
@@ -70,10 +72,11 @@ export async function getCalendarData(
 ) {
   const { supabase, hotels, selectedHotelId, areaId, enabledSources } =
     await getHotelScope(accountId);
-  const [{ decisions, events, sources }, linkedIds, runResult] =
+  const linkedIds = await linkedEventIds(accountId, areaId);
+  const bounds = calendarBounds(filters.month, filters.view, filters.period);
+  const [{ decisions, events, sources }, runResult] =
     await Promise.all([
-      loadAccountEvents(accountId, "active"),
-      linkedEventIds(accountId, areaId),
+      loadAccountEvents(accountId, "active", linkedIds, bounds),
       areaId
         ? supabase
             .from("collection_runs")
@@ -94,7 +97,7 @@ export async function getCalendarData(
       ? await fetchInBatches(eventIds, (ids) =>
           supabase
             .from("hotel_event_scores")
-            .select("*")
+            .select("event_id, hotel_id, total, suggested_importance, importance_override, impact_basis, demand_assessment, impact_points, distance_points, stay_pressure_points, distance_km")
             .in("event_id", ids)
             .eq("hotel_id", selectedHotelId)
         )
@@ -105,14 +108,13 @@ export async function getCalendarData(
   );
   const selectedHotelName =
     hotels.find((hotel) => hotel.id === selectedHotelId)?.name ?? "Hotel";
-  const bounds = calendarBounds(filters.month, filters.view, filters.period);
   // Same boundary the collector uses to split near-term verification from long-range research.
   const nearTermHorizon = new Date(Date.now() + 90 * 86_400_000)
     .toISOString()
     .slice(0, 10);
   const selectedRadiusKm =
     hotels.find((hotel) => hotel.id === selectedHotelId)?.demand_radius_km ?? null;
-  const exportedDates = await calendarExportDates(accountId, selectedHotelId);
+  const exportedDates = await calendarExportDates(accountId, selectedHotelId, eventIds);
   const mapped: CalendarEvent[] = scopedEvents
     .filter((event) => event.certainty === "confirmed")
     .map((event) => {
@@ -209,8 +211,9 @@ export async function getCalendarData(
     if (researchPending && areaId) {
       const { data: area, error } = await supabase.from("collection_areas").select("search_location, radius_km").eq("account_id", accountId).eq("id", areaId).single();
       if (error) throw error;
-      const { createLongRangeStore, longRangeMarketKey } = await import("../collection/long-range-store");
-      const state = await createLongRangeStore().load(longRangeMarketKey(area.search_location, area.radius_km));
+      const { longRangeMarketKey } = await import("../collection/long-range-store");
+      const { getMarketStatus } = await import("../collection/market-status");
+      const state = await getMarketStatus(longRangeMarketKey(area.search_location, area.radius_km));
       const { researchIsPending } = await import("../collection/research-status");
       researchPending = researchIsPending(true, runResult.data.started_at, state);
     }
@@ -237,7 +240,8 @@ export async function getReviewData(accountId: string) {
   const linkedIds = await linkedEventIds(accountId, areaId);
   const { decisions, events, sources } = await loadAccountEvents(
     accountId,
-    "needs_review"
+    "needs_review",
+    linkedIds,
   );
   const decisionsByEvent = new Map(
     decisions.map((decision) => [decision.event_id, decision])

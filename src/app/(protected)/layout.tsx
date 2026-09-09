@@ -15,6 +15,7 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
       selectedHotelId={workspace.selectedHotelId}
       reviewCount={workspace.reviewCount}
       batch={workspace.batch}
+      collectionStatus={workspace.collectionStatus}
     >
       {children}
     </AppShell>

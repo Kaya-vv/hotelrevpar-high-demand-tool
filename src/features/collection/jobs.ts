@@ -33,6 +33,14 @@ export async function publishCollectionJob(
   });
 }
 
+class JobPersistenceError extends Error {
+  constructor(cause: unknown) { super("Collection status could not be saved", { cause }); }
+}
+async function persistJob(write: PromiseLike<{ error: unknown }>) {
+  const { error } = await write;
+  if (error) throw new JobPersistenceError(error);
+}
+
 function message(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
@@ -117,10 +125,10 @@ export async function enqueueCollectionAreas(
       totals.queued += 1;
     } catch (error) {
       totals.failed += 1;
-      await admin
+      await persistJob(admin
         .from("collection_jobs")
         .update({ status: "failed", finished_at: new Date().toISOString(), error_summary: message(error) })
-        .eq("id", job.id);
+        .eq("id", job.id));
     }
   }
 
@@ -169,7 +177,7 @@ export async function processCollectionJob(
   if (accountError) throw accountError;
   if (areaError) throw areaError;
   if (!account || !area) {
-    await admin
+    await persistJob(admin
       .from("collection_jobs")
       .update({
         status: "failed",
@@ -178,12 +186,12 @@ export async function processCollectionJob(
         pending_since: null,
         error_summary: "Account of hotel bestaat niet meer.",
       })
-      .eq("id", job.id);
+      .eq("id", job.id));
     return;
   }
 
   const resume = Boolean(job.pending_since);
-  await admin
+  await persistJob(admin
     .from("collection_jobs")
     .update(resume
       // Waking up to check a batch is not a new attempt, and it did not restart the work.
@@ -195,7 +203,7 @@ export async function processCollectionJob(
         finished_at: null,
         error_summary: null,
       })
-    .eq("id", job.id);
+    .eq("id", job.id));
 
   try {
     const result = await run({
@@ -209,7 +217,7 @@ export async function processCollectionJob(
       : result.status === "already_running"
         ? "skipped"
         : "partial";
-    await admin
+    await persistJob(admin
       .from("collection_jobs")
       .update({
         status,
@@ -217,17 +225,19 @@ export async function processCollectionJob(
         finished_at: new Date().toISOString(),
         pending_since: null,
       })
-      .eq("id", job.id);
+      .eq("id", job.id));
   } catch (error) {
+    // A failed terminal write is not a provider failure. Preserve the run for retry.
+    if (error instanceof JobPersistenceError) throw error;
     if (error instanceof BatchPendingError) {
       // The retry directive is useless once the message stops being redelivered, so the last
       // useful delivery closes the job itself instead of leaving it `running` forever.
       if (Date.now() + 120_000 >= metadata.expiresAt.getTime()) {
         const summary = "Anthropic batch niet voltooid binnen de berichtretentie.";
-        await admin
+        await persistJob(admin
           .from("collection_jobs")
           .update({ status: "failed", pending_since: null, finished_at: new Date().toISOString(), error_summary: summary })
-          .eq("id", job.id);
+          .eq("id", job.id));
         const { error: runError } = await admin
           .from("collection_runs")
           .update({ finished_at: new Date().toISOString(), error_summary: summary })
@@ -237,13 +247,13 @@ export async function processCollectionJob(
         if (runError) throw runError;
         return;
       }
-      await admin
+      await persistJob(admin
         .from("collection_jobs")
         .update({ pending_since: new Date().toISOString() })
-        .eq("id", job.id);
+        .eq("id", job.id));
       throw error;
     }
-    await admin
+    await persistJob(admin
       .from("collection_jobs")
       .update({
         status: "failed",
@@ -252,7 +262,7 @@ export async function processCollectionJob(
         pending_since: null,
         error_summary: message(error),
       })
-      .eq("id", job.id);
+      .eq("id", job.id));
     throw error;
   }
 }

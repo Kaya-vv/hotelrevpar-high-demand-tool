@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { redirect } from "next/navigation";
 
 import { createServerClient } from "@/lib/supabase/server";
@@ -9,7 +10,7 @@ export type CurrentAccount = {
   userId: string;
 };
 
-export async function requireAccount(): Promise<CurrentAccount> {
+export const requireAccount = cache(async function requireAccount(): Promise<CurrentAccount> {
   const supabase = await createServerClient();
   const { data: claimsData } = await supabase.auth.getClaims();
   const userId = claimsData?.claims?.sub;
@@ -39,7 +40,7 @@ export async function requireAccount(): Promise<CurrentAccount> {
     role: membership.role,
     userId,
   } as CurrentAccount;
-}
+});
 
 export async function requirePlatformAdmin() {
   const account = await requireAccount();

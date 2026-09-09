@@ -1,3 +1,4 @@
+import { BatchPendingError } from "./anthropic-batches";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const adminHolder = vi.hoisted(() => ({ current: {} }));
@@ -177,4 +178,38 @@ describe("collection jobs", () => {
       expect.objectContaining({ status: "failed", attempts: 3, error_summary: "provider unavailable" }),
     ]);
   });
+});
+
+it.each(["running", "succeeded"])("surfaces a failed %s write without recording provider failure", async failedStatus => {
+  const updates: string[] = [];
+  const job = selectable({ id: "job", account_id: "account", collection_area_id: "area", trigger: "manual", status: "queued" });
+  Object.assign(job, { update: (value: { status: string }) => {
+    updates.push(value.status);
+    return { eq: async () => ({ error: value.status === failedStatus ? new Error("database timeout") : null }) };
+  } });
+  adminHolder.current = { from: (table: string) => table === "collection_jobs" ? job : selectable({ id: "owned" }) };
+  const run = vi.fn().mockResolvedValue({ status: "completed", runId: "run" });
+  await expect(processCollectionJob({ jobId: "job" }, delivery(1), run)).rejects.toThrow("Collection status could not be saved");
+  expect(updates).not.toContain("failed");
+  expect(run).toHaveBeenCalledTimes(failedStatus === "running" ? 0 : 1);
+});
+
+it("resumes a provider wait without opening a new attempt", async () => {
+  const updates: Record<string, unknown>[] = [];
+  const job = selectable({ id: "job", account_id: "account", collection_area_id: "area", trigger: "manual", status: "running", pending_since: "2026-09-09T12:00:00Z" });
+  Object.assign(job, { update: (value: Record<string, unknown>) => {
+    updates.push(value); return { eq: async () => ({ error: null }) };
+  } });
+  adminHolder.current = { from: (table: string) => table === "collection_jobs" ? job : selectable({ id: "owned" }) };
+  const run = vi.fn().mockRejectedValue(new BatchPendingError());
+  await expect(processCollectionJob({ jobId: "job" }, delivery(4), run)).rejects.toBeInstanceOf(BatchPendingError);
+  expect(run).toHaveBeenCalledWith(expect.objectContaining({ resume: true }));
+  expect(updates[0]).toEqual({ status: "running" });
+  expect(updates[1]).toHaveProperty("pending_since");
+});
+it("ignores a duplicate delivery after terminal success", async () => {
+  adminHolder.current = { from: () => selectable({ id: "job", status: "succeeded" }) };
+  const run = vi.fn();
+  await processCollectionJob({ jobId: "job" }, delivery(3), run);
+  expect(run).not.toHaveBeenCalled();
 });

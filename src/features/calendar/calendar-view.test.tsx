@@ -1,6 +1,7 @@
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { RunStatusContext } from "@/features/collection/use-run-status-poll";
 import { CalendarView, type CalendarEvent } from "./calendar-view";
 
 const { refresh } = vi.hoisted(() => ({ refresh: vi.fn() }));
@@ -131,7 +132,7 @@ describe("CalendarView", () => {
     ).toHaveTextContent("Hoog");
   });
 
-  it("shows a hotel-friendly update status and refreshes an active collection", () => {
+  it("shows update status without starting an independent refresh loop", () => {
     vi.useFakeTimers();
     render(
       <CalendarView
@@ -143,33 +144,29 @@ describe("CalendarView", () => {
 
     expect(screen.getByText(/bijwerken gestart/i)).toBeInTheDocument();
     act(() => vi.advanceTimersByTime(15_000));
-    expect(refresh).toHaveBeenCalledOnce();
+    expect(refresh).not.toHaveBeenCalled();
   });
-  it("keeps refreshing after collection finishes until background publication finishes", () => {
+  it("keeps research pending until publication finishes", () => {
     vi.useFakeTimers();
     const run = { startedAt: "2027-10-01T10:00:00Z", finishedAt: "2027-10-01T10:00:15Z", researchPending: true };
     const { rerender } = render(<CalendarView month="2027-10" events={events} latestRun={run} />);
     expect(screen.getByText(/Bijwerken bezig: onderzoek en publicatie/)).toBeInTheDocument();
     expect(screen.queryByText(/Bijgewerkt op/)).not.toBeInTheDocument();
     act(() => vi.advanceTimersByTime(15_000));
-    expect(refresh).toHaveBeenCalledOnce();
+    expect(refresh).not.toHaveBeenCalled();
     rerender(<CalendarView month="2027-10" events={events} latestRun={{ ...run, researchPending: false }} />);
     expect(screen.getByText(/Bijgewerkt op/)).toBeInTheDocument();
     act(() => vi.advanceTimersByTime(15_000));
-    expect(refresh).toHaveBeenCalledOnce();
+    expect(refresh).not.toHaveBeenCalled();
   });
   it("stops watching a run that stays pending and offers a manual reload instead", () => {
     vi.useFakeTimers();
     const run = { startedAt: "2027-10-01T10:00:00Z", finishedAt: null, researchPending: true };
-    render(<CalendarView month="2027-10" events={events} latestRun={run} />);
-
-    // Ten minutes of watching, then the poll must stop rather than run for the batch's lifetime.
-    act(() => vi.advanceTimersByTime(10 * 60_000));
-    const polls = refresh.mock.calls.length;
-    expect(polls).toBe(39);
+    render(<RunStatusContext.Provider value={{ expired: true, register: vi.fn(), resume: vi.fn() }}>
+      <CalendarView month="2027-10" events={events} latestRun={run} />
+    </RunStatusContext.Provider>);
     expect(screen.getByRole("button", { name: "Nu verversen" })).toBeInTheDocument();
-
     act(() => vi.advanceTimersByTime(60 * 60_000));
-    expect(refresh).toHaveBeenCalledTimes(polls);
+    expect(refresh).not.toHaveBeenCalled();
   });
 });

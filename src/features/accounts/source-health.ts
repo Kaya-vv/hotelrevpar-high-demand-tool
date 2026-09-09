@@ -1,3 +1,6 @@
+import { runStatusLabel } from "./source-health-table";
+import { getMarketStatuses, getMarketProgress } from "../collection/market-status";
+import { fetchAllRows, fetchPagedInBatches } from "@/lib/supabase/fetch-in-batches";
 import type { DiscoveryDrop, DiscoveryFunnel } from "@/features/collection/types";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -8,17 +11,17 @@ import { researchIsPending } from "../collection/research-status";
 export async function getMarketResearchHealth() {
   const admin = createAdminClient();
   const [markets, areas] = await Promise.all([
-    admin.from("long_range_markets").select("market_key, state"),
-    admin.from("collection_areas").select("search_location, radius_km"),
+    getMarketStatuses().then(data => ({ data, error: null })),
+    fetchAllRows((from, to) => admin.from("collection_areas").select("search_location, radius_km").order("id").range(from, to)).then(data => ({ data, error: null })),
   ]);
   if (markets.error) throw markets.error;
   if (areas.error) throw areas.error;
   return markets.data.flatMap((market) => {
-    const state = market.state as unknown as LongRangeState;
+    const state = market as unknown as LongRangeState;
     const area = areas.data.find((area) => longRangeMarketKey(area.search_location, area.radius_km) === market.market_key);
     return state.research ? [{ key: market.market_key, city: area?.search_location ?? market.market_key.slice(0, 8), radius: area?.radius_km,
       ...state.research, publishedAt: state.publishedAt, publicationPending: state.publicationPending,
-      waves: state.cycle?.waves ?? 0, leads: state.cycle?.leadKeys.length ?? 0 }] : [];
+      waves: Number(market.waves ?? 0), leads: Array.isArray(market.leadKeys) ? market.leadKeys.length : 0 }] : [];
   });
 }
 
@@ -75,23 +78,23 @@ function sourceEntries(value: unknown) {
   return Object.entries(value as Record<string, RawSource>);
 }
 
-export async function getSourceHealthRuns(): Promise<SourceHealthRun[]> {
+export async function getSourceHealthRuns(page = 0, runId?: string): Promise<SourceHealthRun[]> {
   const admin = createAdminClient();
-  const [runsResult, accountsResult, areasResult, marketsResult] = await Promise.all([
-    admin.from("collection_runs").select("*").order("started_at", { ascending: false }).limit(100),
-    admin.from("accounts").select("id, name"),
-    admin.from("collection_areas").select("id, name, enabled_sources, search_location, radius_km"),
-    admin.from("long_range_markets").select("market_key, state"),
-  ]);
+  const runQuery = admin.from("collection_runs").select("id, account_id, collection_area_id, started_at, finished_at, error_summary, source_results").order("started_at", { ascending: false }).order("id");
+  const runsResult = await (runId ? runQuery.eq("id", runId).limit(1) : runQuery.range(page * 20, page * 20 + 19));
   if (runsResult.error) throw runsResult.error;
+  if (!runsResult.data.length) return [];
+  const [accountsResult, areasResult] = await Promise.all([
+    admin.from("accounts").select("id, name").in("id", [...new Set(runsResult.data.map(run => run.account_id))]),
+    admin.from("collection_areas").select("id, name, enabled_sources, search_location, radius_km").in("id", [...new Set(runsResult.data.map(run => run.collection_area_id))]),
+  ]);
   if (accountsResult.error) throw accountsResult.error;
   if (areasResult.error) throw areasResult.error;
-  if (marketsResult.error) throw marketsResult.error;
-  const markets = new Map(marketsResult.data.map((market) => [market.market_key, market.state as unknown as LongRangeState]));
+  const markets = await getMarketProgress(areasResult.data.map(area => longRangeMarketKey(area.search_location, area.radius_km)));
 
   const runIds = runsResult.data.map((run) => run.id);
   const usageResult = runIds.length
-    ? await admin.from("collection_usage_events").select("collection_run_id, source, input_tokens, output_tokens, web_search_requests, web_fetch_requests").in("collection_run_id", runIds)
+    ? { data: await fetchPagedInBatches(runIds, (ids, from, to) => admin.from("collection_usage_events").select("collection_run_id, source, input_tokens, output_tokens, web_search_requests, web_fetch_requests").in("collection_run_id", ids).order("id").range(from, to)), error: null }
     : { data: [], error: null };
   if (usageResult.error) throw usageResult.error;
   const usageByRunSource = new Map<string, { calls: number; inputTokens: number; outputTokens: number; webSearchRequests: number; webFetchRequests: number }>();
@@ -117,6 +120,20 @@ export async function getSourceHealthRuns(): Promise<SourceHealthRun[]> {
       }
     });
   });
+
+  if (runId) {
+    // Detail reads are on demand, but "last success" must still include earlier runs.
+    const { data: history, error } = await admin.from("collection_runs")
+      .select("account_id, collection_area_id, finished_at, claude:source_results->claude->>state, ticketmaster:source_results->ticketmaster->>state, predicthq:source_results->predicthq->>state, rijksoverheid:source_results->rijksoverheid->>state, openholidays:source_results->openholidays->>state, footballdata:source_results->footballdata->>state, uefa:source_results->uefa->>state")
+      .eq("collection_area_id", runsResult.data[0].collection_area_id)
+      .order("started_at", { ascending: false }).limit(100);
+    if (error) throw error;
+    lastSuccess.clear();
+    for (const row of history) for (const name of ["claude", "ticketmaster", "predicthq", "rijksoverheid", "openholidays", "footballdata", "uefa"] as const) {
+      const key = `${row.account_id}:${row.collection_area_id}:${name}`;
+      if (!lastSuccess.has(key) && row.finished_at && ["success", "zero"].includes(row[name] ?? "")) lastSuccess.set(key, row.finished_at);
+    }
+  }
 
   return runsResult.data.map((run) => {
     const area = areas.get(run.collection_area_id);
@@ -161,3 +178,31 @@ export async function getSourceHealthRuns(): Promise<SourceHealthRun[]> {
   });
 }
 
+
+export type SourceHealthSummary = Pick<SourceHealthRun, "id" | "accountName" | "areaName" | "startedAt" | "finishedAt" | "researchPending"> & { label: string };
+
+export async function getSourceHealthSummaries(page = 0): Promise<SourceHealthSummary[]> {
+  const admin = createAdminClient();
+  const { data: runs, error } = await admin.from("collection_runs")
+    .select("id, account_id, collection_area_id, started_at, finished_at, error_summary, requested:source_results->claude->researchPending, claude:source_results->claude->>state, ticketmaster:source_results->ticketmaster->>state, predicthq:source_results->predicthq->>state, rijksoverheid:source_results->rijksoverheid->>state, openholidays:source_results->openholidays->>state, footballdata:source_results->footballdata->>state, uefa:source_results->uefa->>state")
+    .order("started_at", { ascending: false }).order("id").range(page * 20, page * 20 + 19);
+  if (error) throw error;
+  if (!runs.length) return [];
+  const [accounts, areas] = await Promise.all([
+    admin.from("accounts").select("id, name").in("id", [...new Set(runs.map(run => run.account_id))]),
+    admin.from("collection_areas").select("id, name, search_location, radius_km").in("id", [...new Set(runs.map(run => run.collection_area_id))]),
+  ]);
+  if (accounts.error) throw accounts.error;
+  if (areas.error) throw areas.error;
+  const markets = await getMarketProgress(areas.data.map(area => longRangeMarketKey(area.search_location, area.radius_km)));
+  return runs.map(run => {
+    const area = areas.data.find(area => area.id === run.collection_area_id);
+    const pending = researchIsPending(run.requested === true, run.started_at,
+      area ? markets.get(longRangeMarketKey(area.search_location, area.radius_km)) : undefined);
+    const states = [run.claude, run.ticketmaster, run.predicthq, run.rijksoverheid, run.openholidays, run.footballdata, run.uefa]
+      .map(state => ({ state: state ?? "not_run" }));
+    return { id: run.id, accountName: accounts.data.find(account => account.id === run.account_id)?.name ?? "Onbekend account",
+      areaName: area?.name ?? "Onbekende regio", startedAt: run.started_at, finishedAt: run.finished_at, researchPending: pending,
+      label: runStatusLabel({ finishedAt: run.finished_at, researchPending: pending, errorSummary: run.error_summary === "[object Object]" ? "Run afgebroken door een technische fout" : run.error_summary, sources: states }) };
+  });
+}

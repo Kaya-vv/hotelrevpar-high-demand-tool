@@ -28,11 +28,14 @@ describe("dashboard hotel status", () => {
       collection_jobs: [{ collection_area_id: "area-1", status: jobStatus }],
     };
     const from = vi.fn((table: string) => {
+      if (table === "collection_areas") rows[table] = [{ id: "area-1", hotel_id: "hotel-1", collection_runs: rows.collection_runs, collection_jobs: rows.collection_jobs }];
       const query = {
         select: vi.fn().mockReturnThis(),
         eq: vi.fn().mockReturnThis(),
         in: vi.fn().mockReturnThis(),
         order: vi.fn().mockReturnThis(),
+        range: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
         then: (resolve: (value: unknown) => unknown) => Promise.resolve({ data: rows[table] ?? [], error: null }).then(resolve),
       };
       return query;
