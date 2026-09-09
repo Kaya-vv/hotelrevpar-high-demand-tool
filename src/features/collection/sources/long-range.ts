@@ -5,7 +5,7 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { createHash } from "node:crypto";
 import type { EventCandidate } from "@/features/events/types";
-import { fetchedDocumentText, evidenceInstructions, verifyEventEvidence, localDateBoundary, supportedAudience, uniqueEvidenceEditions } from "@/features/events/evidence";
+import { fetchedDocumentText, evidenceInstructions, verifyEventEvidence, localDateBoundary, uniqueEvidenceEditions } from "@/features/events/evidence";
 import { eventLocalDate, validEventRange } from "@/features/events/normalize";
 import { researchBudget, estimatedCostUsd } from "../research-budget";
 import { geocodeCity, createLocationResolver } from "../research-location";
@@ -56,10 +56,13 @@ function targetWasRejected(message: Anthropic.Message, target: string | null) {
 const FETCH_SLOTS = 18;    // weekly lead checks
 const CALENDAR_SLOTS = 6;  // reserved inside FETCH_SLOTS for calendar hubs
 const SWEEP_DAYS = 28;
-const MONITORING_VERSION = 2;
+const MONITORING_VERSION = 3;
 // A cycle drains its backlog across weekly invocations; 18 left confirmed-but-unassessed leads
 // queued behind fresh discovery for months (pendingDemand 60 against demandAccepted 6).
-const CYCLE_LEAD_LIMIT = 30;
+const CYCLE_LEAD_LIMIT = 60;
+// Discovery, URL resolution, extraction, demand lookup and evidence extraction
+// must fit in one cycle. The monthly spend ledger still bounds paid work.
+const CYCLE_WAVE_LIMIT = 5;
 
 // A lead URL only earns a fetch when it can own the event's dates. Aggregators, wikis and tourist
 // listings republish them, so a fetch there confirms nothing. Extend this list when a new host
@@ -76,6 +79,8 @@ const AGGREGATOR_DOMAINS = [
   "concerts-metal.com", "awayfromlife.com", "uiteindhoven.com", "followthebeat.nl", "99festivals.com",
   "ahotu.com", "running.life", "atleta.cc", "dejawuguitars.com", "dansendeberen.be", "theheavyhunt.nl",
   "plons.nu", "voetbalkrant.com", "soccerway.com", "espn.com", "eventseye.com", "dezeen.com",
+  // Provider APIs, not owner pages: they serve JSON a fetch can never read as an announcement.
+  "openholidaysapi.org", "api.predicthq.com", "app.ticketmaster.com", "api.football-data.org",
 ] as const;
 
 export function isAggregatorUrl(value: string) {
@@ -207,7 +212,7 @@ function deepInstruction(lead: Lead, year: string) {
 
 function parseMessage<T>(message: Anthropic.Message, schema: z.ZodType<T>): T {
   if (message.stop_reason === "max_tokens" || message.stop_reason === "pause_turn") throw new Error(`Incomplete response: ${message.stop_reason}`);
-  const text = message.content.find((block) => block.type === "text")?.text;
+  const text = message.content.findLast((block) => block.type === "text")?.text;
   if (!text) throw new Error("No structured result");
   return schema.parse(normalizeEventResponse(JSON.parse(text)));
 }
@@ -282,22 +287,26 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
   const budget = researchBudget(state, now, input.budgetEur);
   // Drain submitted batches using their original manifest before upgrading. Never abandon
   // paid work or reset its spend ledger. The next invocation upgrades a drained cycle.
-  if (state.cycle && state.cycle.monitoringVersion !== MONITORING_VERSION && !state.cycle.pending) {
+  const assessmentUpgrade = state.version !== version;
+  if (state.cycle && (assessmentUpgrade || state.cycle.monitoringVersion !== MONITORING_VERSION) && !state.cycle.pending) {
     state.cycle = {
       monitoringVersion: MONITORING_VERSION, startedAt: now.toISOString(), waves: 0,
-      leadKeys: state.cycle.leadKeys,
+      leadKeys: [...new Set(state.cycle.queued.map(job => job.leadKey))],
       // Keep unfetched evidence URLs and retrieved text, but rebuild extraction requests
       // under the new window rather than replaying old completed-window assumptions.
       queued: state.cycle.queued.map((job) => ({ ...job, windowStart: undefined, cached: false, chunks: undefined })),
     };
     for (const lead of state.leads) lead.nextCheck = now.toISOString();
   }
+  // A scoring/evidence upgrade must reopen exhausted old work without resetting
+  // the monthly spend ledger or replacing an already submitted batch manifest.
+  if (!state.cycle?.pending) state.version = version;
   if (!state.cycle || (state.cycle.finished && now.getTime() - Date.parse(state.cycle.startedAt) >= 7 * day)) {
     state.cycle = { monitoringVersion: MONITORING_VERSION, startedAt: now.toISOString(), waves: 0, leadKeys: [], queued: state.cycle?.queued ?? [] };
   }
   const workCycle = state.cycle;
   workCycle.retrieved ??= {};
-  if (state.leads.some(repairPending) && workCycle.waves < 3) workCycle.finished = false;
+  if (state.leads.some(repairPending) && workCycle.waves < CYCLE_WAVE_LIMIT) workCycle.finished = false;
 
   const originalIds = new Set(state.leads.flatMap((lead) => lead.editions.map((edition) => edition.providerEventId)));
   const drops: NonNullable<SourceResult["funnel"]>["drops"] = [];
@@ -342,7 +351,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
     const deferAll = (reason: string) => tasks.map((): PromiseSettledResult<Anthropic.Message> => ({ status: "rejected", reason: new ResearchDeferredError(reason) }));
     const results = deferAll(BUDGET_DEFERRED);
     if (!manifest) {
-      if (!tasks.length || workCycle.waves >= 3 || workCycle.finished) return deferAll(CYCLE_DEFERRED);
+      if (!tasks.length || workCycle.waves >= CYCLE_WAVE_LIMIT || workCycle.finished) return deferAll(CYCLE_DEFERRED);
       const indices: number[] = [], reservations: string[] = [];
       tasks.forEach((task, index) => {
         const reservation = budget.reserve(task.params, batching.enabled);
@@ -479,7 +488,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
   }
   const repairFirst = state.leads.some(repairPending);
   if (!repairFirst || workCycle.pending?.phase === "search") await discover();
-  const verificationWaveLimit = repairFirst && (discoveryDue || announcementsDue || state.searchCycle) ? 2 : 3;
+  const verificationWaveLimit = repairFirst && (discoveryDue || announcementsDue || state.searchCycle) ? CYCLE_WAVE_LIMIT - 1 : CYCLE_WAVE_LIMIT;
 
   // Monthly breadth is separate from weekly lead eligibility.
   const bootstrap = !state.lastSweepAt;
@@ -488,7 +497,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
   const eligible = state.leads.filter((lead) => Date.parse(researchDueAt(lead)) <= now.getTime());
   const firstChecks = fairQueue(eligible.filter((lead) => !lead.checkedAt && !(lead.attempts ?? 0))).slice(0, 5);
   const available = [...firstChecks, ...fairQueue(eligible.filter((lead) => !firstChecks.includes(lead)))];
-  if (workCycle.finished && workCycle.waves < 3 && workCycle.leadKeys.length < CYCLE_LEAD_LIMIT && available.some((lead) => !workCycle.leadKeys.includes(lead.key))) workCycle.finished = false;
+  if (workCycle.finished && workCycle.waves < CYCLE_WAVE_LIMIT && workCycle.leadKeys.length < CYCLE_LEAD_LIMIT && available.some((lead) => !workCycle.leadKeys.includes(lead.key))) workCycle.finished = false;
   if (!workCycle.finished) for (const lead of available) {
     if (workCycle.leadKeys.length >= CYCLE_LEAD_LIMIT) break;
     if (!workCycle.leadKeys.includes(lead.key)) workCycle.leadKeys.push(lead.key);
@@ -554,12 +563,12 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
       // Leave one of the four pages for a newly discovered announcement or venue address.
       // Keep half the four-page allowance for an organizer discovered by the bounded search
       // and its observed announcement/about link. A venue's practical page must not consume it.
-      const retrieved = job.pages ? { pages: job.pages, errors: [] } : await retrieveOfficialPages(target ?? fetchTarget(lead)!, input.end.slice(0, 4), boundedFetch, kind === "fetch" ? lead.officialPages : [], lead.title, 2);
+      const retrieved = job.pages ? { pages: job.pages, errors: [] } : await retrieveOfficialPages(target ?? fetchTarget(lead)!, input.end.slice(0, 4), boundedFetch, kind === "fetch" ? lead.officialPages : [], lead.title, 2, lead.pendingStage === "demand" ? "demand" : "dates");
       for (const error of retrieved.errors) failures.push(`${lead.title}: ${error}`);
       if (!retrieved.pages.length) {
         const cachedUrl = target ?? fetchTarget(lead)!;
         const cached = state.pageCache![cachedUrl];
-        if (cached?.text && (!cached.complete || cached.version !== Number(`${MONITORING_VERSION}${input.end.slice(0, 4)}`))) {
+        if (cached?.text && (!cached.complete || cached.version !== Number(`${MONITORING_VERSION}${CLAUDE_ASSESSMENT_VERSION}${input.end.slice(0, 4)}`))) {
           retrieved.pages.push({ url: cachedUrl, text: cached.text, links: cached.links ?? [] });
           job.checkedAt = cached.checkedAt;
         }
@@ -573,7 +582,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
         return { ...request, params: { ...request.params, max_tokens: 1000, output_config: { format: zodOutputFormat(z.object({ reason: z.string() })) }, messages: [{ role: "user" as const, content: `Fetch this exact public official URL once: ${target ?? fetchTarget(lead)}. Return only a short retrieval status. Do not extract or infer events; the application will separately process the fetched document.` }] } };
       }
       lead.officialPages = [...new Set([...retrieved.pages.map((page) => page.url), ...(lead.officialPages ?? [])])].slice(0, 4);
-      const extractionVersion = Number(`${MONITORING_VERSION}${input.end.slice(0, 4)}`);
+      const extractionVersion = Number(`${MONITORING_VERSION}${CLAUDE_ASSESSMENT_VERSION}${input.end.slice(0, 4)}`);
       const incompleteExtraction = repairPending(lead) || lead.pendingStage === "extraction";
       const unprocessed = retrieved.pages.filter((page) => {
         const entry = state.pageCache![page.url];
@@ -636,9 +645,13 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
         title: event.title, category: event.category, venue: event.venue,
         latitude: evidence?.locationScope === "unknown" ? null : event.latitude, longitude: evidence?.locationScope === "unknown" ? null : event.longitude, regionScope: event.regionScope ?? evidence?.hostCity ?? null,
         startAt: /T(?!00:00)/.test(event.startAt) && Number.isFinite(Date.parse(event.startAt)) ? event.startAt : localDateBoundary(start), endAt: /T(?!00:00|23:59)/.test(event.endAt) && Number.isFinite(Date.parse(event.endAt)) ? event.endAt : localDateBoundary(end, true), sourceState: event.status,
-        certainty: "confirmed", localRank: null, attendance: evidence?.demand.some((fact) => fact.scope === "edition") ? event.attendance : null, venueCapacity: evidence?.demand.length ? event.venueCapacity : null,
-        aiImpactPoints: evidence?.demand.length && [35, 45, 60].includes(event.impactPoints ?? 0) ? event.impactPoints : null,
-        assessmentVersion: CLAUDE_ASSESSMENT_VERSION, overnightAudience: evidence?.demand.length ? supportedAudience(evidence, event.overnightAudience) : null,
+        // Same rule as the near-term collector: a missing demand quote is a gap in the page,
+        // not evidence against hotel demand. Quoted evidence grades in `assessHotelDemand`.
+        // Attendance keeps its edition-scope guard: a prior edition's crowd is not this one's.
+        certainty: "confirmed", localRank: null, venueCapacity: event.venueCapacity,
+        attendance: evidence?.demand.some((fact) => fact.scope === "edition") ? event.attendance : null,
+        aiImpactPoints: [35, 45, 60].includes(event.impactPoints ?? 0) ? event.impactPoints : null,
+        assessmentVersion: CLAUDE_ASSESSMENT_VERSION, overnightAudience: event.overnightAudience ?? null,
         evidenceText: event.evidenceText ?? evidence?.demand.map((fact) => fact.text).join(" ") ?? null, primarySourceConfirmed: Boolean(evidence?.dateText && evidence.locationText),
       };
       candidate.providerEventId = claudeProviderEventId(candidate);
@@ -706,7 +719,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
     const continued = workCycle.queued.filter((job) => workCycle.leadKeys.includes(job.leadKey)).map(restoreJob);
     pending = [...continued, ...pending.filter((job) => !continued.some((old) => old.lead.key === job.lead.key))];
   }
-  for (let round = 0; round < 3 && (!workCycle.finished && (workCycle.waves < verificationWaveLimit || workCycle.pending)); round++) {
+  for (let round = 0; round < CYCLE_WAVE_LIMIT && (!workCycle.finished && (workCycle.waves < verificationWaveLimit || workCycle.pending)); round++) {
     if (!pending.length) continue;
     if (batching.deadline !== undefined && Date.now() >= batching.deadline) {
       workCycle.queued = pending.map(serializeJob);

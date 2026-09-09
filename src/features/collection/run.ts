@@ -1,4 +1,5 @@
 import { longRangeWindow } from "./sources/claude";
+import { isAggregatorUrl } from "./sources/long-range";
 import { eventLocalDate } from "@/features/events/normalize";
 import { distanceKm } from "@/features/events/distance";
 import {
@@ -112,8 +113,8 @@ export function selectClaudeRefreshUrls(
 
 /**
  * Editions this account already confirmed are the cheapest long-range leads there are: the official
- * URL is stored. Include confirmed editions through this calendar year so next year's announcement
- * can be checked before the current edition finishes. Separate event identities may share a calendar URL.
+ * URL is stored. Retain confirmed editions through the research horizon, including future editions
+ * whose evidence needs repair. Separate event identities may share a calendar URL.
  *
  * Not Claude-specific. An edition PredictHQ found keeps an official page once the evidence reviewer
  * confirms one, and `public_source_url` is that page — `source_url` would be the provider's API.
@@ -121,15 +122,17 @@ export function selectClaudeRefreshUrls(
 export function selectLongRangeSeeds(
   rows: (ClaudeSourceRow & { event_id: string; public_source_url?: string | null; ai_impact_points?: number | null })[],
   now = new Date(),
-  limit = 12,
+  limit = 60,
 ) {
   const day = 86_400_000;
   const floor = new Date(now.getTime() - 200 * day).toISOString().slice(0, 10);
-  const ceiling = `${now.getUTCFullYear()}-12-31`;
+  const ceiling = `${now.getUTCFullYear() + 1}-12-31`;
   const byEvent = new Map<string, { eventId: string; url: string; lastEditionEnd: string; historicalDemandPoints?: number }>();
   for (const row of rows) {
     const url = row.public_source_url ?? row.source_url;
-    if (!/^https?:\/\//i.test(url)) continue;
+    // Every other lead URL passes this filter; a seed that skipped it made the ticket vendor or
+    // provider API the lead's fetch target, which can only 403 while it consumes a cycle slot.
+    if (!/^https?:\/\//i.test(url) || isAggregatorUrl(url)) continue;
     const lastEditionEnd = eventLocalDate(row.extracted_end_at ?? row.extracted_start_at);
     if (lastEditionEnd < floor || lastEditionEnd > ceiling) continue;
     const stored = byEvent.get(row.event_id);

@@ -90,7 +90,7 @@ it("selects the oldest unique Claude pages inside the active window", () => {
   ).toEqual(["https://venue.nl/oldest", "https://venue.nl/newer"]);
 });
 
-it("prioritizes visible events that need the current Claude assessment", () => {
+it("prioritizes events that need the current Claude assessment", () => {
   const row = (source_url: string, needs_reassessment = false) => ({
     source_url,
     extracted_start_at: "2026-10-10T10:00:00Z",
@@ -138,6 +138,13 @@ it("retains distinct event identities that share one official calendar page", ()
     extracted_end_at: "2026-10-25T00:00:00Z", checked_at: "2026-09-05T00:00:00Z" };
   expect(selectLongRangeSeeds([{ ...source, event_id: "arts" }, { ...source, event_id: "science" }],
     new Date("2026-09-05T12:00:00Z")).map((seed) => seed.eventId)).toEqual(["arts", "science"]);
+});
+
+it("retains saved future editions for repair when reconstructing market research", () => {
+  const rows = Array.from({ length: 17 }, (_, index) => ({ event_id: `future-${index}`, source_url: `https://venue.example/event-${index}`,
+    extracted_start_at: "2027-05-01T10:00:00Z", extracted_end_at: "2027-05-02T20:00:00Z", checked_at: "2026-09-01T00:00:00Z" }));
+  expect(selectLongRangeSeeds(rows, new Date("2026-09-09T12:00:00Z"))).toHaveLength(17);
+  expect(selectLongRangeSeeds([{ ...rows[0], extracted_end_at: "2028-05-02T20:00:00Z" }], new Date("2026-09-09T12:00:00Z"))).toEqual([]);
 });
 
 function repository(overrides: Partial<CollectionRepository> = {}): CollectionRepository {

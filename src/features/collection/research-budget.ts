@@ -36,7 +36,14 @@ export function researchBudget(state: LongRangeState, now: Date, ceilingEur = 8)
       // Never resend an unresolved request merely because a worker was retried.
       if (ledger.reservations[key] !== undefined) return batch ? key : null;
       const toolUses = (params.tools ?? []).reduce((sum, tool) => sum + ("max_uses" in tool ? Number(tool.max_uses ?? 1) : 0), 0);
-      const inputBound = Buffer.byteLength(JSON.stringify(params)) + 10_000 + toolUses * 32_000;
+      // Reserve the content bound each tool actually declares. A flat 32k per use assumed five
+      // times the `max_content_tokens: 6_000` every fetch request sets, so the ceiling filled
+      // from reservations while barely any money had been spent: the Eindhoven cycle deferred a
+      // third of its leads, the benchmark among them, at 0.12 EUR of an 8 EUR ledger.
+      const contentBound = (params.tools ?? []).reduce((sum, tool) => sum + ("max_uses" in tool
+        ? Number(tool.max_uses ?? 1) * ("max_content_tokens" in tool ? Number(tool.max_content_tokens ?? 32_000) : 32_000)
+        : 0), 0);
+      const inputBound = Buffer.byteLength(JSON.stringify(params)) + 10_000 + contentBound;
       const reserved = (inputBound * rates[0] * 1.25 + params.max_tokens * rates[1]) / 1_000_000 * (batch ? 0.5 : 1) + toolUses * 0.01;
       const outstanding = Object.values(ledger.reservations).reduce((sum, value) => sum + value, 0);
       if (ledger.spentEur + outstanding + reserved > ceilingEur) return null;

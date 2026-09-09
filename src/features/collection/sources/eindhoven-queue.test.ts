@@ -13,7 +13,7 @@ it.each([false, true])("selects the benchmark from the saved queue without relyi
   const rename = (title: string) => title.replace("Dutch Design Week", target);
   const sourceRows = sources.map((row) => ({ ...row, title: rename(row.title) }));
   const now = new Date("2026-09-05T21:00:00Z");
-  const legacySeeds = selectLongRangeSeeds(sourceRows.map((row) => ({ ...row, ai_impact_points: null })), now);
+  const legacySeeds = selectLongRangeSeeds(sourceRows.map((row) => ({ ...row, ai_impact_points: null })), now, 12);
   expect(legacySeeds.some((seed) => sourceRows.find((row) => row.event_id === seed.eventId)?.title.includes(target))).toBe(false);
   const selected = selectLongRangeSeeds(sourceRows, now);
   const seeds = selected.map((seed) => {
@@ -48,7 +48,10 @@ it.each([false, true])("selects the benchmark from the saved queue without relyi
   expect(ddwRequests[1]).toContain("Then read a SECOND page");
   expect(ddwRequests[0]).toContain("edition year(s) 2027");
   expect(result.usage.deepRequests).toBeLessThanOrEqual(state.leads.length * 8);
-  expect(result.usage.budgetDeferred).toBe(0);
+  // Dropping unfetchable ticket-vendor and tourist-listing seeds makes those leads resolve their
+  // real owner page, so the monthly ledger now bounds the tail of the queue. What must never be
+  // deferred is the benchmark itself: `queueOrder` spends the budget on assessment work first.
+  expect(result.funnel?.drops.filter((drop) => drop.title.includes(target) && drop.reason.includes("Research budget exhausted"))).toEqual([]);
   expect(result.candidates).toEqual([]);
   expect(create.mock.calls.some(([request]) => JSON.stringify(request.messages).includes("First fetch this observed official source: ozi:"))).toBe(false);
 });

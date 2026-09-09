@@ -16,12 +16,14 @@ const evidence = (kind?: EventEvidence["demand"][number]["kind"], text = "Hotel 
   demand: kind ? [{ kind, text, sourceUrl: base.sourceUrl, scope: "edition", year: 2027, comparable: true }] : [],
 });
 
-describe("hotel relevance replaces additive score qualification", () => {
-  it.each(["ticketmaster", "claude", "predicthq"] as const)("does not invent demand from popularity, capacity, duration or overlap (%s)", provider => {
+describe("hotel demand evidence upgrades and contradicts the proxy score", () => {
+  it.each(["ticketmaster", "claude", "predicthq"] as const)("never claims demand evidence from popularity, capacity, duration or overlap (%s)", provider => {
     const candidate = { ...base, provider, evidence: evidence() };
     const score = scoreHotelEvent({ candidate, hotel, overlaps: [{ startAt: base.startAt, endAt: base.endAt, preOverlapTotal: 90 }] });
+    // Capacity, duration and a neighbouring event are proxies. They may carry a grade, but they
+    // must never be reported as quoted hotel-demand evidence.
     expect(score.assessment).toMatchObject({ relevance: "unresolved", magnitude: null });
-    expect(score.total).toBe(0);
+    expect(score.impactBasis).not.toBe("demand_rule");
   });
   it("includes a small residential congress without manufacturing High demand", () => {
     const result = assessHotelDemand({ ...base, evidence: evidence("hotel_stay") }, hotel);
@@ -38,22 +40,27 @@ describe("hotel relevance replaces additive score qualification", () => {
       expect(hasHotelDemand(assessHotelDemand({ ...base, category, evidence: evidence("camping", "Visitors can stay in tents at the festival camping.") }, hotel))).toBe(false);
     }
   });
-  it("uses geography only for scope and never promotes overlapping events", () => {
+  it("uses geography for scope and never lets a neighbouring event manufacture demand evidence", () => {
     const candidate = { ...base, latitude: 51.45, evidence: evidence("hotel_stay") };
     const first = scoreHotelEvent({ candidate, hotel, overlaps: [] });
-    const second = scoreHotelEvent({ candidate, hotel: { ...hotel, demandRadiusKm: 5 }, overlaps: [{ startAt: base.startAt, endAt: base.endAt, preOverlapTotal: 90 }] });
-    expect(second).toEqual(first);
+    const second = scoreHotelEvent({ candidate, hotel, overlaps: [{ startAt: base.startAt, endAt: base.endAt, preOverlapTotal: 90 }] });
+    expect(second.assessment).toEqual(first.assessment);
     expect(hasHotelDemand(assessHotelDemand(candidate, { ...hotel, demandRadiusKm: 0.01 }))).toBe(false);
   });
   it.each(["cancelled", "postponed", "removed"] as const)("preserves %s exclusion despite strong demand", sourceState => {
     expect(hasHotelDemand(assessHotelDemand({ ...base, sourceState, evidence: evidence("hotel_stay") }, hotel))).toBe(false);
   });
-  it("keeps the same planning visibility on either side of the 90 day boundary", () => {
+  it("announces an assessed edition beyond the horizon and grades it inside the horizon", () => {
     const assessment = assessHotelDemand({ ...base, evidence: evidence("hotel_stay") }, hotel);
-    for (const startDate of ["2026-09-10", "2026-12-08", "2026-12-09", "2027-12-01"]) {
-      expect(isAnnouncedLongRange({ startDate, endDate: startDate, nearTermHorizon: "2026-12-08", demandRadiusKm: 25,
-        hasConfirmedDateAndLocation: true, scores: [{ importance: "Low", impactBasis: "default", distanceKm: 1, assessment }] })).toBe(true);
-    }
+    const band = (startDate: string) => isAnnouncedLongRange({ startDate, endDate: startDate, nearTermHorizon: "2026-12-08",
+      demandRadiusKm: 25, hasConfirmedDateAndLocation: true,
+      scores: [{ importance: "Low", impactBasis: "default", distanceKm: 1, assessment }] });
+    // Beyond the horizon a grade cannot be earned yet, so supported demand is announced without one.
+    expect(band("2026-12-09")).toBe(true);
+    expect(band("2027-12-01")).toBe(true);
+    // Inside the horizon the grade decides. The band must not duplicate a gradeable event.
+    expect(band("2026-09-10")).toBe(false);
+    expect(band("2026-12-08")).toBe(false);
   });
   it("rejects invented quotes and non-comparable historical evidence before scoring", () => {
     const facts = evidence("hotel_stay");
@@ -63,10 +70,13 @@ describe("hotel relevance replaces additive score qualification", () => {
     facts.demand[0].comparable = false;
     expect(hasHotelDemand(assessHotelDemand({ ...base, evidence: facts }, hotel))).toBe(false);
   });
-  it("does not automatically export legacy High scores or ungraded planning events", () => {
-    expect(isPublishableDemand("High", "venue_capacity")).toBe(false);
-    expect(isPublishableDemand("High", "ai_assessment")).toBe(false);
+  it("publishes an evidenced grade however it was reached, and never an unevidenced one", () => {
     expect(isPublishableDemand("High", "demand_rule")).toBe(true);
+    // The regression this replaces: requiring `demand_rule` hid every event graded from an
+    // evidenced proxy, which emptied all eight production calendars at once.
+    expect(isPublishableDemand("High", "ai_assessment")).toBe(true);
+    expect(isPublishableDemand("High", "venue_capacity")).toBe(true);
+    expect(isPublishableDemand("High", "default")).toBe(false);
     expect(isPublishableDemand("Medium", "demand_rule")).toBe(false);
   });
   it("admits the independently researched André Rieu hotel package even for a daytime single concert", () => {

@@ -33,6 +33,36 @@ function setup() {
 }
 
 describe("coordinated long-range research", () => {
+  it("uses the final structured answer after intermediate tool commentary", async () => {
+    const test = setup();
+    test.create.mockResolvedValue({ id: "final-answer", stop_reason: "end_turn", usage: { input_tokens: 100, output_tokens: 100 },
+      content: [{ type: "text", text: "Checking the official source first" }, { type: "text", text: JSON.stringify({ events: [event], reason: "Final answer", more: false }) }] });
+    const result = await collectLongRange(test.input);
+    expect(result.candidates.map(candidate => candidate.title)).toContain("Arts Week");
+    expect(result.candidates[0].primarySourceConfirmed).toBe(true);
+  });
+  it("finishes demand evidence retrieval after discovery in the same research cycle", async () => {
+    const test = setup();
+    test.state().discoveredAt = null;
+    const hotelUrl = "https://organizer.example/stay";
+    test.pageFetcher.mockImplementation(async (requested = url) => parseOfficialPage(requested === hotelUrl ? text : `${facts.dateText} ${facts.locationText}`, requested));
+    let calls = 0;
+    test.create.mockImplementation(async (...args: unknown[]) => {
+      const prompt = JSON.stringify(args[0]);
+      const discovery = prompt.includes("Discover major hotel-demand");
+      const search = prompt.includes("Search once for");
+      const hotelPage = prompt.includes(`PAGE URL: ${hotelUrl}`);
+      const payload = discovery ? { leads: [] } : search ? { url: hotelUrl, reason: "Observed organizer accommodation page" }
+        : { events: [{ ...event, facts: { ...facts, demand: hotelPage ? [{ ...facts.demand[0], sourceUrl: hotelUrl, kind: "hotel_stay" }] : [] } }], reason: "Synthetic orchestration regression", more: false };
+      return { id: `cycle-${++calls}`, stop_reason: "end_turn", usage: { input_tokens: 100, output_tokens: 100 },
+        content: [...(search ? [{ type: "web_search_tool_result", content: [{ type: "web_search_result", url: hotelUrl }] }] : []), { type: "text", text: JSON.stringify(payload) }] } as Awaited<ReturnType<typeof test.create>>;
+    });
+    const result = await collectLongRange(test.input);
+    expect(test.pageFetcher).toHaveBeenCalledWith(hotelUrl);
+    expect(result.candidates.some(candidate => candidate.evidence?.demand.some(fact => fact.kind === "hotel_stay"))).toBe(true);
+    expect(test.state().cycle?.queued).toEqual([]);
+    expect(result.usage.monthlySpentEur).toBeLessThan(8);
+  });
   it.each([
     ["Amsterdam", "Bruno Mars", "concert"],
     ["Rotterdam", "Medical Congress", "conference"],
@@ -73,11 +103,35 @@ describe("coordinated long-range research", () => {
     expect(test.pageFetcher).toHaveBeenCalledTimes(1);
     expect(test.state().budget!.billedIds).toEqual(expect.arrayContaining(billed));
     expect(test.state().leads[0].editions.some((edition) => edition.providerEventId === confirmed)).toBe(true);
-    expect(Object.values(test.state().pageCache ?? {}).every((entry) => entry.version === 22027)).toBe(true);
+    expect(Object.values(test.state().pageCache ?? {}).every((entry) => entry.version === 342027)).toBe(true);
     const afterUpgrade = test.create.mock.calls.length;
     await collectLongRange(test.input);
     expect(test.create).toHaveBeenCalledTimes(afterUpgrade);
   });
+  it("reopens an exhausted pre-upgrade cycle and re-extracts unchanged cached pages", async () => {
+    const test = setup();
+    await collectLongRange(test.input);
+    const state = test.state();
+    state.version = 2003;
+    state.cycle!.waves = 3;
+    state.cycle!.finished = true;
+    state.leads[0].editions[0].assessmentVersion = 3;
+    state.leads[0].editions[0].evidence!.demand = [];
+    for (const entry of Object.values(state.pageCache!)) entry.version = 22027;
+    const spent = state.budget!.spentEur;
+    const billed = [...state.budget!.billedIds];
+    const calls = test.create.mock.calls.length;
+    const result = await collectLongRange(test.input);
+    expect(test.create.mock.calls.length).toBeGreaterThan(calls);
+    expect(test.state().version).toBe(2004);
+    expect(test.state().budget!.spentEur).toBeGreaterThanOrEqual(spent);
+    expect(test.state().budget!.billedIds).toEqual(expect.arrayContaining(billed));
+    expect(result.candidates[0].evidence?.demand).toHaveLength(1);
+    const warmCalls = test.create.mock.calls.length;
+    await collectLongRange(test.input);
+    expect(test.create).toHaveBeenCalledTimes(warmCalls);
+  });
+
   it("repairs the actual production quotation from a contiguous dated passage, preserving scoped demand", () => {
     const event = productionDdw.event;
     const evidence = verifyEventEvidence(eventFactsSchema.parse(event.facts), event.sourceUrl, [productionDdw.page], productionDdw.checkedAt, event);
@@ -389,8 +443,8 @@ describe("coordinated long-range research", () => {
     await collectLongRange({ ...test.input, budgetEur: 0.2 });
     // Each conservative extraction reservation is much larger than its recorded actual cost.
     const requests = test.create.mock.calls as unknown as [{ tools: unknown[] }][];
-    expect(requests.filter(([request]) => !request.tools.length)).toHaveLength(3);
-    expect(test.state().cycle?.waves).toBe(3);
+    expect(requests.filter(([request]) => !request.tools.length)).toHaveLength(5);
+    expect(test.state().cycle?.waves).toBe(5);
     const calls = test.create.mock.calls.length;
     await collectLongRange({ ...test.input, budgetEur: 0.2 });
     expect(test.create).toHaveBeenCalledTimes(calls);
@@ -683,3 +737,4 @@ describe("coordinated long-range research", () => {
     expect(capped.usage.overdueLeads).toBeGreaterThan(0);
   });
 });
+

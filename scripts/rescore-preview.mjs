@@ -62,7 +62,9 @@ const rows = candidates.map(({ eventId, event, candidate }) => {
   }));
   const score = scoreHotelEvent({ candidate, hotel: scope, overlaps });
   const previous = stored.find((item) => item.event_id === eventId);
-  return { title: event.title, start: event.start_at.slice(0, 10), beyondHorizon: event.start_at.slice(0, 10) > horizon,
+  return { title: event.title, start: event.start_at.slice(0, 10), end: (event.end_at ?? event.start_at).slice(0, 10),
+    beyondHorizon: event.start_at.slice(0, 10) > horizon, assessment: score.assessment,
+    confirmed: event.certainty === "confirmed" && candidate.primarySourceConfirmed,
     distanceKm: score.distanceKm, inRadius: score.distanceKm !== null && score.distanceKm <= scope.demandRadiusKm,
     before: previous?.total ?? null, beforeImp: previous?.suggested_importance ?? "-", beforeBasis: previous?.impact_basis ?? "-",
     after: score.total, afterImp: score.suggestedImportance, afterBasis: score.impactBasis,
@@ -76,11 +78,13 @@ console.log(`reconstruction check: ${rows.length - drift.length}/${rows.length} 
 console.log("changed by this build:");
 for (const row of drift.sort((a, b) => b.after - a.after))
   console.log(`  ${row.wasVisible ? "vis" : "---"} -> ${row.nowVisible ? "VIS" : "---"}  ${String(row.before).padStart(3)}/${row.beforeImp.padEnd(6)} -> ${String(row.after).padStart(3)}/${row.afterImp.padEnd(6)} ${row.afterBasis.padEnd(13)} ${row.start} ${row.title.slice(0, 44)}`);
+console.log(`\ntotal publishable: before ${rows.filter((r) => r.wasVisible).length} -> after ${rows.filter((r) => r.nowVisible).length}`);
 const far = rows.filter((row) => row.beyondHorizon);
-console.log(`\nbeyond horizon: ${far.length} events | visible before ${far.filter((r) => r.wasVisible).length} -> after ${far.filter((r) => r.nowVisible).length}`);
+console.log(`beyond horizon: ${far.length} events | visible before ${far.filter((r) => r.wasVisible).length} -> after ${far.filter((r) => r.nowVisible).length}`);
 const band = far.filter((row) => isAnnouncedLongRange({
-  startDate: row.start, nearTermHorizon: horizon, demandRadiusKm: scope.demandRadiusKm,
-  scores: [{ importance: row.afterImp, impactBasis: row.afterBasis, distanceKm: row.distanceKm }],
+  startDate: row.start, endDate: row.end, nearTermHorizon: horizon, demandRadiusKm: scope.demandRadiusKm,
+  hasConfirmedDateAndLocation: row.confirmed,
+  scores: [{ importance: row.afterImp, impactBasis: row.afterBasis, distanceKm: row.distanceKm, assessment: row.assessment }],
 }));
 console.log(`\nannounced band (beyond horizon, assessed, not already visible): ${band.length}`);
 for (const row of band.sort((a, b) => b.after - a.after)) console.log(`   ${String(row.after).padStart(3)}/${row.afterImp.padEnd(6)} ${row.start} ${row.title.slice(0, 52)}`);

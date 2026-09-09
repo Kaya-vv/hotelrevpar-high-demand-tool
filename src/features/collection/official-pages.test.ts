@@ -28,3 +28,13 @@ it("rejects internal addresses and non-official redirects", () => {
     expect(officialHost(url, "https://organizer.example/")).toBe(false);
   }
 });
+
+it("follows observed hotel evidence before old date pages when demand is missing, within the same fetch budget", async () => {
+  const home = parseOfficialPage('<a href="/2027/dates">Future dates</a><a href="/hotels">Hotels</a><a href="https://untrusted.example/hotels">Hotels</a>', "https://organizer.example/");
+  const fetch = vi.fn(async (url: string) => url === home.url ? home : parseOfficialPage("Official accommodation information", url));
+  const result = await retrieveOfficialPages(home.url, "2027", fetch, ["https://organizer.example/2027/dates"], "", 2, "demand");
+  expect(result.pages.map(page => page.url)).toEqual([home.url, "https://organizer.example/hotels"]);
+  expect(fetch).toHaveBeenCalledTimes(2);
+  // Date discovery retains its existing preference; a hotel link is not demand evidence itself.
+  expect(announcementLink(home, "2027")).toBe("https://organizer.example/2027/dates");
+});

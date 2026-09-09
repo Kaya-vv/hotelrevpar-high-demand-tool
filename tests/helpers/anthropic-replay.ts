@@ -7,6 +7,36 @@ export type ReplayEntry = {
   message: unknown;
 };
 
+export type RecordedMessage = { params: MessageCreateParamsNonStreaming; response: unknown };
+
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  if (value && typeof value === "object") return `{${Object.entries(value).filter(([, item]) => item !== undefined)
+    .sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => `${JSON.stringify(key)}:${canonical(item)}`).join(",")}}`;
+  return JSON.stringify(value);
+}
+
+/** Exact recorded provider requests only. This validates deterministic downstream
+ * behavior, never the likelihood of a fresh search returning the same evidence. */
+export function replayRecordedAnthropic(entries: RecordedMessage[]) {
+  const remaining = structuredClone(entries);
+  const requests: MessageCreateParamsNonStreaming[] = [];
+  const integrityErrors: string[] = [];
+  const client = { messages: { create: async (request: MessageCreateParamsNonStreaming) => {
+    requests.push(structuredClone(request));
+    const index = remaining.findIndex(entry => canonical(entry.params) === canonical(request));
+    if (index < 0) {
+      const error = "No exact recorded provider request; replay cannot validate changed prompts, models, tools or input evidence.";
+      integrityErrors.push(error);
+      throw new Error(error);
+    }
+    return remaining.splice(index, 1)[0].response;
+  } } } as unknown as Anthropic;
+  return { client, requests, integrityErrors, assertComplete: () => {
+    if (integrityErrors.length || remaining.length) throw new Error(`Invalid replay: ${integrityErrors.length} unmatched requests, ${remaining.length} unused responses`);
+  } };
+}
+
 /** Offline orchestration regression only: old responses cannot validate new prompt behavior. */
 export function replayAnthropic(entries: ReplayEntry[]) {
   const remaining = [...entries];

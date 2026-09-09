@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { readAndEnqueueResearch, storedLongRangeResult } from "./market-research";
+import { readAndEnqueueResearch, storedLongRangeResult, processMarketWork } from "./market-research";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { createCollectionRepository } from "./repository";
 import { publishCollectionJob } from "./jobs";
 import { collectLongRange } from "./sources/long-range";
 import { createLongRangeStore } from "./long-range-store";
@@ -9,8 +11,21 @@ import fixture from "../../../tests/fixtures/the-match-repair.json";
 vi.mock("./jobs", () => ({ publishCollectionJob: vi.fn(async () => {}) }));
 vi.mock("./sources/long-range", () => ({ collectLongRange: vi.fn() }));
 vi.mock("./long-range-store", async (actual) => ({ ...await actual<object>(), createLongRangeStore: vi.fn() }));
+vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: vi.fn() }));
+vi.mock("./repository", () => ({ createCollectionRepository: vi.fn() }));
 
 describe("hotel refresh and shared research separation", () => {
+  it.each(["disabled", "enabled"])("applies the %s batch setting to background research too", async setting => {
+    vi.stubEnv("ANTHROPIC_BATCHES", setting);
+    const query = { select: vi.fn(), eq: vi.fn(), maybeSingle: vi.fn(async () => ({ data: { id: "account" }, error: null })) };
+    query.select.mockReturnValue(query); query.eq.mockReturnValue(query);
+    vi.mocked(createAdminClient).mockReturnValue({ from: () => query } as unknown as ReturnType<typeof createAdminClient>);
+    vi.mocked(createCollectionRepository).mockReturnValue({ loadContext: async () => ({ area: { searchLocation: "Eindhoven", radiusKm: 25, enabledSources: ["claude"] } }) } as unknown as ReturnType<typeof createCollectionRepository>);
+    try {
+      await processMarketWork({ kind: "market-research", accountId: "account", areaId: "area", runId: "run", requestedAt: "2026-09-09T12:00:00Z" });
+      expect(collectLongRange).toHaveBeenLastCalledWith(expect.objectContaining({ batching: { enabled: setting !== "disabled" } }));
+    } finally { vi.unstubAllEnvs(); vi.mocked(collectLongRange).mockClear(); }
+  });
   it("returns stored editions after durable enqueue without waiting for research", async () => {
     const state = { version: 2003, discoveredAt: null, leads: [fixture.lead] } as Parameters<typeof storedLongRangeResult>[0];
     const store = { load: vi.fn(async () => state) };

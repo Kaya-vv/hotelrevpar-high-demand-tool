@@ -88,10 +88,12 @@ export const fetchOfficialPage: PageFetcher = async (initial) => {
   throw new Error("Official page redirected too many times");
 };
 
-export function announcementLinks(page: OfficialPage, year: string, title = "") {
+export function announcementLinks(page: OfficialPage, year: string, title = "", purpose: "dates" | "demand" = "dates") {
+  const demandLink = (link: OfficialPage["links"][number]) => purpose === "demand" && /hotel|accommodation|accommodatie|overnacht|verblijf|travel|visitor|bezoeker/i.test(`${link.url} ${link.label}`);
   const score = (link: OfficialPage["links"][number]) => {
     const text = `${link.url} ${link.label}`.toLowerCase();
     return (text.includes(year) ? 30 : 0)
+      + (demandLink(link) ? 60 : 0)
       + (/future|upcoming|volgende|toekomst|save.the.date/.test(text) ? 20 : 0)
       + (/(?:^|[\s/_-])(?:about|over|prakti\w*|info\w*|dates|data)(?:$|[\s/_-])/.test(text) ? 10 : 0)
       + (/calendar|kalender|agenda|programma/.test(text) ? 5 : 0)
@@ -100,7 +102,7 @@ export function announcementLinks(page: OfficialPage, year: string, title = "") 
       - (/privacy|cookie|terms|login|contact|registration|aanmeld|participant|deelnem|vacanc/.test(text) ? 100 : 0)
       + (new URL(link.url).pathname.split("/")[1] === new URL(page.url).pathname.split("/")[1] ? 1 : 0);
   };
-  return page.links.filter((link) => score(link) >= 5).sort((a, b) => score(b) - score(a)).map((link) => link.url);
+  return page.links.filter((link) => score(link) >= 5).sort((a, b) => Number(demandLink(b)) - Number(demandLink(a)) || score(b) - score(a)).map((link) => link.url);
 }
 
 export const announcementLink = (page: OfficialPage, year: string) => announcementLinks(page, year)[0];
@@ -113,7 +115,7 @@ export function pageChunks(page: OfficialPage, size = 12_000) {
 }
 export const pageHash = (page: OfficialPage) => createHash("sha256").update(page.text).digest("hex");
 
-export async function retrieveOfficialPages(url: string, year: string, fetchPage: PageFetcher, remembered: string[] = [], title = "", limit = 4): Promise<{ pages: OfficialPage[]; errors: string[] }> {
+export async function retrieveOfficialPages(url: string, year: string, fetchPage: PageFetcher, remembered: string[] = [], title = "", limit = 4, purpose: "dates" | "demand" = "dates"): Promise<{ pages: OfficialPage[]; errors: string[] }> {
   const pages: OfficialPage[] = [];
   const queue = [...new Set([url, ...remembered])];
   const attempted = new Set<string>();
@@ -125,7 +127,10 @@ export async function retrieveOfficialPages(url: string, year: string, fetchPage
     try {
       const page = await fetchPage(target);
       pages.push(page);
-      queue.push(...announcementLinks(page, year, title).filter((link) => !attempted.has(link)));
+      const links = announcementLinks(page, year, title, purpose).filter((link) => !attempted.has(link));
+      // Missing demand facts need observed hotel/travel links before remembered date pages.
+      if (purpose === "demand") queue.unshift(...links);
+      else queue.push(...links);
     } catch (error) { errors.push(error instanceof Error ? error.message : String(error)); }
   }
   return { pages, errors };

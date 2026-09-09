@@ -59,6 +59,10 @@ describe("calendar query periods", () => {
 
   it("loads all pages for a full horizon and retains publication and hotel checks", async () => {
     for (let index = 0; index < 501; index++) addEvent(`event-${index}`, "2027-01-01");
+    // Nothing known about this event's pull: no grade basis and no demand assessment, so it is
+    // neither publishable nor announceable. (An evidenced proxy alone still publishes; see
+    // demand-assessment.test.ts.)
+    tables.hotel_event_scores[0].impact_basis = "default";
     tables.hotel_event_scores[0].demand_assessment = null;
     tables.hotel_event_scores[1].hotel_id = "other-hotel";
     tables.event_sources[2].primary_source_confirmed = false;

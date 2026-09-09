@@ -1,0 +1,200 @@
+{
+  "version": 1,
+  "reviewedAt": "2026-09-09",
+  "purpose": "Evaluation only. Never pass these expectations to collectors or use them to enrich candidates.",
+  "positives": [
+    {
+      "market": "utrecht",
+      "title": "Le Guess Who",
+      "match": "Le Guess Who",
+      "start": "2026-11-05",
+      "end": "2026-11-08"
+    },
+    {
+      "market": "utrecht",
+      "title": "SMFM Global Congress 2026",
+      "match": "SMFM",
+      "start": "2026-10-07",
+      "end": "2026-10-10"
+    },
+    {
+      "market": "utrecht",
+      "title": "TOPRA Symposium 2026",
+      "match": "TOPRA",
+      "start": "2026-10-19",
+      "end": "2026-10-21"
+    },
+    {
+      "market": "utrecht",
+      "title": "EuroVelo & Cycling Tourism Conference 2026",
+      "match": "EuroVelo",
+      "start": "2026-09-30",
+      "end": "2026-10-02"
+    },
+    {
+      "market": "utrecht",
+      "title": "ASICS NK Atletiek U18 & U20 2026",
+      "match": "ASICS NK",
+      "start": "2026-09-18",
+      "end": "2026-09-20"
+    },
+    {
+      "market": "utrecht",
+      "title": "Nederlands Film",
+      "match": "Nederlands Film",
+      "start": "2026-09-25",
+      "end": "2026-10-02"
+    },
+    {
+      "market": "utrecht",
+      "title": "(WoTS)",
+      "match": "(WoTS)",
+      "start": "2026-09-22",
+      "end": "2026-09-25"
+    },
+    {
+      "market": "utrecht",
+      "title": "BouwBeurs 2027",
+      "match": "BouwBeurs",
+      "start": "2027-02-01",
+      "end": "2027-02-05"
+    },
+    {
+      "market": "utrecht",
+      "title": "Festival Oude Muziek Utrecht 2027",
+      "match": "Festival Oude Muziek",
+      "start": "2027-08-27",
+      "end": "2027-09-05"
+    },
+    {
+      "market": "eindhoven",
+      "title": "MicroLED",
+      "match": "MicroLED",
+      "start": "2026-09-16",
+      "end": "2026-09-17"
+    },
+    {
+      "market": "eindhoven",
+      "title": "ASML Marathon",
+      "match": "ASML Marathon",
+      "start": "2026-10-10",
+      "end": "2026-10-11"
+    },
+    {
+      "market": "eindhoven",
+      "title": "GLOW",
+      "match": "GLOW",
+      "start": "2026-11-07",
+      "end": "2026-11-14"
+    },
+    {
+      "market": "eindhoven",
+      "title": "Dutch Design Week 2026",
+      "match": "Dutch Design Week 2026",
+      "start": "2026-10-17",
+      "end": "2026-10-25"
+    },
+    {
+      "market": "eindhoven",
+      "title": "Dutch Design Week 2027",
+      "match": "Dutch Design Week 2027",
+      "start": "2027-10-23",
+      "end": "2027-10-31"
+    },
+    {
+      "market": "eindhoven",
+      "title": "Fuzz Club Festival",
+      "match": "Fuzz Club Festival",
+      "start": "2027-05-21",
+      "end": "2027-05-22"
+    },
+    {
+      "market": "eindhoven",
+      "title": "Eindhoven Metal Meeting",
+      "match": "Eindhoven Metal Meeting",
+      "start": "2026-12-11",
+      "end": "2026-12-12"
+    },
+    {
+      "market": "eindhoven",
+      "title": "ITT Eindhoven",
+      "match": "ITT Eindhoven",
+      "start": "2027-03-19",
+      "end": "2027-03-21"
+    },
+    {
+      "market": "eindhoven",
+      "title": "World Swimming Trials",
+      "match": "World Swimming Trials",
+      "start": "2027-06-02",
+      "end": "2027-06-06"
+    },
+    {
+      "market": "eindhoven",
+      "title": "NK lange baan",
+      "match": "NK lange baan",
+      "start": "2027-06-03",
+      "end": "2027-06-06"
+    },
+    {
+      "market": "eindhoven",
+      "title": "BRIDGE Guitar",
+      "match": "BRIDGE Guitar",
+      "start": "2027-05-26",
+      "end": "2027-05-30"
+    },
+    {
+      "market": "eindhoven",
+      "title": "Dynamo Metalfest",
+      "match": "Dynamo Metalfest",
+      "start": "2027-08-13",
+      "end": "2027-08-15"
+    },
+    {
+      "market": "eindhoven",
+      "title": "Playgrounds 2027",
+      "match": "Playgrounds 2027",
+      "start": "2027-04-15",
+      "end": "2027-04-16"
+    },
+    {
+      "market": "eindhoven",
+      "title": "PSV - Shaktar",
+      "match": "PSV - Shaktar",
+      "start": "2026-09-10",
+      "end": "2026-09-10"
+    },
+    {
+      "market": "eindhoven",
+      "title": "PSV - Club Brugge",
+      "match": "PSV - Club Brugge",
+      "start": "2026-11-04",
+      "end": "2026-11-04"
+    },
+    {
+      "market": "eindhoven",
+      "title": "PSV - VfB",
+      "match": "PSV - VfB",
+      "start": "2027-01-27",
+      "end": "2027-01-27"
+    },
+    {
+      "market": "eindhoven",
+      "title": "PSV - Atlético Madrid (Champions League)",
+      "match": "PSV - Atlético",
+      "start": "2026-12-09",
+      "end": "2026-12-09"
+    }
+  ],
+  "negativePatterns": [
+    "Candlelight",
+    "Radio Party",
+    "Master Open Day",
+    "Bachelor Open Day",
+    "Titanique",
+    "Lichtjesroute",
+    "Otten Innovation",
+    "Lucinda",
+    "Dragons"
+  ]
+}

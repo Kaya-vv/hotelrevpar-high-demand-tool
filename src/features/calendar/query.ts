@@ -1,4 +1,4 @@
-import { hasHotelDemand, readDemandAssessment } from "@/features/events/demand-assessment";
+import { readDemandAssessment } from "@/features/events/demand-assessment";
 import { calendarBounds, type OverviewPeriod } from "./navigation";
 import { calendarExportDates } from "@/features/export/history";
 import { readEventEvidence } from "@/features/events/evidence";
@@ -6,6 +6,7 @@ import { eventLocalDate } from "@/features/events/normalize";
 import { createServerClient } from "@/lib/supabase/server";
 import {
   isAnnouncedLongRange,
+  isPublishableDemand,
   publishableReviewEventIds,
   type DemandLevel,
 } from "@/features/events/importance";
@@ -143,8 +144,10 @@ export async function getCalendarData(
           stayPressurePoints: score.stay_pressure_points,
           distanceKm: score.distance_km,
         }));
+      // The publish gate decides visibility. Requiring a graded demand assessment here hid every
+      // event scored from an evidenced proxy, independently of `isPublishableDemand`.
       const hotelScores = eventScores.filter((score) =>
-        hasHotelDemand(score.assessment) && score.assessment?.magnitude !== null
+        isPublishableDemand(score.importance, score.impactBasis)
       );
       const announced = isAnnouncedLongRange({
         startDate: eventLocalDate(event.start_at),

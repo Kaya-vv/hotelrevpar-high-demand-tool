@@ -20,7 +20,7 @@ vi.mock("server-only", () => ({}));
 vi.mock("@/lib/supabase/server", () => ({ createServerClient: vi.fn() }));
 vi.mock("../workspace/hotel-context", () => ({ getHotelScope: vi.fn() }));
 
-it.skipIf(!process.env.RESEARCH_LOCAL_KEY)("replays both production markets, enriches missing evidence, persists and checks calendar recall and exclusions", async () => {
+it.skipIf(!process.env.RESEARCH_LOCAL_KEY)("tests policy and persistence using manually enriched examples; does not validate Refresh discovery", async () => {
   const networkFetch = globalThis.fetch;
   vi.stubGlobal("fetch", (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : String(input));

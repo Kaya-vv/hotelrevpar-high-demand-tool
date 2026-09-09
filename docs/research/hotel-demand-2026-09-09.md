@@ -2,6 +2,32 @@
 
 Reviewed 9 September 2026. The benchmark phase used local replay only. Production rollout status is recorded below.
 
+## Status: the publication policy below was reverted on 9 September 2026
+
+Requiring `impact_basis = 'demand_rule'` for publication took every production calendar to zero:
+59 publishable events across eight hotels became 0. The cause was structural, not a threshold.
+The gate's required input is a `kind`-classified demand quote, and of 326 stored Claude source
+rows only 5 carried any demand fact at all, none with a `kind` or a `quantity`, while 204 events
+still carried the `ai_impact_points` the new scorer ignores. The 9/9 and 17/17 fixture results
+were produced by supplying those classifications by hand, so they could not detect the gap. The
+automatic runs measured 2/17, then 3/17, and production measured Utrecht 0/9 and The Match 0/17.
+
+What replaced it: the additive proxy scorer is restored, and this demand assessment is retained
+as an *upgrade* layer. Quoted evidence can raise a grade and, when `relevance` is `not_relevant`,
+lower one. Its absence never lowers anything, because a page that omits visitor origins is a gap
+in the source and not proof that nobody travels. `isPublishableDemand` accepts any basis other
+than `default`. Recalculation restored all 59 events exactly, hotel by hotel, at no provider cost.
+
+The same absence-penalty was removed from the collectors: `aiImpactPoints` and `overnightAudience
+` are no longer nulled when a page carries no quotable demand passage. That inversion scored a
+well-extracted event *below* one whose extraction failed entirely, which is the direct reason a
+fresh Utrecht run returned an empty calendar while The Match kept eleven events on the same code.
+Attendance keeps its edition-scope guard: a prior edition's crowd is not this edition's.
+
+The research below remains valid and useful, in particular the independently checked benchmark
+tables and the negative controls. The policy statements in "Policy implemented" no longer
+describe the shipped behaviour.
+
 ## Verdict
 
 Most of the substantive Eindhoven events are good hotel-planning candidates. Their old High/Peak labels are much less defensible. The replacement separates **hotel relevance**, **magnitude** and **confidence**. Unknown magnitude no longer means an empty calendar, either near term or a year ahead.
@@ -77,7 +103,7 @@ World Swimming Trials and the overlapping NK meet can appear as separate sourced
 
 Yes: a one-night concert can qualify. The rule accepts travelling fans or event-specific hotel accommodation; it does not impose a two-day minimum. The independently checked [André Rieu Christmas hotel package](https://valk.andrerieu.com/reis_onderdeel/arrangementen_mecc_matinee?category=HOTEL) is a holdout example, including a daytime concert with hotel check-in afterwards. Its unit test isolates duration, rather than pretending Maastricht is within either tested hotel's radius. A tribute using a famous artist's name does not qualify from that name alone.
 
-## Replay method and what the result proves
+## Policy fixture method and what the result proves
 
 Three frozen recordings are checked: the fresh Utrecht snapshot, Eindhoven captured 9 September, and Eindhoven captured 7 September at 18:21 UTC after run `cc948b15-d390-4856-bee2-b403c7020cbf` (started 17:41 UTC). The older recording contains 84 linked events. The latest contains 91; Utrecht contains 87.
 
@@ -85,11 +111,11 @@ The test uses isolated local Supabase, the real persistence/recalculation code, 
 
 **This is an evidence-enriched replay, not proof that a fresh model automatically discovers and extracts all benchmark evidence.** The date/location metadata is reviewer-adjudicated input; some source dates come from separate official passages. The demand quotes are checked against the reviewed excerpts. Do not pass the fixture off as recorded model output or as a production backfill script. The separate recorded Anthropic DDW replay tests exercise the collection response path.
 
-Acceptance requires all 9 Utrecht and 17 Eindhoven positives in the real calendar query, and zero selected negative controls visible. Controls cover 10 Utrecht rows and 12 Eindhoven rows per recording (the Eindhoven controls repeat across recordings). Additional unit tests cover cancellation, outside-radius events, local crowds, false quantities, camping, artist-name confusion, evidence comparability, and the 90-day boundary.
+The policy fixture requires all 9 Utrecht and 17 Eindhoven positives in the real calendar query, and zero selected negative controls visible. This is not Refresh acceptance: the fixture supplies evidence and even missing events. Controls cover 10 Utrecht rows and 12 Eindhoven rows per recording (the Eindhoven controls repeat across recordings). Additional unit tests cover cancellation, outside-radius events, local crowds, false quantities, camping, artist-name confusion, evidence comparability, and the 90-day boundary.
 
 Run `node scripts/replay-hotel-demand.mjs` with the isolated research database on port 54421 and the new migration applied. Run `node scripts/test-export-database.mjs` for workbook/transaction/RLS checks. Replay output is written to `refs/scoring-review/database-replay.json`; the portable result table is below.
 
-## Verified replay results
+## Verified policy fixture results, not automatic discovery results
 
 | Recording | Visible from original evidence under new rules | Researched positives visible | Negative controls visible |
 |---|---:|---:|---:|

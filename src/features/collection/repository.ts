@@ -33,6 +33,7 @@ import {
 } from "./run";
 import { shouldRefreshCanonical, sourceChange } from "./source-change";
 import { longRangeWindow } from "./sources/claude";
+import { isAggregatorUrl } from "./sources/long-range";
 
 const structuredUpdateProviders = new Set(["rijksoverheid", "openholidays", "ticketmaster", "predicthq", "footballdata"]);
 const automatedSourceStates = new Set<EventCandidate["sourceState"]>(["cancelled", "postponed", "removed"]);
@@ -196,22 +197,6 @@ export function createCollectionRepository(): CollectionRepository {
             .in("event_id", ids),
         )
         : [];
-      const scores = links.length
-        ? await fetchInBatches(
-          links.map((link) => link.event_id),
-          (ids) => supabase
-            .from("hotel_event_scores")
-            .select("event_id, suggested_importance, importance_override, impact_basis")
-            .eq("hotel_id", hotel.id)
-            .in("event_id", ids),
-        )
-        : [];
-      const visibleEventIds = new Set(scores.filter((score) =>
-        isPublishableDemand(
-          (score.importance_override ?? score.suggested_importance) as DemandLevel,
-          score.impact_basis,
-        )
-      ).map((score) => score.event_id));
       const currentAssessmentEventIds = new Set(
         claudeSources
           .filter((source) => source.assessment_version >= CLAUDE_ASSESSMENT_VERSION)
@@ -219,9 +204,8 @@ export function createCollectionRepository(): CollectionRepository {
       );
       const refreshSources = claudeSources.map((source) => ({
         ...source,
-        needs_reassessment:
-          visibleEventIds.has(source.event_id) &&
-          !currentAssessmentEventIds.has(source.event_id),
+        // Missing current evidence can itself hide the event. Visibility cannot gate repair.
+        needs_reassessment: !currentAssessmentEventIds.has(source.event_id),
       }));
       // Seeds come from every provider, not just Claude: the marathon may have entered the calendar
       // through PredictHQ and still carry an official page the evidence reviewer confirmed.
@@ -290,7 +274,7 @@ export function createCollectionRepository(): CollectionRepository {
           const title = storedEvent?.title;
           const source = confirmedSources.filter((source) => source.event_id === row.eventId && (source.public_source_url ?? source.source_url) === row.url).sort((a, b) => b.checked_at.localeCompare(a.checked_at))[0];
           const lastEditionStart = source ? eventLocalDate(source.extracted_start_at) : undefined;
-          return title ? [{ title, url: row.url, officialPages: [...new Set([row.url, ...confirmedSources.filter((source) => source.event_id === row.eventId).map((source) => source.public_source_url ?? source.source_url)])].filter((url) => /^https?:\/\//i.test(url)).slice(0, 4), lastEditionStart, lastEditionEnd: row.lastEditionEnd, historicalDemandPoints: row.historicalDemandPoints, ...(source?.extracted_location ? { previousLocation: { venue: storedEvent?.venue ?? null, text: source.extracted_location, sourceUrl: row.url, checkedAt: source.checked_at, evidence: readEventEvidence(source.evidence) } } : {}) }] : [];
+          return title ? [{ title, url: row.url, officialPages: [...new Set([row.url, ...confirmedSources.filter((source) => source.event_id === row.eventId).map((source) => source.public_source_url ?? source.source_url)])].filter((url) => /^https?:\/\//i.test(url) && !isAggregatorUrl(url)).slice(0, 4), lastEditionStart, lastEditionEnd: row.lastEditionEnd, historicalDemandPoints: row.historicalDemandPoints, ...(source?.extracted_location ? { previousLocation: { venue: storedEvent?.venue ?? null, text: source.extracted_location, sourceUrl: row.url, checkedAt: source.checked_at, evidence: readEventEvidence(source.evidence) } } : {}) }] : [];
         }),
         // Retain source history after an edition ends to discover future programmes.
         // These seed agendas only: checking old editions against a future window must not invalidate them.
@@ -724,7 +708,22 @@ export function createCollectionRepository(): CollectionRepository {
       if (areaLinkError) throw areaLinkError;
 
       for (const hotel of context.hotels) {
-        const score = scoreHotelEvent({ candidate, hotel, overlaps: [] });
+        // Stay pressure counts a concurrent, already-scored event. Dropping this read scored a
+        // recalculated event below the same event scored during a run.
+        const { data: storedScores, error: scoreReadError } = await supabase
+          .from("hotel_event_scores")
+          .select("impact_points, distance_points, stay_pressure_points, events!inner(start_at, end_at)")
+          .eq("hotel_id", hotel.id)
+          .neq("event_id", eventId)
+          .lte("events.start_at", candidate.endAt)
+          .gte("events.end_at", candidate.startAt);
+        if (scoreReadError) throw scoreReadError;
+        const overlaps = storedScores.map((score) => ({
+          startAt: score.events.start_at,
+          endAt: score.events.end_at,
+          preOverlapTotal: score.impact_points + score.distance_points + Math.min(10, score.stay_pressure_points),
+        }));
+        const score = scoreHotelEvent({ candidate, hotel, overlaps });
         const { error: scoreError } = await supabase.from("hotel_event_scores").upsert({
           hotel_id: hotel.id,
           event_id: eventId,
@@ -787,8 +786,21 @@ export function createCollectionRepository(): CollectionRepository {
             .in("event_id", unsupportedIds.slice(index, index + 50));
           if (error) throw error;
         }
+        // Two passes, matching a run: a base score without overlaps, then stay pressure measured
+        // against those bases. One pass understates every concurrent event.
+        const bases = new Map(candidates.map(({ eventId, candidate }) => [
+          eventId,
+          scoreHotelEvent({ candidate, hotel, overlaps: [] }),
+        ]));
         const rows = candidates.map(({ eventId, candidate }) => {
-          const score = scoreHotelEvent({ candidate, hotel, overlaps: [] });
+          const overlaps = candidates
+            .filter((other) => other.eventId !== eventId)
+            .map((other) => ({
+              startAt: other.candidate.startAt,
+              endAt: other.candidate.endAt,
+              preOverlapTotal: bases.get(other.eventId)?.total ?? 0,
+            }));
+          const score = scoreHotelEvent({ candidate, hotel, overlaps });
           return {
             hotel_id: hotel.id,
             event_id: eventId,

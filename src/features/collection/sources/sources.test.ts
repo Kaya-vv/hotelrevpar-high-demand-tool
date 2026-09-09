@@ -794,7 +794,9 @@ describe("source adapters", () => {
       title: "ASML Marathon Eindhoven",
       primarySourceConfirmed: true,
       aiImpactPoints: 60,
-      overnightAudience: null,
+      // The model's audience judgement is the proxy signal; a quote that omits visitor origins
+      // no longer erases it. Quoted evidence grades separately in `assessHotelDemand`.
+      overnightAudience: "international",
       attendance: 25_000,
       venueCapacity: 30_000,
     }]);

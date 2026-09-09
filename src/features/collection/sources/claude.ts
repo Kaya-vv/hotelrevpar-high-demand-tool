@@ -5,7 +5,7 @@ import type { MessageCreateParamsNonStreaming } from "@anthropic-ai/sdk/resource
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { geocodeCity, createLocationResolver } from "../research-location";
-import { fetchedDocumentText, eventFactsSchema, evidenceInstructions, verifyEventEvidence, supportedAudience } from "@/features/events/evidence";
+import { fetchedDocumentText, eventFactsSchema, evidenceInstructions, verifyEventEvidence } from "@/features/events/evidence";
 
 import type { DemandTriage, EvidenceReview } from "@/features/events/hotel-demand";
 import { meaningfulTokens, normalizeText, localParts, performanceTime } from "@/features/events/normalize";
@@ -386,16 +386,18 @@ export async function requestMessages(
   batching: Batching,
 ) {
   if (!batching.enabled) {
-    // Eight at a time, as before batching existed. Firing a 40-entry verification queue at once
-    // draws 429s, and a rate-limited run looks exactly like a run that found less.
-    const settled: PromiseSettledResult<Anthropic.Message>[] = [];
-    for (let index = 0; index < requests.length; index += 8) {
-      settled.push(...await Promise.allSettled(
-        requests.slice(index, index + 8).map((request) =>
-          requestPhase(phase, () => client.messages.create(request.params, request.options)),
-        ),
-      ));
-    }
+    // Keep eight requests active without making the next group wait for one slow page.
+    // Preserve result order and the existing concurrency limit that avoids provider 429s.
+    const settled: PromiseSettledResult<Anthropic.Message>[] = new Array(requests.length);
+    let next = 0;
+    await Promise.all(Array.from({ length: Math.min(8, requests.length) }, async () => {
+      while (next < requests.length) {
+        const index = next++;
+        const request = requests[index];
+        try { settled[index] = { status: "fulfilled", value: await requestPhase(phase, () => client.messages.create(request.params, request.options)) }; }
+        catch (reason) { settled[index] = { status: "rejected", reason }; }
+      }
+    }));
     return settled;
   }
   const results = await runAnthropicBatch(client, requests.map((request) => request.params), {
@@ -509,7 +511,7 @@ async function triageDiscoveries(input: {
       if (message.stop_reason === "max_tokens") {
         throw new Error("Claude triage reached its token limit.");
       }
-      const text = message.content.find((block) => block.type === "text")?.text;
+      const text = message.content.findLast((block) => block.type === "text")?.text;
       if (!text) throw new Error("Claude triage returned no structured output.");
       discoveryTriageSchema.parse(JSON.parse(text)).reviews.forEach((review) => {
         const candidate = input.candidates[review.index];
@@ -790,7 +792,7 @@ async function collectClaudeFresh(
       if (search.stop_reason === "max_tokens") {
         throw new Error("Claude discovery reached its token limit.");
       }
-      const text = search.content.find((block) => block.type === "text")?.text;
+      const text = search.content.findLast((block) => block.type === "text")?.text;
       if (!text) throw new Error(`Claude discovery returned no structured output (stop_reason: ${search.stop_reason}).`);
       const parsed = parseDiscovery(text, (reason) => recordDrop("Discovery response", "discovery", reason));
       parsedSearches += 1;
@@ -898,7 +900,7 @@ async function collectClaudeFresh(
       if (message.stop_reason === "max_tokens") {
         throw new Error("Claude agenda fetch reached its token limit.");
       }
-      const text = message.content.find((block) => block.type === "text")?.text;
+      const text = message.content.findLast((block) => block.type === "text")?.text;
       if (!text) throw new Error("Claude agenda fetch returned no structured output.");
       discovered.push(...parseDiscovery(text, (reason) => recordDrop("Discovery response", "discovery", reason)).candidates.slice(0, 10));
     } catch (error) {
@@ -1182,7 +1184,7 @@ async function collectClaudeFresh(
       if (message.stop_reason === "max_tokens") {
         throw new Error("Claude verification reached its token limit.");
       }
-      const text = message.content.find((block) => block.type === "text")?.text;
+      const text = message.content.findLast((block) => block.type === "text")?.text;
       if (!text) throw new Error("Claude verification returned no structured output.");
       const observed = fetchedUrls(message);
       const parsed = outputSchema.parse(normalizeEventResponse(JSON.parse(text)));
@@ -1257,11 +1259,17 @@ async function collectClaudeFresh(
       sourceState: event.status,
       certainty: "confirmed" as const,
       localRank: null,
+      // The model's own audience judgement is the proxy signal. Nulling it whenever a page
+      // carried no quotable demand passage made a well-extracted event score BELOW one whose
+      // extraction failed entirely, which is how Utrecht ended up with an empty calendar.
+      // Quoted evidence now grades separately in `assessHotelDemand`; it no longer gates this.
+      // Attendance stays guarded for a different reason: a prior edition's crowd is not this
+      // edition's, so it needs an edition-scope quote rather than merely any demand quote.
       attendance: event.evidence?.demand.some((fact) => fact.scope === "edition") ? event.attendance : null,
-      venueCapacity: event.evidence?.demand.length ? event.venueCapacity : null,
-      aiImpactPoints: event.evidence?.demand.length ? event.impactPoints : null,
+      venueCapacity: event.venueCapacity,
+      aiImpactPoints: event.impactPoints,
       assessmentVersion: CLAUDE_ASSESSMENT_VERSION,
-      overnightAudience: event.evidence?.demand.length ? supportedAudience(event.evidence, event.overnightAudience) : null,
+      overnightAudience: event.overnightAudience ?? null,
       evidenceText: event.evidenceText ?? event.evidence?.demand.map((fact) => fact.text).join(" ") ?? null,
       primarySourceConfirmed: event.primarySourceConfirmed,
     } satisfies EventCandidate;
@@ -1323,7 +1331,7 @@ export async function triagePredictHqCandidates(input: {
   const reviews: DemandTriage[] = [];
   messages.forEach((message, index) => {
     if (message.stop_reason === "max_tokens") throw new Error("Claude demand triage reached its token limit.");
-    const text = message.content.find((block) => block.type === "text")?.text;
+    const text = message.content.findLast((block) => block.type === "text")?.text;
     if (!text) throw new Error("Claude demand triage returned no structured output.");
     const parsed = demandTriageSchema.parse(JSON.parse(text));
     const expected = new Set(batches[index].map((candidate) => candidate.providerEventId));
@@ -1406,7 +1414,7 @@ export async function verifyPredictHqCandidates(input: {
   const reviews: EvidenceReview[] = messages.map((message, index) => {
     const candidate = candidates[index];
     if (message.stop_reason === "max_tokens") throw new Error("Claude demand verification reached its token limit.");
-    const text = message.content.find((block) => block.type === "text")?.text;
+    const text = message.content.findLast((block) => block.type === "text")?.text;
     if (!text) throw new Error("Claude demand verification returned no structured output.");
     const review = evidenceReviewSchema.parse(JSON.parse(text));
     const observed = sourceUrls(message);
@@ -1443,3 +1451,4 @@ export async function verifyPredictHqCandidates(input: {
     },
   };
 }
+
