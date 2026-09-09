@@ -149,6 +149,9 @@ export async function getCalendarData(
       const hotelScores = eventScores.filter((score) =>
         isPublishableDemand(score.importance, score.impactBasis)
       );
+      // Kept even when the publish gate hides the grade: the calendar's manual override
+      // updates this row.
+      const assessedScore = eventScores[0];
       const announced = isAnnouncedLongRange({
         startDate: eventLocalDate(event.start_at),
         endDate: eventLocalDate(event.end_at),
@@ -176,7 +179,8 @@ export async function getCalendarData(
         sources: publishedSources,
         hotelScores,
         announced,
-        demandAssessment: eventScores[0]?.assessment,
+        assessedScore,
+        demandAssessment: assessedScore?.assessment,
       };
     })
     .filter((event) => event.sources.length > 0)

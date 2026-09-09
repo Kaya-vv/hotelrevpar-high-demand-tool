@@ -6,7 +6,12 @@ import type { Json } from "@/lib/supabase/database.types";
 
 import type { SourceResult } from "./types";
 
-export const CLAUDE_ASSESSMENT_VERSION = 4;
+// 5 restores the impactPoints hotel-demand classification the verification prompt had stopped
+// asking for. Versions 3 and 4 were collected while the prompt said `impactPoints is null`, so
+// their rows carry no demand signal at all and must be re-assessed rather than treated as
+// current. Bumping also rotates the near-term cache key and the page-extraction version, and
+// reopens each market's research cycle through `assessmentUpgrade`.
+export const CLAUDE_ASSESSMENT_VERSION = 5;
 
 export type BatchedMessage = {
   message: Anthropic.Message;

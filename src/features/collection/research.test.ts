@@ -9,8 +9,8 @@ import { localDateBoundary, verifyEventEvidence, supportedAudience } from "../ev
 import { localParts, eventLocalDate } from "../events/normalize";
 import { scoreHotelEvent } from "../events/score";
 import { mapRevControlRows } from "../export/map-rows";
-import type { Lead, LongRangeState, LongRangeStore } from "./long-range-store";
-import { BatchPendingError, type BatchStore } from "./anthropic-batches";
+import { LONG_RANGE_VERSION, type Lead, type LongRangeState, type LongRangeStore } from "./long-range-store";
+import { BatchPendingError, CLAUDE_ASSESSMENT_VERSION, type BatchStore } from "./anthropic-batches";
 import productionDdw from "../../../tests/fixtures/production-ddw-extraction.json";
 import { eventFactsSchema, uniqueEvidenceEditions } from "../events/evidence";
 import { storedLongRangeResult } from "./market-research";
@@ -103,7 +103,7 @@ describe("coordinated long-range research", () => {
     expect(test.pageFetcher).toHaveBeenCalledTimes(1);
     expect(test.state().budget!.billedIds).toEqual(expect.arrayContaining(billed));
     expect(test.state().leads[0].editions.some((edition) => edition.providerEventId === confirmed)).toBe(true);
-    expect(Object.values(test.state().pageCache ?? {}).every((entry) => entry.version === 342027)).toBe(true);
+    expect(Object.values(test.state().pageCache ?? {}).every((entry) => entry.version === Number(`3${CLAUDE_ASSESSMENT_VERSION}2027`))).toBe(true);
     const afterUpgrade = test.create.mock.calls.length;
     await collectLongRange(test.input);
     expect(test.create).toHaveBeenCalledTimes(afterUpgrade);
@@ -123,7 +123,7 @@ describe("coordinated long-range research", () => {
     const calls = test.create.mock.calls.length;
     const result = await collectLongRange(test.input);
     expect(test.create.mock.calls.length).toBeGreaterThan(calls);
-    expect(test.state().version).toBe(2004);
+    expect(test.state().version).toBe(LONG_RANGE_VERSION * 1000 + CLAUDE_ASSESSMENT_VERSION);
     expect(test.state().budget!.spentEur).toBeGreaterThanOrEqual(spent);
     expect(test.state().budget!.billedIds).toEqual(expect.arrayContaining(billed));
     expect(result.candidates[0].evidence?.demand).toHaveLength(1);

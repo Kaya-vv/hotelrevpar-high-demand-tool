@@ -102,6 +102,27 @@ describe("CalendarView", () => {
     expect(screen.getAllByText("Handmatige inschatting").length).toBeGreaterThan(0);
   });
 
+  it("targets the hidden score row when an announced event has no publishable grade", () => {
+    render(
+      <CalendarView
+        month="2027-10"
+        events={[
+          {
+            ...events[0],
+            announced: true,
+            hotelScores: [],
+            assessedScore: { ...events[0].hotelScores[0], importance: "Medium" },
+          },
+        ]}
+        overrideImportanceAction={vi.fn()}
+      />,
+    );
+
+    expect(screen.getAllByText("Handmatige inschatting").length).toBeGreaterThan(0);
+    expect(document.querySelector("input[name='hotelId']")).toHaveValue("hotel-1");
+    expect(screen.getAllByLabelText(/Handmatige inschatting/)[0]).toHaveValue("Medium");
+  });
+
   it("keeps the month calendar as an alternate view with scores in the agenda", () => {
     render(<CalendarView month="2027-10" events={events} view="calendar" />);
     expect(screen.getByLabelText("Maand 2027-10")).toBeInTheDocument();

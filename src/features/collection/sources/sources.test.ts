@@ -11,7 +11,7 @@ import openHolidaysFixture from "../../../../tests/fixtures/openholidays.json";
 import predictHqFixture from "../../../../tests/fixtures/predicthq.json";
 import rijksoverheidFixture from "../../../../tests/fixtures/rijksoverheid.json";
 import ticketmasterFixture from "../../../../tests/fixtures/ticketmaster.json";
-import type { BatchRow, BatchStore } from "../anthropic-batches";
+import { CLAUDE_ASSESSMENT_VERSION, type BatchRow, type BatchStore } from "../anthropic-batches";
 import { LongRangeLeaseError } from "../long-range-store";
 import { searchAddresses, getAddressById } from "@/features/portfolio/geocode";
 import {
@@ -1527,7 +1527,7 @@ describe("source adapters", () => {
     expect(result.candidates[0]).toMatchObject({
       provider: "claude",
       sourceState: "cancelled",
-      assessmentVersion: 4,
+      assessmentVersion: CLAUDE_ASSESSMENT_VERSION,
     });
   });
 

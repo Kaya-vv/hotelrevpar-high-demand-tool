@@ -47,6 +47,11 @@ export type CalendarEvent = {
   endAt: string;
   sources: CalendarSource[];
   hotelScores: CalendarHotelScore[];
+  /**
+   * Score row backing `demandAssessment`, including grades the publish gate keeps out of
+   * `hotelScores`. A manual override targets this row.
+   */
+  assessedScore?: CalendarHotelScore;
   /** Confirmed beyond the near-term horizon, demand assessed but not yet gradeable. */
   announced?: boolean;
 };
@@ -100,6 +105,9 @@ function EventDetails({
   overrideImportanceAction?: (formData: FormData) => void | Promise<void>;
 }) {
   const score = event.hotelScores[0];
+  // Announced long-range events show an assessment without a publishable grade; the override
+  // still targets their hidden score row.
+  const overrideTarget = score ?? event.assessedScore;
   const primarySource = event.sources.find(
     (source) => source.primarySourceConfirmed && source.url
   );
@@ -170,13 +178,13 @@ function EventDetails({
                 </a>
               ))}
           </div>
-          {overrideImportanceAction && (
+          {overrideImportanceAction && overrideTarget && (
             <form action={overrideImportanceAction} className="score-override">
               <input type="hidden" name="eventId" value={event.id} />
-              <input type="hidden" name="hotelId" value={score.hotelId} />
+              <input type="hidden" name="hotelId" value={overrideTarget.hotelId} />
               <label>
                 Handmatige inschatting
-                <select name="importance" defaultValue={score.importance}>
+                <select name="importance" defaultValue={overrideTarget.importance}>
                   {demandLevels.map((level) => (
                     <option key={level} value={level}>
                       {demandLabels[level]}
