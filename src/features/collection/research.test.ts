@@ -5,7 +5,7 @@ import { collectClaudeCalendar, parseDiscovery } from "./sources/claude";
 import { parseOfficialPage } from "./official-pages";
 import { geocodeCity, createLocationResolver } from "./research-location";
 import { researchBudget } from "./research-budget";
-import { localDateBoundary, verifyEventEvidence, supportedAudience } from "../events/evidence";
+import { localDateBoundary, verifyEventEvidence } from "../events/evidence";
 import { localParts, eventLocalDate } from "../events/normalize";
 import { scoreHotelEvent } from "../events/score";
 import { mapRevControlRows } from "../export/map-rows";
@@ -140,7 +140,6 @@ describe("coordinated long-range research", () => {
     expect(evidence?.locationScope).toBe("citywide");
     expect(evidence?.demand).toHaveLength(1);
     expect(evidence?.demand[0]).toMatchObject({ scope: "series", year: null });
-    expect(supportedAudience(evidence, "international")).toBe("international");
   });
   it.each([
     "Upcoming Arts Week 2026 23-31 October\n2027 dates not announced",
@@ -341,32 +340,22 @@ describe("coordinated long-range research", () => {
     expect(verifyEventEvidence(venueFacts, sourceUrl, [page], now.toISOString(), { venue: "Rotterdam Ahoy", ownerType: "organizer" })?.venueAddress).toBeNull();
     expect(verifyEventEvidence(venueFacts, sourceUrl, [{ ...page, text: `${page.text}\nAndereweg 20 3084BA Rotterdam` }], now.toISOString(), { venue: "Rotterdam Ahoy", ownerType: "venue" })?.venueAddress).toBeNull();
   });
-  it("does not upgrade national visitor evidence to international audience", () => {
-    const evidence = verifyEventEvidence(facts, url, [{ url, text }], now.toISOString());
-    expect(supportedAudience(evidence, "national")).toBe("national");
-    expect(supportedAudience(evidence, "international")).toBeNull();
+  it("keeps a demand quote whose wording does not prove visitor origin", () => {
+    // The audience label is the model's own judgement; a quote that omits origin is a gap in the
+    // page, not grounds to discard the quote. Nothing here may silently drop it.
     const players = "The best international tennis players compete on this court.";
-    const unsupported = verifyEventEvidence({ ...facts, demand: [{ ...facts.demand[0], text: players }] }, url, [{ url, text: `${text} ${players}` }], now.toISOString());
-    expect(unsupported?.demand).toHaveLength(1); // Preserve the quote; it does not prove audience origin.
-    expect(supportedAudience(unsupported, "international")).toBeNull();
-    const worldwide = "The event attracts visitors from around the globe.";
-    const globalEvidence = verifyEventEvidence({ ...facts, demand: [{ ...facts.demand[0], text: worldwide }] }, url, [{ url, text: `${text} ${worldwide}` }], now.toISOString());
-    expect(supportedAudience(globalEvidence, "international")).toBe("international");
+    const branding = verifyEventEvidence({ ...facts, demand: [{ ...facts.demand[0], text: players }] }, url, [{ url, text: `${text} ${players}` }], now.toISOString());
+    expect(branding?.demand).toHaveLength(1);
+    expect(branding?.demand[0].text).toBe(players);
   });
-  it("accepts travelling competitors as audience evidence, not only spectators", () => {
+  it("accepts travelling competitors as demand evidence, not only spectators", () => {
     // The real World Swimming Trials evidence: a reach word and a participant noun, no spectator
     // noun and no headcount. Before the noun list matched the extraction filter this scored 69.
     const quote = "International swimmers travelling to Eindhoven for the championships fill the stands.";
     const evidence = verifyEventEvidence({ ...facts, demand: [{ ...facts.demand[0], text: quote }] },
       url, [{ url, text: `${text} ${quote}` }], now.toISOString());
     expect(evidence?.demand).toHaveLength(1);
-    expect(supportedAudience(evidence, "international")).toBe("international");
-
-    // The noun requirement still stands: reach wording alone must not carry an audience claim.
-    const cargo = "International freight travelling to Eindhoven arrives all week.";
-    const noAudience = verifyEventEvidence({ ...facts, demand: [{ ...facts.demand[0], text: cargo }] },
-      url, [{ url, text: `${text} ${cargo}` }], now.toISOString());
-    expect(supportedAudience(noAudience, "international")).toBeNull();
+    expect(evidence?.demand[0].text).toBe(quote);
   });
 
 

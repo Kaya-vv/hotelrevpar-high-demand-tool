@@ -77,6 +77,9 @@ function run(injected) {
     const score = scoreHotelEvent({ candidate, hotel: scope, overlaps });
     return { title: event.title, start: event.start_at.slice(0, 10), provider: candidate.provider,
       total: score.total, importance: score.suggestedImportance, basis: score.impactBasis,
+      impactPoints: score.impactPoints, distancePoints: score.distancePoints, stayPressurePoints: score.stayPressurePoints,
+      // `score.ts:217` caps at 69 — one below High — unless the overnight gate passes.
+      capped: score.impactPoints + score.distancePoints + score.stayPressurePoints > score.total,
       visible: isPublishableDemand(score.suggestedImportance, score.impactBasis) };
   });
 }
@@ -101,4 +104,14 @@ const best = grid.find((cell) => cell.points === 45 && cell.audience === "nation
 console.log(`\nEvents that become publishable at the mid value (45, national):`);
 for (const row of best.visible.sort((a, b) => b.total - a.total))
   console.log(`  ${String(row.total).padStart(3)}/${row.importance.padEnd(4)} ${row.basis.padEnd(14)} ${row.start} ${row.title.slice(0, 52)}`);
+
+// Where do the points actually come from, and does the 69 cap trip?
+for (const audience of ["national", null]) {
+  console.log(`\n=== breakdown at points=45, audience=${audience ?? "null"} (claude rows only) ===`);
+  console.log("  impact + dist + stay = raw -> total  cap? importance  event");
+  for (const row of run({ points: 45, audience }).filter((r) => r.provider === "claude").sort((a, b) => b.total - a.total).slice(0, 10)) {
+    const raw = row.impactPoints + row.distancePoints + row.stayPressurePoints;
+    console.log(`  ${String(row.impactPoints).padStart(6)} + ${String(row.distancePoints).padStart(4)} + ${String(row.stayPressurePoints).padStart(4)} = ${String(raw).padStart(3)} -> ${String(row.total).padStart(3)}  ${row.capped ? "CAP " : "    "} ${row.importance.padEnd(6)} ${row.title.slice(0, 44)}`);
+  }
+}
 await server.close();

@@ -117,15 +117,6 @@ function supportedQuantity(fact: EventEvidence["demand"][number]) {
   return q;
 }
 
-/** Legacy audience labels require both a traveller noun and origin evidence. */
-export function supportedAudience(evidence: EventEvidence | undefined, audience: EventCandidate["overnightAudience"]) {
-  if (!evidence || !audience || (audience === "none" || audience === "regional")) return audience ?? null;
-  return evidence.demand.some((fact) => /visitor|bezoek|audience|publiek|attend|delegate|deelnemer|exhibitor|exposant|liefhebber|enthusiast|music lover|\bfans\b|athlete|atleet|zwemmer|swimmer|competitor|deelnemend|renner|rider|speler|player|\bteams?\b/i.test(fact.text)
-    && (audience === "international"
-      ? /countries|landen|abroad|buitenland|(?:around|across|all over) the (?:world|globe)|wereldwijd|over de hele wereld/i.test(fact.text) || (/international|internationa/i.test(fact.text) && /travell?ing|reizen|afkomstig/i.test(fact.text))
-      : /national|nationaal|countries|landen|abroad|buitenland|travell?ing|overnacht|overnight|hotel|accommodation|across.*netherlands/i.test(fact.text))) ? audience : null;
-}
-
 export function hasDemandEvidence(candidate: Pick<EventCandidate, "evidence">) {
   return Boolean(candidate.evidence?.demand.some((fact) => fact.comparable && fact.text && fact.sourceUrl));
 }
