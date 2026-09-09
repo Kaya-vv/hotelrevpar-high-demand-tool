@@ -44,10 +44,10 @@ async function addEvent(level = "High") {
   const id = randomUUID(); eventIds.push(id);
   check(await db.from("events").insert({ id, normalized_identity: id, title: id, category: "concert", start_at: "2027-06-10T12:00:00+02:00", end_at: "2027-06-10T23:00:00+02:00", certainty: "confirmed" }));
   check(await db.from("account_events").insert({ account_id: accountId, event_id: id, state: "active" }));
-  check(await db.from("event_sources").insert({ event_id: id, provider: "claude", provider_event_id: id, source_url: "https://arena.example/events", public_source_url: "https://arena.example/events", extracted_title: id, extracted_start_at: "2027-06-10T12:00:00+02:00", source_state: "active", certainty: "confirmed", primary_source_confirmed: true }));
+  check(await db.from("event_sources").insert({ event_id: id, provider: "claude", provider_event_id: id, source_url: "https://arena.example/events", public_source_url: "https://arena.example/events", extracted_title: id, extracted_start_at: "2027-06-10T12:00:00+02:00", source_state: "active", certainty: "confirmed", primary_source_confirmed: true, evidence: { dateText: "10 June 2027", locationText: "Eindhoven", hostCity: "Eindhoven", locationScope: "venue", continuous: false, majorCompetition: false, demand: [], dateSourceUrl: "https://arena.example/events", checkedAt: "2026-09-09" } }));
   const areas = check(await db.from("collection_areas").select("id").eq("account_id", accountId)).data!;
   check(await db.from("account_event_areas").insert(areas.map((area) => ({ account_id: accountId, event_id: id, collection_area_id: area.id }))));
-  check(await db.from("hotel_event_scores").insert([hotelId, secondHotel].map((hotel) => ({ hotel_id: hotel, event_id: id, distance_km: 1, impact_points: 45, distance_points: 20, stay_pressure_points: 0, total: 65, suggested_importance: level, impact_basis: "ai_assessment" }))));
+  check(await db.from("hotel_event_scores").insert([hotelId, secondHotel].map((hotel) => ({ hotel_id: hotel, event_id: id, distance_km: 1, impact_points: 45, distance_points: 20, stay_pressure_points: 0, total: 65, suggested_importance: level, impact_basis: "demand_rule", demand_assessment: { version: 1, relevance: "supported", magnitude: level, confidence: "high", reasons: [], sourceUrls: [] } }))));
   return id;
 }
 const input = (id: string, mode: "new" | "selected" | "all" = "new"): ExportRequest => ({ requestKey: randomUUID(), from: "2027-01-01", to: "2027-12-31", hotelIds: [hotelId], mode, selectedPairs: mode === "selected" ? [`${hotelId}:${id}`] : [], choices: [] });
@@ -115,6 +115,14 @@ describe.skipIf(!enabled)("export transactions in isolated local Supabase", () =
     } })).rejects.toMatchObject({ code: "P0001" });
     expect(check(await db.from("export_batches").select("id").eq("request_key", request.requestKey)).data).toEqual([]);
     expect(check(await db.from("hotel_event_exports").select("event_id").eq("hotel_id", hotelId).eq("event_id", id)).data).toEqual([]);
+  });
+  it("rejects an export when demand support disappears during workbook generation", async () => {
+    const id = await addEvent(); const request = input(id);
+    await expect(createExport(request, { ...deps(id), build: async (rows) => {
+      check(await db.from("hotel_event_scores").update({ demand_assessment: null }).eq("event_id", id));
+      return buildRevControlWorkbook(rows);
+    } })).rejects.toMatchObject({ code: "P0001" });
+    expect(check(await db.from("export_batches").select("id").eq("request_key", request.requestKey)).data).toEqual([]);
   });
   it("carries first-export claims through manual merges and confirmed source reassignment", async () => {
     const old = await addEvent(), target = await addEvent(), automatic = await addEvent();

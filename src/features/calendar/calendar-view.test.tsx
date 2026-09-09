@@ -9,6 +9,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
 const events: CalendarEvent[] = [
   {
     id: "event-1",
+    demandAssessment: { version: 1, relevance: "probable", magnitude: "High", confidence: "medium", reasons: ["Reizend publiek met een meerdaags programma."], sourceUrls: ["https://example.com/ddw"] },
     title: "Dutch Design Week",
     category: "festival",
     venue: "Klokgebouw",
@@ -73,17 +74,17 @@ describe("CalendarView", () => {
     expect(
       screen.getByRole("region", { name: "Vraagmomenten met scores" })
     ).toBeInTheDocument();
-    expect(screen.getByText("78")).toBeVisible();
+    expect(screen.queryByText("78")).not.toBeInTheDocument();
     expect(screen.getByText("bevestigde vraagmomenten")).toBeVisible();
     expect(screen.getAllByText("Dutch Design Week").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Hoog").length).toBeGreaterThan(0);
     expect(
-      screen.getByText(/berekeningsbasis: attendance/i)
+      screen.getByText(/Omvang: Hoog/)
     ).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: /bekijk evenement/i })
     ).toHaveAttribute("href", "https://example.com/ddw");
-    expect(screen.getByText("60 punten")).toBeInTheDocument();
+    expect(screen.queryByText("60 punten")).not.toBeInTheDocument();
     expect(screen.queryByText("Verhoogd")).not.toBeInTheDocument();
     expect(screen.queryByText("Laag")).not.toBeInTheDocument();
     expect(screen.queryByText("Handmatige inschatting")).not.toBeInTheDocument();
@@ -106,7 +107,7 @@ describe("CalendarView", () => {
     expect(screen.getByLabelText("Maand 2027-10")).toBeInTheDocument();
     expect(
       screen.getByLabelText("Gebeurtenissen deze maand")
-    ).toHaveTextContent("78");
+    ).toHaveTextContent("Hoog");
   });
 
   it("shows a hotel-friendly update status and refreshes an active collection", () => {

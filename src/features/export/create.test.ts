@@ -6,7 +6,7 @@ import { mapRevControlRows } from "./map-rows";
 import type { ExportEvent } from "./types";
 
 const hotelA = randomUUID(), hotelB = randomUUID();
-const makeEvent = (id = randomUUID()): ExportEvent => ({ id, title: "Concert", startAt: "2027-01-10T12:00:00+01:00", endAt: "2027-01-10T23:00:00+01:00", status: "active", hotels: [hotelA, hotelB].map((id) => ({ id, code: id === hotelA ? "A" : "B", importance: "High", impactBasis: "ai_assessment", available: true })) });
+const makeEvent = (id = randomUUID()): ExportEvent => ({ id, title: "Concert", startAt: "2027-01-10T12:00:00+01:00", endAt: "2027-01-10T23:00:00+01:00", status: "active", hotels: [hotelA, hotelB].map((id) => ({ id, code: id === hotelA ? "A" : "B", importance: "High", impactBasis: "demand_rule", available: true })) });
 const request = (): ExportRequest => ({ requestKey: randomUUID(), from: "2026-09-01", to: "2027-12-31", hotelIds: [hotelA, hotelB], mode: "new", selectedPairs: [], choices: [] });
 
 describe("incremental hotel exports", () => {

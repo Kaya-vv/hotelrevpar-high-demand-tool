@@ -1,3 +1,4 @@
+import { hasHotelDemand, readDemandAssessment } from "@/features/events/demand-assessment";
 import { calendarBounds, type OverviewPeriod } from "./navigation";
 import { calendarExportDates } from "@/features/export/history";
 import { readEventEvidence } from "@/features/events/evidence";
@@ -5,7 +6,6 @@ import { eventLocalDate } from "@/features/events/normalize";
 import { createServerClient } from "@/lib/supabase/server";
 import {
   isAnnouncedLongRange,
-  isPublishableDemand,
   publishableReviewEventIds,
   type DemandLevel,
 } from "@/features/events/importance";
@@ -137,13 +137,14 @@ export async function getCalendarData(
           importance: (score.importance_override ??
             score.suggested_importance) as DemandLevel,
           impactBasis: score.impact_basis,
+          assessment: readDemandAssessment(score.demand_assessment),
           impactPoints: score.impact_points,
           distancePoints: score.distance_points,
           stayPressurePoints: score.stay_pressure_points,
           distanceKm: score.distance_km,
         }));
       const hotelScores = eventScores.filter((score) =>
-        isPublishableDemand(score.importance, score.impactBasis)
+        hasHotelDemand(score.assessment) && score.assessment?.magnitude !== null
       );
       const announced = isAnnouncedLongRange({
         startDate: eventLocalDate(event.start_at),
@@ -172,6 +173,7 @@ export async function getCalendarData(
         sources: publishedSources,
         hotelScores,
         announced,
+        demandAssessment: eventScores[0]?.assessment,
       };
     })
     .filter((event) => event.sources.length > 0)
@@ -241,7 +243,7 @@ export async function getReviewData(accountId: string) {
       ? await fetchInBatches(reviewEventIds, (ids) =>
           supabase
             .from("hotel_event_scores")
-            .select("event_id, suggested_importance, importance_override, impact_basis")
+            .select("event_id, suggested_importance, importance_override, impact_basis, demand_assessment")
             .in("event_id", ids)
             .eq("hotel_id", selectedHotelId)
         )

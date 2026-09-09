@@ -18,11 +18,13 @@ export const eventFactsSchema = z.object({
   majorCompetition: z.boolean(),
   demand: z.array(z.object({
     sourceUrl: z.url(), text: z.string(),
+    kind: z.enum(["hotel_stay", "travelling_audience", "national_competition", "international_fixture", "destination_event", "trade_fair", "local_audience", "camping", "attendance"]).optional(),
+    quantity: z.object({ value: z.number().positive(), unit: z.enum(["people", "hotel_rooms", "visits", "capacity"]), period: z.enum(["per_day", "per_night", "whole_event"]) }).nullable().optional(),
     scope: z.enum(["edition", "series", "historical"]),
     year: z.number().int().nullable(),
     comparable: z.boolean(),
     applicability: z.string().nullable().optional(),
-  })).max(4),
+  })),
 });
 export type EventEvidence = z.infer<typeof eventFactsSchema> & {
   history?: { checkedAt: string; startAt: string; endAt: string; status: string; dateText: string; dateSourceUrl: string }[];
@@ -33,7 +35,7 @@ export type EventEvidence = z.infer<typeof eventFactsSchema> & {
   locationAddressEvidence?: { sourceUrl: string; text: string; checkedAt: string };
 };
 
-export const evidenceInstructions = `Return facts separately from conclusions. announcedAt is the official announcement publication date in YYYY-MM-DD, only when announcementText quotes it from announcementSourceUrl; it is NEVER the event date or fetch date. Return null when unknown. aliases may contain official alternative series names only when identityText quotes their explicit relationship on the fetched page; sharing a venue or calendar is not an alias. facts.dateText and facts.locationText must be verbatim passages from the fetched sourceUrl (or locationSourceUrl for location) supporting the edition's dates and host location. Set venueAddress only to the physical event venue address supported by locationText, not an organiser office address. On the host venue's own event page, its contact address can establish the venue's physical address: include that address verbatim in locationText and venueAddress. Set hostCity only to the officially named city, never the search city or organiser's postal city. Include the host city in locationText, or use hostCityText for a separate verbatim passage from the same location source that identifies the event's host city when the venue or citywide description does not repeat it. Use locationScope citywide only for an explicitly citywide event. Set continuous only for one continuous edition, not separate performances or registration dates. Set majorCompetition only for an evidenced national/international championship or confirmed major fixture. Each facts.demand item must contain a verbatim supporting passage and its actually fetched official sourceUrl. Use scope edition for this edition, series for the official description of the ongoing series, historical for a prior edition and specify its year. Historical/series facts may support an assessment ONLY when the same series, host location and format are demonstrably comparable; comparable=false if uncertain. For series/historical scope, applicability must explain the evidence connecting the same series, host location and format; do not claim comparability without those facts. Never put prior attendance in attendance or infer audience origin from international performers. Do not treat online events, registration/application periods, deadlines or generic competition windows as physical events. Keep official dates with unknown location (empty locationText, hostCity null, locationScope unknown) or demand and return an empty demand array and null impactPoints/overnightAudience. Research comparable official audience, hotel/travel or venue-configuration information when date evidence alone is insufficient.`;
+export const evidenceInstructions = `Classify each demand quote using kind: hotel_stay ONLY for event-specific hotel room blocks, packages or participant accommodation services, never generic hotel footers or camping tents. travelling_audience requires origin/travel of visitors, delegates, exhibitors or teams, NOT artists or international branding. national_competition requires national participation/qualification; international_fixture requires a confirmed international away team fixture. destination_event requires an established destination festival with comparable visitor origin or substantial visitor scale, not duration alone. trade_fair requires substantial exhibitors travelling for a continuous trade programme. local_audience requires explicit local/regional audience. camping alone does not establish hotel demand. attendance describes audience. quantity must quote a count with its unit (people, visits, hotel_rooms, capacity) and period (per_day, per_night, whole_event); do not confuse seats, countries, years or cumulative visits with people. Return null when not explicit. A single-night concert qualifies through travelling fans or event hotel stays, never an artist name alone. Keep confirmed relevant events with unknown magnitude. Return facts separately from conclusions. announcedAt is the official announcement publication date in YYYY-MM-DD, only when announcementText quotes it from announcementSourceUrl; it is NEVER the event date or fetch date. Return null when unknown. aliases may contain official alternative series names only when identityText quotes their explicit relationship on the fetched page; sharing a venue or calendar is not an alias. facts.dateText and facts.locationText must be verbatim passages from the fetched sourceUrl (or locationSourceUrl for location) supporting the edition's dates and host location. Set venueAddress only to the physical event venue address supported by locationText, not an organiser office address. On the host venue's own event page, its contact address can establish the venue's physical address: include that address verbatim in locationText and venueAddress. Set hostCity only to the officially named city, never the search city or organiser's postal city. Include the host city in locationText, or use hostCityText for a separate verbatim passage from the same location source that identifies the event's host city when the venue or citywide description does not repeat it. Use locationScope citywide only for an explicitly citywide event. Set continuous only for one continuous edition, not separate performances or registration dates. Set majorCompetition only for an evidenced national/international championship or confirmed major fixture. Each facts.demand item must contain a verbatim supporting passage and its actually fetched official sourceUrl. Use scope edition for this edition, series for the official description of the ongoing series, historical for a prior edition and specify its year. Historical/series facts may support an assessment ONLY when the same series, host location and format are demonstrably comparable; comparable=false if uncertain. For series/historical scope, applicability must explain the evidence connecting the same series, host location and format; do not claim comparability without those facts. Never put prior attendance in attendance or infer audience origin from international performers. Do not treat online events, registration/application periods, deadlines or generic competition windows as physical events. Keep official dates with unknown location (empty locationText, hostCity null, locationScope unknown) or demand and return an empty demand array and null impactPoints/overnightAudience. Research comparable official audience, hotel/travel or venue-configuration information when date evidence alone is insufficient.`;
 
 // HTML typography and model JSON may use different quote glyphs for the same passage.
 const plain = (text: string) => text.normalize("NFKC").replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/\s+/g, " ").trim().toLowerCase();
@@ -81,8 +83,9 @@ export function verifyEventEvidence(
     ...(!locationSupported ? { locationText: "", hostCity: null, locationScope: "unknown" as const } : {}),
     ...(facts.locationScope === "citywide" && !citywideSupported ? { locationScope: "unknown" as const } : {}),
     demand: facts.demand.filter((fact) => supported(fact.sourceUrl, fact.text)
-      && /visitor|bezoek|audience|publiek|attend|deelnemer|delegate|exhibitor|exposant|capacity|capaciteit|overnacht|hotel|accommo|overnight|travell?ing|liefhebber|enthusiast|music lover|\bfans\b|world championship|wereldkampioenschap|national championship|nationaal kampioenschap|kwalificatietoernooi/i.test(fact.text)
-      && fact.comparable && (fact.scope === "edition" || (fact.applicability?.trim().length ?? 0) >= 12) && (fact.scope !== "historical" || fact.year !== null)),
+
+      && fact.comparable && (fact.scope === "edition" || (fact.applicability?.trim().length ?? 0) >= 12) && (fact.scope !== "historical" || fact.year !== null))
+      .map((fact) => ({ ...fact, quantity: supportedQuantity(fact) })),
   };
   // Reuse an unambiguous address from the host venue's own fetched page, not an organiser office.
   if (!evidence.venueAddress && evidence.locationScope === "venue" && evidence.hostCity && identity?.ownerType === "venue" && identity.venue) {
@@ -99,18 +102,27 @@ export function verifyEventEvidence(
   return evidence;
 }
 
-/**
- * A demand fact only supports a national/international audience claim when it names who travels
- * AND how far. The noun list mirrors the extraction filter above, which already accepts
- * exhibitors, and adds competitors: a swimmer qualifying for a world championship travels and
- * sleeps over by definition, and omitting that vocabulary silently capped every championship
- * whose evidence described participants rather than spectators.
- */
+function supportedQuantity(fact: EventEvidence["demand"][number]) {
+  const q = fact.quantity;
+  if (!q) return null;
+  const count = String(q.value).split("").join("[., ]?");
+  const noun = q.unit === "people" ? "visitors?|bezoekers?|attendees|deelnemers?|delegates?|fans|atleten|participants?"
+    : q.unit === "hotel_rooms" ? "hotel rooms?|hotelkamers?|rooms?|kamers?"
+    : q.unit === "visits" ? "visits|bezoeken" : "seats|zitplaatsen|capacity|capaciteit";
+  // Preserve units. 52 countries, 2027 edition and 2,000 seats are not attendee counts.
+  const counted = new RegExp(`\\b${count}\\s+(?:${noun})\\b|\\b(?:${noun})\\s+(?:(?:was|were|is|was er|waren er|:|of)\\s+)?${count}\\b`, "i");
+  if (!counted.test(fact.text)) return null;
+  if (q.period === "per_night" && !/per night|each night|per nacht|iedere nacht/i.test(fact.text)) return null;
+  if (q.period === "per_day" && !/per day|each day|daily|per dag|dagelijks/i.test(fact.text)) return null;
+  return q;
+}
+
+/** Legacy audience labels require both a traveller noun and origin evidence. */
 export function supportedAudience(evidence: EventEvidence | undefined, audience: EventCandidate["overnightAudience"]) {
   if (!evidence || !audience || (audience === "none" || audience === "regional")) return audience ?? null;
   return evidence.demand.some((fact) => /visitor|bezoek|audience|publiek|attend|delegate|deelnemer|exhibitor|exposant|liefhebber|enthusiast|music lover|\bfans\b|athlete|atleet|zwemmer|swimmer|competitor|deelnemend|renner|rider|speler|player|\bteams?\b/i.test(fact.text)
     && (audience === "international"
-      ? /international|internationa|countries|landen|abroad|buitenland|(?:around|across|all over) the (?:world|globe)|wereldwijd|over de hele wereld/i.test(fact.text)
+      ? /countries|landen|abroad|buitenland|(?:around|across|all over) the (?:world|globe)|wereldwijd|over de hele wereld/i.test(fact.text) || (/international|internationa/i.test(fact.text) && /travell?ing|reizen|afkomstig/i.test(fact.text))
       : /national|nationaal|countries|landen|abroad|buitenland|travell?ing|overnacht|overnight|hotel|accommodation|across.*netherlands/i.test(fact.text))) ? audience : null;
 }
 

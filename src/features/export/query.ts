@@ -54,7 +54,7 @@ export async function loadExportEvents(accountId: string, range: ExportRange, se
   const [exportEvents, scores, links, sources] = eventIds.length
     ? await Promise.all([
         fetchInBatches(eventIds, (ids) => supabase.from("events").select("id, title, start_at, end_at, certainty, source_state").in("id", ids)),
-        fetchInBatches(eventIds, (ids) => supabase.from("hotel_event_scores").select("event_id, hotel_id, suggested_importance, importance_override, impact_basis, distance_km").in("event_id", ids).in("hotel_id", selectedHotelIds)),
+        fetchInBatches(eventIds, (ids) => supabase.from("hotel_event_scores").select("event_id, hotel_id, suggested_importance, importance_override, impact_basis, distance_km, demand_assessment").in("event_id", ids).in("hotel_id", selectedHotelIds)),
         areaIds.length
           ? fetchInBatches(areaIds, (ids) => supabase.from("account_event_areas").select("event_id, collection_area_id").eq("account_id", accountId).in("collection_area_id", ids))
           : Promise.resolve([]),
@@ -103,7 +103,7 @@ export async function loadExportEvents(accountId: string, range: ExportRange, se
             const evidence = readEventEvidence(source.evidence);
             return Boolean(evidence?.dateText && evidence.locationText);
           }),
-          scores: [{ importance, impactBasis: score.impact_basis, distanceKm: score.distance_km }],
+          scores: [{ importance, impactBasis: score.impact_basis, distanceKm: score.distance_km, assessment: score.demand_assessment }],
         });
         const claim = claims.find((claim) => claim.event_id === event.id && claim.hotel_id === hotel.id);
         return { id: hotel.id, code: hotelCodes.get(hotel.id)!, importance, impactBasis: score.impact_basis,

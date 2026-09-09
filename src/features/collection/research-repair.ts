@@ -1,14 +1,16 @@
-import { hasDemandEvidence } from "../events/evidence";
+import { assessHotelDemand } from "../events/demand-assessment";
 import { eventLocalDate } from "../events/normalize";
 import type { EventCandidate } from "../events/types";
 import type { Lead } from "./long-range-store";
+import { CLAUDE_ASSESSMENT_VERSION } from "./anthropic-batches";
 
-export const REPAIR_VERSION = 1;
+export const REPAIR_VERSION = 2;
 
 export function needsDemandResearch(event: EventCandidate) {
-  return !hasDemandEvidence(event) || ((event.aiImpactPoints ?? 0) >= 45
-    && !["national", "international"].includes(event.overnightAudience ?? "")
-    && (event.attendance ?? 0) < 5_000 && (event.venueCapacity ?? 0) < 10_000);
+  if (event.sourceState !== "active") return false;
+  // Location resolution has its own stage and runs after extraction. Assess only
+  // the demand facts here, so a missing geocode does not trigger paid research.
+  return assessHotelDemand(event).relevance === "unresolved";
 }
 
 /** Compatibility repair is independent from normal weekly monitoring. */
@@ -16,7 +18,8 @@ export function scheduleEvidenceRepair(lead: Lead, now: string, end: string) {
   if (lead.outcome === "conflict" || lead.repair?.version === REPAIR_VERSION) return;
   const incomplete = lead.editions.some((event) => eventLocalDate(event.endAt) >= now.slice(0, 10)
     && eventLocalDate(event.startAt) <= end
-    && Math.max(event.aiImpactPoints ?? 0, lead.historicalDemandPoints ?? 0) >= 45
+    && event.sourceState === "active"
+    && event.assessmentVersion !== CLAUDE_ASSESSMENT_VERSION
     && (!event.evidence?.dateText || !event.evidence.locationText || !event.evidence.hostCity || needsDemandResearch(event)));
   if (incomplete) lead.repair = { version: REPAIR_VERSION, dueAt: lead.nextCheck < now ? lead.nextCheck : now };
 }

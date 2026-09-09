@@ -73,8 +73,10 @@ export type ValidationOutcome = {
 };
 
 export type DemandScore = {
+  assessment: import("./demand-assessment").DemandAssessment;
   impactPoints: number;
   impactBasis:
+    | "demand_rule"
     | "local_rank"
     | "attendance"
     | "venue_capacity"

@@ -6,7 +6,7 @@ import type { Json } from "@/lib/supabase/database.types";
 
 import type { SourceResult } from "./types";
 
-export const CLAUDE_ASSESSMENT_VERSION = 3;
+export const CLAUDE_ASSESSMENT_VERSION = 4;
 
 export type BatchedMessage = {
   message: Anthropic.Message;

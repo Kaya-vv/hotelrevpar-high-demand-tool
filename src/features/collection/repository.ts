@@ -724,20 +724,7 @@ export function createCollectionRepository(): CollectionRepository {
       if (areaLinkError) throw areaLinkError;
 
       for (const hotel of context.hotels) {
-        const { data: storedScores, error: scoreReadError } = await supabase
-          .from("hotel_event_scores")
-          .select("impact_points, distance_points, stay_pressure_points, events!inner(start_at, end_at)")
-          .eq("hotel_id", hotel.id)
-          .neq("event_id", eventId)
-          .lte("events.start_at", candidate.endAt)
-          .gte("events.end_at", candidate.startAt);
-        if (scoreReadError) throw scoreReadError;
-        const overlaps = storedScores.map((score) => ({
-          startAt: score.events.start_at,
-          endAt: score.events.end_at,
-          preOverlapTotal: score.impact_points + score.distance_points + Math.min(10, score.stay_pressure_points),
-        }));
-        const score = scoreHotelEvent({ candidate, hotel, overlaps });
+        const score = scoreHotelEvent({ candidate, hotel, overlaps: [] });
         const { error: scoreError } = await supabase.from("hotel_event_scores").upsert({
           hotel_id: hotel.id,
           event_id: eventId,
@@ -748,6 +735,7 @@ export function createCollectionRepository(): CollectionRepository {
           total: score.total,
           suggested_importance: score.suggestedImportance,
           impact_basis: score.impactBasis,
+          demand_assessment: score.assessment,
         });
         if (scoreError) throw scoreError;
       }
@@ -799,19 +787,8 @@ export function createCollectionRepository(): CollectionRepository {
             .in("event_id", unsupportedIds.slice(index, index + 50));
           if (error) throw error;
         }
-        const bases = new Map(candidates.map(({ eventId, candidate }) => [
-          eventId,
-          scoreHotelEvent({ candidate, hotel, overlaps: [] }),
-        ]));
         const rows = candidates.map(({ eventId, candidate }) => {
-          const overlaps = candidates
-            .filter((other) => other.eventId !== eventId)
-            .map((other) => ({
-              startAt: other.candidate.startAt,
-              endAt: other.candidate.endAt,
-              preOverlapTotal: bases.get(other.eventId)?.total ?? 0,
-            }));
-          const score = scoreHotelEvent({ candidate, hotel, overlaps });
+          const score = scoreHotelEvent({ candidate, hotel, overlaps: [] });
           return {
             hotel_id: hotel.id,
             event_id: eventId,
@@ -822,6 +799,7 @@ export function createCollectionRepository(): CollectionRepository {
             total: score.total,
             suggested_importance: score.suggestedImportance,
             impact_basis: score.impactBasis,
+          demand_assessment: score.assessment,
           };
         });
         for (let index = 0; index < rows.length; index += 200) {

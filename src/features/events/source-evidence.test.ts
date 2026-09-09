@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { readEventEvidence } from "./evidence";
 import { selectScoreEvidence } from "./source-evidence";
 
 const evidence = {
@@ -53,4 +54,17 @@ describe("score evidence selection", () => {
       ),
     ).toBeUndefined();
   });
+  it("merges more than four complementary facts while excluding disabled and cancelled sources", () => {
+    const facts = (prefix: string) => ({ dateText: "1-3 January 2027", locationText: "Eindhoven", hostCity: "Eindhoven", locationScope: "citywide", continuous: true, majorCompetition: false, checkedAt: evidence.checked_at, dateSourceUrl: evidence.public_source_url,
+      demand: Array.from({ length: 3 }, (_, index) => ({ sourceUrl: evidence.public_source_url, text: `${prefix} ${index}`, kind: "attendance", scope: "edition", year: 2027, comparable: true })) });
+    const selected = selectScoreEvidence([
+      { ...evidence, provider: "claude", evidence: facts("first") },
+      { ...evidence, provider: "claude", evidence: facts("second") },
+      { ...evidence, provider: "claude", evidence: facts("first") },
+      { ...evidence, provider: "claude", source_state: "cancelled", evidence: facts("cancelled") },
+      { ...evidence, provider: "predicthq", evidence: facts("disabled") },
+    ], ["claude"]);
+    expect(readEventEvidence(selected?.evidence)?.demand.map(fact => fact.text)).toEqual(["first 0", "first 1", "first 2", "second 0", "second 1", "second 2"]);
+  });
+
 });

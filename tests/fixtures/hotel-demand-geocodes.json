@@ -1,0 +1,14 @@
+{
+  "Utrecht": [
+    {
+      "woonplaatsnaam": "Utrecht",
+      "centroide_ll": "POINT(5.09520363 52.0886922)"
+    }
+  ],
+  "Eindhoven": [
+    {
+      "woonplaatsnaam": "Eindhoven",
+      "centroide_ll": "POINT(5.45853544 51.45016172)"
+    }
+  ]
+}

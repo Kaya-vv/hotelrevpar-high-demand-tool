@@ -217,7 +217,7 @@ const agendaResponse = (url: string, candidates: Array<Record<string, unknown>>)
 
 const verifiedEvent = (overrides: Record<string, unknown> = {}) => ({
   facts: { dateText: "Official edition dates and host venue.", locationText: "Official edition dates and host venue.", hostCity: "Eindhoven", locationScope: "venue", continuous: true, majorCompetition: false,
-    demand: [{ sourceUrl: String(overrides.sourceUrl ?? "https://organizer.example/event"), text: "International visitors stay in local hotels.", scope: "edition", year: 2027, comparable: true }] },
+    demand: [{ sourceUrl: String(overrides.sourceUrl ?? "https://organizer.example/event"), kind: "hotel_stay", text: "International visitors stay in local hotels.", scope: "edition", year: 2027, comparable: true }] },
   sourceUrl: "https://organizer.example/event",
   title: "Dutch Design Week",
   category: "festival",
@@ -504,7 +504,7 @@ describe("source adapters", () => {
     expect(result.requests).toBe(16);
     expect(result.usage.webSearchRequests).toBe(12);
     expect(result.usage.webFetchRequests).toBe(4);
-    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates).toHaveLength(2);
     expect(result.candidates[0]).toMatchObject({
       sourceUrl: official,
       title: "Vakbeurs Utrecht",
@@ -516,7 +516,7 @@ describe("source adapters", () => {
       namesDiscovered: 3,
       urlsResolved: 3,
       pagesVerified: 2,
-      demandAccepted: 1,
+      demandAccepted: 2,
     });
   });
 
@@ -654,13 +654,12 @@ describe("source adapters", () => {
       triage: async () => new Map<number, string>(),
     });
 
-    expect(result.candidates).toEqual([]);
+    expect(result.candidates).toHaveLength(1); // A legacy AI score cannot discard a confirmed event.
     expect(result.funnel?.drops).toEqual([
       { title: "Kandidaat 2", stage: "verification", reason: "Fetch mislukt: 403 Forbidden" },
       { title: "Kandidaat 0", stage: "verification", reason: "Pagina is geen eigenaarspagina (ownerType other)." },
-      { title: "Kandidaat 1", stage: "verification", reason: "Geen aantoonbare hotelvraag (impactPoints 20)." },
     ]);
-    expect(result.funnel?.demandAccepted).toBe(0);
+    expect(result.funnel?.demandAccepted).toBe(1);
   });
 
   it("stops giving the search tool to name-only candidates past the search budget", async () => {
@@ -788,14 +787,14 @@ describe("source adapters", () => {
     const verification = create.mock.calls[12][0];
     expect(verification.tools[0]).toMatchObject({ name: "web_fetch", max_uses: 2 });
     expect(verification.messages[0].content).toContain("tweede web_fetch");
-    expect(verification.messages[0].content).toContain("Een bezoekersaantal is nuttig maar niet verplicht");
-    expect(verification.messages[0].content).toContain("Meerdaagse duur alleen is geen sterk signaal");
+    expect(verification.messages[0].content).toContain("Keep confirmed relevant events with unknown magnitude");
+    expect(verification.messages[0].content).toContain("not duration alone");
     expect(result.candidates).toMatchObject([{
       sourceUrl: organizer,
       title: "ASML Marathon Eindhoven",
       primarySourceConfirmed: true,
       aiImpactPoints: 60,
-      overnightAudience: "international",
+      overnightAudience: null,
       attendance: 25_000,
       venueCapacity: 30_000,
     }]);
@@ -1526,7 +1525,7 @@ describe("source adapters", () => {
     expect(result.candidates[0]).toMatchObject({
       provider: "claude",
       sourceState: "cancelled",
-      assessmentVersion: 3,
+      assessmentVersion: 4,
     });
   });
 

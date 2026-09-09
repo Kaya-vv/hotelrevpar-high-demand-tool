@@ -36,6 +36,7 @@ export type CalendarHotelScore = {
 };
 
 export type CalendarEvent = {
+  demandAssessment?: import("@/features/events/demand-assessment").DemandAssessment;
   exportedAt?: string;
   locationApproximate?: boolean;
   id: string;
@@ -116,7 +117,7 @@ function EventDetails({
           </span>
         )}
         {!score && event.announced && (
-          <span className="importance announced">Aangekondigd</span>
+          <span className="importance announced">Hotelvraag</span>
         )}
       </header>
       <p className="event-date">
@@ -125,7 +126,7 @@ function EventDetails({
       {event.venue && <p>{event.venue}</p>}
       {score && (
         <div className="demand-summary">
-          <strong>{score.total}/100</strong>
+          <strong>{event.demandAssessment?.relevance === "supported" ? "Onderbouwde hotelvraag" : "Waarschijnlijke hotelvraag"}</strong>
           <span>
             {score.distanceKm === null
               ? "Van toepassing op dit hotel"
@@ -135,9 +136,8 @@ function EventDetails({
       )}
       {!score && event.announced && (
         <p className="demand-pending">
-          Datum en locatie zijn bevestigd door de officiële bron. De vraagindicatie
-          volgt zodra de organisator publieksinformatie publiceert, uiterlijk zodra
-          het evenement binnen 90 dagen valt.
+          Hotelvraag is aannemelijk; de omvang is nog onbekend. Dit geldt voor alle
+          datums. Voor export is een handmatig niveau nodig.
         </p>
       )}
       {primarySource && (
@@ -150,24 +150,12 @@ function EventDetails({
           Bekijk evenement
         </a>
       )}
-      {score && (
+      {event.demandAssessment && (
         <details className="score-explanation">
           <summary>Waarom deze inschatting?</summary>
-          <dl>
-            <div>
-              <dt>Verwachte impact</dt>
-              <dd>{score.impactPoints} punten</dd>
-            </div>
-            <div>
-              <dt>Afstand</dt>
-              <dd>{score.distancePoints} punten</dd>
-            </div>
-            <div>
-              <dt>Verblijfsdruk</dt>
-              <dd>{score.stayPressurePoints} punten</dd>
-            </div>
-          </dl>
-          <small>Berekeningsbasis: {score.impactBasis}</small>
+          <p>{event.demandAssessment.reasons.join(" ")}</p>
+          <p>Omvang: {event.demandAssessment.magnitude ? demandLabels[event.demandAssessment.magnitude] : "nog onbekend"}. De indicatie is geen voorspelling van bezetting of kamerprijzen.</p>
+          {event.demandAssessment.sourceUrls.map((url, index) => <a key={url} href={url} target="_blank" rel="noreferrer">Onderbouwing hotelvraag {index + 1}</a>)}
           <div className="source-links">
             {event.sources
               .filter((source) => source.primarySourceConfirmed && source.url)
@@ -255,11 +243,11 @@ function EventOverview({
               </span>
             )}
             {!score && event.announced && (
-              <span className="importance announced">Aangekondigd</span>
+              <span className="importance announced">Hotelvraag</span>
             )}
             {score && (
               <strong className="event-overview-score">
-                {score.total}
+                {demandLabels[score.importance]}
                 <small>/100</small>
               </strong>
             )}
@@ -290,7 +278,7 @@ function EventOverview({
         {events.some((event) => event.announced) && (
           <div>
             <strong>{events.filter((event) => event.announced).length}</strong>
-            <span>Aangekondigd</span>
+            <span>Hotelvraag</span>
           </div>
         )}
       </div>
@@ -437,11 +425,10 @@ export function CalendarView({
                         >
                           {demandLabels[score.importance]}
                         </span>
-                        <strong className="agenda-score">{score.total}</strong>
                       </>
                     )}
                     {!score && event.announced && (
-                      <span className="importance announced">Aangekondigd</span>
+                      <span className="importance announced">Hotelvraag</span>
                     )}
                   </button>
                 );

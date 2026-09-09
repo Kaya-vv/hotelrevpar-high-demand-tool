@@ -6,7 +6,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 afterEach(cleanup);
 
 it("requires an explicit announcement checkbox and level and makes re-export deliberate", () => {
-  render(<ExportControls events={[{ id: "event", title: "Future Congress", startAt: "2027-10-01", endAt: "2027-10-03", hotels: [{ id: "hotel", code: "H", importance: "Medium", impactBasis: "ai_assessment", announced: true }] }]} hotelIds={["hotel"]} hotelNames={{ hotel: "Hotel" }} from="2026-09-08" to="2027-12-31" />);
+  render(<ExportControls events={[{ id: "event", title: "Future Congress", startAt: "2027-10-01", endAt: "2027-10-03", hotels: [{ id: "hotel", code: "H", importance: "Medium", impactBasis: "demand_rule", announced: true }] }]} hotelIds={["hotel"]} hotelNames={{ hotel: "Hotel" }} from="2026-09-08" to="2027-12-31" />);
   expect(screen.getByRole("button", { name: "Nieuwe events exporteren" })).toBeDisabled();
   fireEvent.click(screen.getByLabelText("Selecteer Future Congress voor Hotel"));
   expect(screen.getByText("Kies een exportniveau voor iedere geselecteerde aankondiging.")).toBeInTheDocument();
@@ -20,8 +20,8 @@ it("requires an explicit announcement checkbox and level and makes re-export del
 
 it("groups selections by hotel and keeps the Excel preview collapsed", () => {
   const { container } = render(<ExportControls events={[{ id: "event", title: "Congress", startAt: "2027-10-01", endAt: "2027-10-03", hotels: [
-    { id: "a", code: "A", importance: "High", impactBasis: "attendance" },
-    { id: "b", code: "B", importance: "High", impactBasis: "attendance" },
+    { id: "a", code: "A", importance: "High", impactBasis: "demand_rule" },
+    { id: "b", code: "B", importance: "High", impactBasis: "demand_rule" },
   ] }]} hotelIds={["a", "b"]} hotelNames={{ a: "Hotel A", b: "Hotel B" }} from="2026-09-08" to="2027-12-31" />);
   expect(within(screen.getByRole("region", { name: "Hotel A" })).getByText("Congress")).toBeVisible();
   expect(within(screen.getByRole("region", { name: "Hotel B" })).getByText("Congress")).toBeVisible();

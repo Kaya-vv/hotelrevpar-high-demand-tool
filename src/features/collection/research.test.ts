@@ -182,6 +182,7 @@ describe("coordinated long-range research", () => {
     const lead = test.state().leads[0];
     expect(lead.nextCheck).toBe("2026-09-14T12:00:00.000Z");
     delete lead.editions[0].evidence;
+    lead.editions[0].assessmentVersion = 3;
     lead.editions[0].latitude = null;
     lead.editions[0].longitude = null;
     const calls = test.create.mock.calls.length;
@@ -254,6 +255,7 @@ describe("coordinated long-range research", () => {
     const test = setup();
     const legacy = (await collectLongRange(test.input)).candidates[0];
     delete legacy.evidence;
+    legacy.assessmentVersion = 3;
     legacy.latitude = null;
     legacy.longitude = null;
     delete test.state().cycle;
@@ -291,7 +293,7 @@ describe("coordinated long-range research", () => {
     expect(supportedAudience(evidence, "international")).toBeNull();
     const players = "The best international tennis players compete on this court.";
     const unsupported = verifyEventEvidence({ ...facts, demand: [{ ...facts.demand[0], text: players }] }, url, [{ url, text: `${text} ${players}` }], now.toISOString());
-    expect(unsupported?.demand).toEqual([]);
+    expect(unsupported?.demand).toHaveLength(1); // Preserve the quote; it does not prove audience origin.
     expect(supportedAudience(unsupported, "international")).toBeNull();
     const worldwide = "The event attracts visitors from around the globe.";
     const globalEvidence = verifyEventEvidence({ ...facts, demand: [{ ...facts.demand[0], text: worldwide }] }, url, [{ url, text: `${text} ${worldwide}` }], now.toISOString());
@@ -325,8 +327,8 @@ describe("coordinated long-range research", () => {
     expect(candidate.evidence?.locationResolution?.method).toBe("city_centroid");
     expect(candidate.attendance).toBeNull();
     const score = scoreHotelEvent({ candidate, hotel: { latitude: 51.44, longitude: 5.48, demandRadiusKm: 25, holidayRegion: null }, overlaps: [] });
-    expect(score.suggestedImportance).toBe("Peak");
-    const rows = mapRevControlRows([{ id: "event", title: candidate.title, startAt: candidate.startAt, endAt: candidate.endAt, hotels: [{ id: "hotel", code: "TEST", importance: score.suggestedImportance, impactBasis: score.impactBasis }] }], ["hotel"]);
+    expect(score.assessment).toMatchObject({ relevance: "probable", magnitude: null });
+    const rows = mapRevControlRows([{ id: "event", title: candidate.title, startAt: candidate.startAt, endAt: candidate.endAt, hotels: [{ id: "hotel", code: "TEST", importance: score.suggestedImportance, impactBasis: score.impactBasis, announced: true, manuallySelected: true, exportLevel: "Medium" }] }], ["hotel"]);
     expect(rows[0].startDate.toISOString().slice(0, 10)).toBe("2027-10-23");
     expect(rows[0].endDate.toISOString().slice(0, 10)).toBe("2027-10-31");
   });
@@ -362,6 +364,14 @@ describe("coordinated long-range research", () => {
     expect(test.create).toHaveBeenCalledTimes(2);
     await collectLongRange(test.input);
     expect(test.create).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps every valid edition if a recorded response exceeds the requested eight-entry limit", async () => {
+    const test = setup();
+    test.create.mockResolvedValue({ id: "oversized", stop_reason: "end_turn", usage: { input_tokens: 100, output_tokens: 100 }, content: [{ type: "text", text: JSON.stringify({ events: Array.from({ length: 9 }, (_, index) => ({ ...event, title: `Arts ${index}` })), reason: "Recorded failure shape: valid oversized array", more: false }) }] });
+    const result = await collectLongRange(test.input);
+    expect(result.candidates).toHaveLength(9);
+    expect(result.candidates.every(candidate => candidate.primarySourceConfirmed)).toBe(true);
   });
 
   it("keeps deferred work due when the spend ceiling prevents dispatch", async () => {
@@ -417,7 +427,8 @@ describe("coordinated long-range research", () => {
     const next = await collectLongRange({ ...test.input, now: new Date("2026-09-14T12:00:00Z") });
     expect(next.candidates.length).toBeGreaterThan(first.candidates.length);
     expect(test.state().pageCache?.[url].complete).toBe(true);
-    expect(next.candidates.at(-1)?.evidence?.checkedAt).toBe(now.toISOString());
+    expect(next.candidates.at(-1)?.evidence?.checkedAt).toBe("2026-09-14T12:00:00.000Z");
+    expect(test.state().pageCache?.[url].checkedAt).toBe(now.toISOString());
     expect(next.usage.blockedSources).toBe(1);
   });
 

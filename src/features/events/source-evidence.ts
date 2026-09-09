@@ -1,3 +1,5 @@
+import { readEventEvidence } from "./evidence";
+
 type SourceEvidence = {
   provider: string;
   source_state: string;
@@ -6,6 +8,7 @@ type SourceEvidence = {
 };
 
 export type ScoreEvidence = SourceEvidence & {
+  evidence?: unknown;
   ai_impact_points: number | null;
   local_rank: number | null;
   attendance: number | null;
@@ -37,11 +40,22 @@ export function selectScoreEvidence<T extends ScoreEvidence>(
         : source.attendance !== null || source.venue_capacity !== null
           ? 1
           : 0;
-  return sources
+  const enabled = sources
     .filter((source) => isEnabledPrimarySource(source, enabledSources))
     .sort(
       (left, right) =>
         rank(right) - rank(left) ||
         right.checked_at.localeCompare(left.checked_at),
-    )[0];
+    );
+  const selected = enabled[0];
+  if (!selected) return undefined;
+  const records = enabled.flatMap((source) => {
+    const evidence = readEventEvidence(source.evidence);
+    return evidence ? [evidence] : [];
+  });
+  if (!records.length) return selected;
+  // Complementary demand facts about this canonical edition survive provider selection.
+  const demand = [...new Map(records.flatMap((record) => record.demand)
+    .map((fact) => [`${fact.sourceUrl}:${fact.text}`, fact])).values()];
+  return { ...selected, evidence: { ...records[0], demand } };
 }

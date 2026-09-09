@@ -804,6 +804,7 @@ export type Database = {
           distance_points: number;
           event_id: string;
           hotel_id: string;
+          demand_assessment: Json | null;
           impact_basis: string;
           impact_points: number;
           importance_override: string | null;
@@ -818,6 +819,7 @@ export type Database = {
           distance_points: number;
           event_id: string;
           hotel_id: string;
+          demand_assessment?: Json | null;
           impact_basis: string;
           impact_points: number;
           importance_override?: string | null;
@@ -832,6 +834,7 @@ export type Database = {
           distance_points?: number;
           event_id?: string;
           hotel_id?: string;
+          demand_assessment?: Json | null;
           impact_basis?: string;
           impact_points?: number;
           importance_override?: string | null;

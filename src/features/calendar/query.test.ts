@@ -31,7 +31,7 @@ function addEvent(id: string, start: string, end = start, overrides = {}) {
   tables.account_event_areas.push({ account_id: "account", event_id: id, collection_area_id: "area" });
   tables.events.push({ id, title: id, certainty: "confirmed", category: "concert", start_at: `${start}T12:00:00Z`, end_at: `${end}T20:00:00Z` });
   tables.event_sources.push({ event_id: id, provider: "claude", source_state: "active", primary_source_confirmed: true, public_source_url: "https://example.com/event" });
-  tables.hotel_event_scores.push({ event_id: id, hotel_id: "hotel", suggested_importance: "High", impact_basis: "attendance", total: 80 });
+  tables.hotel_event_scores.push({ event_id: id, hotel_id: "hotel", suggested_importance: "High", impact_basis: "demand_rule", total: 75, distance_km: 1, demand_assessment: { version: 1, relevance: "probable", magnitude: "High", confidence: "medium", reasons: [], sourceUrls: [] } });
 }
 
 describe("calendar query periods", () => {
@@ -59,7 +59,7 @@ describe("calendar query periods", () => {
 
   it("loads all pages for a full horizon and retains publication and hotel checks", async () => {
     for (let index = 0; index < 501; index++) addEvent(`event-${index}`, "2027-01-01");
-    tables.hotel_event_scores[0].suggested_importance = "Medium";
+    tables.hotel_event_scores[0].demand_assessment = null;
     tables.hotel_event_scores[1].hotel_id = "other-hotel";
     tables.event_sources[2].primary_source_confirmed = false;
     tables.account_events[3].account_id = "other-account";
