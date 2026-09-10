@@ -58,7 +58,7 @@ export async function loadExportEvents(accountId: string, range: ExportRange, se
     .eq("account_id", accountId).in("event_id", ids));
   const datesById = new Map(decisions.map(decision => [decision.event_id, decision]));
   const candidates = await fetchInBatches(decisions.map(decision => decision.event_id), ids => supabase.from("events")
-    .select("id, title, start_at, end_at, certainty, source_state").in("id", ids));
+    .select("id, title, start_at, end_at, certainty, source_state, category").in("id", ids));
   const exportEvents = candidates.filter(event => {
     const decision = datesById.get(event.id);
     return includeInactive || (eventLocalDate(decision?.override_start_at ?? event.start_at) <= range.end
@@ -105,6 +105,7 @@ export async function loadExportEvents(accountId: string, range: ExportRange, se
           startDate: eventLocalDate(startAt), endDate: eventLocalDate(endAt),
           nearTermHorizon: new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10),
           demandRadiusKm: hotel.demand_radius_km,
+          category: event.category,
           hasConfirmedDateAndLocation: sources.some((source) => {
             if (source.event_id !== event.id || !isEnabledPrimarySource(source, areaByHotel.get(score.hotel_id)?.enabled_sources ?? [])) return false;
             const evidence = readEventEvidence(source.evidence);

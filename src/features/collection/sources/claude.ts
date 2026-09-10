@@ -749,7 +749,11 @@ async function collectClaudeFresh(
           options: searchRequestOptions,
           params: {
             model: discoveryModel,
-            max_tokens: 2_500,
+            // A model preamble precedes the structured block (which is why the parser takes the
+            // LAST text block), so a dense slice can overflow before reaching its answer. On
+            // 2026-09-09 The Match lost its whole congress/trade-fair slice this way: a hard
+            // drop, not a partial read. A ceiling costs nothing unless the output uses it.
+            max_tokens: 4_000,
             ...(discoveryModel.startsWith("claude-sonnet-5")
               ? { thinking: { type: "disabled" as const } }
               : {}),

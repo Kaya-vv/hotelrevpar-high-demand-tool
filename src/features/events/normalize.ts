@@ -80,8 +80,17 @@ function placeKey(candidate: EventCandidate) {
   return normalizeText(candidate.venue ?? candidate.regionScope ?? "unknown");
 }
 
+/**
+ * Categories whose editions are individual performances rather than one continuous run. A page
+ * listing a series ("17, 19, 22 January") is routinely extracted as one event spanning first to
+ * last date, so duration cannot be trusted to mean a stay for these.
+ */
+export function perPerformanceCategory(category: string) {
+  return /concert|musical|theat|performance/i.test(category);
+}
+
 export function performanceTime(candidate: Pick<EventCandidate, "category" | "startAt">) {
-  if (!/concert|musical|theat|performance/i.test(candidate.category)) return "";
+  if (!perPerformanceCategory(candidate.category)) return "";
   const start = localParts(candidate.startAt);
   return start.hour === 0 && start.minute === 0 || /T00:00:00(?:\.000)?Z$/.test(candidate.startAt) ? "" : `${start.hour}:${start.minute}`;
 }

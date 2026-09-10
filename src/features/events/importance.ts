@@ -1,4 +1,5 @@
 import { hasHotelDemand, readDemandAssessment } from "./demand-assessment";
+import { perPerformanceCategory } from "./normalize";
 
 export type DemandLevel = "Low" | "Medium" | "High" | "Peak";
 
@@ -33,14 +34,22 @@ export function isPublishableDemand(
 
 /**
  * Beyond the near-term horizon a demand grade cannot be earned yet: a future edition has no
- * attendance of its own and organisers rarely publish audience information a year ahead. Three
+ * attendance of its own and organisers rarely publish audience information a year ahead. Two
  * kinds of edition are still worth announcing, without a level.
  *
- * The first is an edition whose demand WAS assessed, either from quoted hotel-demand evidence or
- * from an assessed audience. The second is a multi-day edition whose official organiser page
- * already confirms both its date and its location: a three-day-or-longer run that an organiser
- * has committed to a year ahead is a destination event by construction, and requiring attendance
- * evidence for it is structurally unachievable.
+ * The first is an edition carrying real hotel-demand evidence — a quoted room block, package or
+ * travelling audience — whose scale is not yet gradeable. The second is a multi-day edition whose
+ * official organiser page already confirms both its date and its location: a three-day-or-longer
+ * continuous run committed to a year ahead is a destination event by construction, and requiring
+ * attendance evidence for it is structurally unachievable. Per-performance categories are excluded
+ * from that second rule: their "duration" is a series span, not a stay.
+ *
+ * A model-assigned proxy grade is deliberately NOT a third trigger. `impactPoints: 35` means the
+ * model found no applicable demand signal, and the scorer then placed the event below High. Such
+ * an event is not ungradeable, it is graded and judged insufficient; announcing it anyway
+ * contradicted both and made visibility depend on the calendar date rather than the event. On
+ * 2026-09-09 that admitted 45 unlevelled events across eight hotels — one-night tribute acts,
+ * a children's museum evening, university open days — each demanding a manual export level.
  *
  * Duration plus confirmed primary-source evidence is what keeps league fixtures and open days
  * hidden: fixtures come from feeds and never carry verbatim organiser evidence, and open days run
@@ -52,6 +61,7 @@ export function isAnnouncedLongRange(input: {
   endDate: string;
   nearTermHorizon: string;
   demandRadiusKm: number | null;
+  category: string;
   hasConfirmedDateAndLocation: boolean;
   scores: { importance: DemandLevel; impactBasis: string; distanceKm: number | null; assessment?: unknown }[];
 }) {
@@ -59,11 +69,15 @@ export function isAnnouncedLongRange(input: {
   if (input.scores.some((score) => isPublishableDemand(score.importance, score.impactBasis))) return false;
   const withinRadius = input.scores.some((score) =>
     score.distanceKm !== null && input.demandRadiusKm !== null && score.distanceKm <= input.demandRadiusKm);
-  const assessed = withinRadius && input.scores.some((score) => score.impactBasis === "ai_assessment"
-    || score.impactBasis === "demand_rule" || hasHotelDemand(readDemandAssessment(score.assessment)));
+  const assessed = withinRadius
+    && input.scores.some((score) => hasHotelDemand(readDemandAssessment(score.assessment)));
   const durationDays = Math.round(
     (Date.parse(`${input.endDate.slice(0, 10)}T00:00:00Z`) - Date.parse(`${input.startDate.slice(0, 10)}T00:00:00Z`)) / 86_400_000) + 1;
-  const destination = durationDays >= 3 && input.hasConfirmedDateAndLocation && withinRadius;
+  // Duration only means a stay for a continuous run. A concert series listed as "17, 19, 22
+  // January" is extracted as one six-day event, which made four single Festival Oude Muziek
+  // concerts look like destination events in Utrecht while the festival itself was graded High.
+  const destination = durationDays >= 3 && !perPerformanceCategory(input.category)
+    && input.hasConfirmedDateAndLocation && withinRadius;
   return assessed || destination;
 }
 

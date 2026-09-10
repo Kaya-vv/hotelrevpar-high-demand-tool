@@ -53,7 +53,7 @@ describe("hotel demand evidence upgrades and contradicts the proxy score", () =>
   it("announces an assessed edition beyond the horizon and grades it inside the horizon", () => {
     const assessment = assessHotelDemand({ ...base, evidence: evidence("hotel_stay") }, hotel);
     const band = (startDate: string) => isAnnouncedLongRange({ startDate, endDate: startDate, nearTermHorizon: "2026-12-08",
-      demandRadiusKm: 25, hasConfirmedDateAndLocation: true,
+      demandRadiusKm: 25, category: "conference", hasConfirmedDateAndLocation: true,
       scores: [{ importance: "Low", impactBasis: "default", distanceKm: 1, assessment }] });
     // Beyond the horizon a grade cannot be earned yet, so supported demand is announced without one.
     expect(band("2026-12-09")).toBe(true);
@@ -61,6 +61,30 @@ describe("hotel demand evidence upgrades and contradicts the proxy score", () =>
     // Inside the horizon the grade decides. The band must not duplicate a gradeable event.
     expect(band("2026-09-10")).toBe(false);
     expect(band("2026-12-08")).toBe(false);
+  });
+  it("never announces a long-range event on a proxy grade alone", () => {
+    // The regression this replaces: any `ai_assessment` basis was announced regardless of score,
+    // so a one-night tribute act the model itself graded 35 appeared unlevelled a year out while
+    // the identical event inside 90 days stayed hidden. 45 such events across eight hotels.
+    const band = (input: Partial<Parameters<typeof isAnnouncedLongRange>[0]> & { days?: number }) => {
+      const startDate = "2027-06-01";
+      const endDate = `2027-06-0${input.days ?? 1}`;
+      return isAnnouncedLongRange({ startDate, endDate, nearTermHorizon: "2026-12-08",
+        demandRadiusKm: 25, category: "conference", hasConfirmedDateAndLocation: true,
+        scores: [{ importance: "Medium", impactBasis: "ai_assessment", distanceKm: 1 }], ...input });
+    };
+    expect(band({})).toBe(false);
+    // The destination rule still stands on its own: three confirmed days a year ahead.
+    expect(band({ days: 3 })).toBe(true);
+    expect(band({ days: 3, hasConfirmedDateAndLocation: false })).toBe(false);
+    // A concert series is extracted as one multi-day span; duration is not a stay for it.
+    expect(band({ days: 3, category: "Concert" })).toBe(false);
+    expect(band({ days: 3, category: "Music Festival" })).toBe(true);
+    // Real hotel-demand evidence still announces a single day.
+    const assessment = assessHotelDemand({ ...base, evidence: evidence("hotel_stay") }, hotel);
+    expect(band({ scores: [{ importance: "Medium", impactBasis: "ai_assessment", distanceKm: 1, assessment }] })).toBe(true);
+    // Outside the radius nothing is announced, however it was graded.
+    expect(band({ scores: [{ importance: "Medium", impactBasis: "ai_assessment", distanceKm: 99, assessment }] })).toBe(false);
   });
   it("rejects invented quotes and non-comparable historical evidence before scoring", () => {
     const facts = evidence("hotel_stay");

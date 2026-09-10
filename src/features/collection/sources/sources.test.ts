@@ -441,7 +441,7 @@ describe("source adapters", () => {
 
     expect(create).toHaveBeenCalledTimes(16);
     create.mock.calls.slice(0, 12).forEach(([request]) => {
-      expect(request.max_tokens).toBe(2_500);
+      expect(request.max_tokens).toBe(4_000);
       expect(request.tools[0]).toMatchObject({
         type: "web_search_20260318",
         allowed_callers: ["direct"],

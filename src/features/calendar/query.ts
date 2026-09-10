@@ -159,6 +159,7 @@ export async function getCalendarData(
         endDate: eventLocalDate(event.end_at),
         nearTermHorizon,
         demandRadiusKm: selectedRadiusKm,
+        category: event.category,
         hasConfirmedDateAndLocation: sources.some((source) => {
           if (source.event_id !== event.id || !isEnabledPrimarySource(source, enabledSources)) return false;
           const evidence = readEventEvidence(source.evidence);
