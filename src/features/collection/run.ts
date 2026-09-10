@@ -86,6 +86,33 @@ export function claudeDiscoveryDue(
   );
 }
 
+/**
+ * A near-term sweep is city-wide public evidence, and `reuseNearTermEvidence` adopts it into any
+ * hotel inside the radius. Measured per hotel, the cadence made a newly onboarded hotel in an
+ * already-swept city re-buy the entire sweep - $7.34 against production on 2026-09-10 - so a
+ * recently swept market can stand in for this hotel's own sweep.
+ *
+ * Two guards keep that from emptying a calendar, which is the failure this must not repeat.
+ * Inheriting requires the evidence to have actually landed on this hotel: a market sweep older
+ * than the assessment version is unusable, and production held 315 such rows against 58 usable
+ * ones on 2026-09-10, so trusting the sweep alone would have adopted nothing. And a hotel that
+ * has swept before keeps its own cadence, so this can only ever skip a sweep that the hotel was
+ * already due to make - never bring one forward.
+ */
+export function claudeDiscoveryDecision(input: {
+  trigger: RunCollectionInput["trigger"];
+  ownSweptAt: string | null;
+  marketSweptAt: string | null;
+  inheritedEvidence: boolean;
+  now?: Date;
+}) {
+  // Refreshing a hotel that has swept before is an explicit request for new evidence.
+  if (input.trigger === "manual" && input.ownSweptAt) return true;
+  if (!claudeDiscoveryDue(input.ownSweptAt, input.now)) return false;
+  if (input.inheritedEvidence && !claudeDiscoveryDue(input.marketSweptAt, input.now)) return false;
+  return true;
+}
+
 export function selectClaudeRefreshUrls(
   rows: ClaudeSourceRow[],
   window: CollectionWindow,
@@ -188,7 +215,7 @@ export type CollectionRepository = {
     sourceUrls: string[]
   ) => Promise<void>;
   quarantineClaudeEditions: (context: CollectionContext, providerEventIds: string[]) => Promise<void>;
-  shouldRunClaudeDiscovery: (context: CollectionContext) => Promise<boolean>;
+  shouldRunClaudeDiscovery: (context: CollectionContext, trigger: RunCollectionInput["trigger"]) => Promise<boolean>;
   recalculateScores: (context: CollectionContext) => Promise<void | Record<string, number>>;
   recordUsage: (
     runId: string,
@@ -426,8 +453,7 @@ export async function runCollection(
     for (const source of context.area.enabledSources) {
       if (
         source === "claude" &&
-        input.trigger === "cron" &&
-        !(await repository.shouldRunClaudeDiscovery(context))
+        !(await repository.shouldRunClaudeDiscovery(context, input.trigger))
       ) {
         if (process.env.LONG_RANGE_DISCOVERY === "enabled") {
           context.runNearTermClaude = false;
@@ -436,7 +462,7 @@ export async function runCollection(
         }
         sourceResults.claude = {
           state: "skipped",
-          reason: "Claude discovery runs at most once every 30 days.",
+          reason: "Claude discovery runs at most once every 30 days per market.",
         };
       } else {
         sourcesToRun.push(source);

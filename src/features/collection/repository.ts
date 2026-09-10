@@ -20,8 +20,9 @@ import type { Database, Json } from "@/lib/supabase/database.types";
 import {
   CLAUDE_ASSESSMENT_VERSION,
 } from "./anthropic-batches";
+import { longRangeMarketKey } from "./long-range-store";
 import {
-  claudeDiscoveryDue,
+  claudeDiscoveryDecision,
   collectionWindow,
   selectClaudeRefreshUrls,
   selectLongRangeSeeds,
@@ -404,21 +405,57 @@ export function createCollectionRepository(): CollectionRepository {
       }
     },
 
-    async shouldRunClaudeDiscovery(context) {
-      const { data, error } = await supabase
-        .from("collection_runs")
-        .select("finished_at")
+    async shouldRunClaudeDiscovery(context, trigger) {
+      const lastSweep = async (areaIds: string[]) => {
+        const { data, error } = await supabase
+          .from("collection_runs")
+          .select("finished_at")
+          .in("collection_area_id", areaIds)
+          .not("finished_at", "is", null)
+          // A failed distant source must not erase a successful near-term discovery. Legacy runs
+          // have no marker, so keep recognising their successful combined state.
+          .or("source_results->claude->usage->>nearTermSucceeded.eq.1,and(source_results->claude->usage->>nearTermSucceeded.is.null,source_results->claude->>state.in.(success,zero))")
+          .filter("source_results->claude->usage->>nearTermSkipped", "is", null)
+          .order("finished_at", { ascending: false })
+          .limit(1);
+        if (error) throw error;
+        return data[0]?.finished_at ?? null;
+      };
+      const own = await lastSweep([context.area.id]);
+      if (trigger === "manual" && own) return true;
+      const { data: areas, error: areaError } = await supabase
+        .from("collection_areas")
+        .select("id, search_location, radius_km");
+      if (areaError) throw areaError;
+      const key = longRangeMarketKey(context.area.searchLocation, context.area.radiusKm);
+      const market = areas
+        .filter((area) => longRangeMarketKey(area.search_location, area.radius_km) === key)
+        .map((area) => area.id);
+      // What `reuseNearTermEvidence` actually left on this hotel, at the version the code can
+      // reuse. An older market sweep is not inheritable evidence, however recent the run was.
+      const { data: links, error: linkError } = await supabase
+        .from("account_event_areas")
+        .select("event_id")
         .eq("account_id", context.area.accountId)
-        .eq("collection_area_id", context.area.id)
-        .not("finished_at", "is", null)
-        // A failed distant source must not erase a successful near-term discovery. Legacy runs
-        // have no marker, so keep recognising their successful combined state.
-        .or("source_results->claude->usage->>nearTermSucceeded.eq.1,and(source_results->claude->usage->>nearTermSucceeded.is.null,source_results->claude->>state.in.(success,zero))")
-        .filter("source_results->claude->usage->>nearTermSkipped", "is", null)
-        .order("finished_at", { ascending: false })
-        .limit(1);
-      if (error) throw error;
-      return claudeDiscoveryDue(data[0]?.finished_at ?? null);
+        .eq("collection_area_id", context.area.id);
+      if (linkError) throw linkError;
+      const inherited = links.length
+        ? await fetchInBatches(links.map((link) => link.event_id), (ids) => supabase
+          .from("event_sources")
+          .select("event_id")
+          .eq("provider", "claude")
+          .eq("source_state", "active")
+          .gte("assessment_version", CLAUDE_ASSESSMENT_VERSION)
+          .gte("extracted_start_at", `${context.window.start}T00:00:00Z`)
+          .lte("extracted_start_at", `${context.window.end}T23:59:59Z`)
+          .in("event_id", ids))
+        : [];
+      return claudeDiscoveryDecision({
+        trigger,
+        ownSweptAt: own,
+        marketSweptAt: market.length ? await lastSweep(market) : null,
+        inheritedEvidence: inherited.length > 0,
+      });
     },
 
     async quarantineClaudeEditions(context, providerEventIds) {

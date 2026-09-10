@@ -7,6 +7,7 @@ import {
 } from "@/features/events/hotel-demand";
 
 import {
+  claudeDiscoveryDecision,
   claudeDiscoveryDue,
   collectionWindow,
   runCollection,
@@ -584,19 +585,15 @@ describe("runCollection", () => {
     expect(claude).not.toHaveBeenCalled();
     expect(result.sourceResults.claude).toEqual({
       state: "skipped",
-      reason: "Claude discovery runs at most once every 30 days.",
+      reason: "Claude discovery runs at most once every 30 days per market.",
     });
   });
 
-  it("runs Claude discovery on manual refresh during the 30-day cooldown", async () => {
-    const claude = vi.fn().mockResolvedValue({
-      source: "claude",
-      candidates: [],
-      requests: 1,
-      usage: {},
-    });
+  it("leaves the discovery cadence to the repository, telling it which trigger asked", async () => {
+    const claude = vi.fn().mockResolvedValue({ source: "claude", candidates: [], requests: 1, usage: {} });
+    const shouldRunClaudeDiscovery = vi.fn().mockResolvedValue(true);
     const repo = repository({
-      shouldRunClaudeDiscovery: vi.fn().mockResolvedValue(false),
+      shouldRunClaudeDiscovery,
       loadContext: vi.fn().mockResolvedValue({
         area: { id: "area-1", accountId: "account-1", name: "Testhotel", searchLocation: "Eindhoven", latitude: 51.44, longitude: 5.48, radiusKm: 25, enabledSources: ["claude"] },
         hotels: [{ id: "hotel-1", latitude: 51.44, longitude: 5.48, demandRadiusKm: 25, holidayRegion: "south" }],
@@ -608,6 +605,42 @@ describe("runCollection", () => {
       { repository: repo, collectors: { claude } },
     );
 
+    expect(shouldRunClaudeDiscovery).toHaveBeenCalledWith(expect.anything(), "manual");
     expect(claude).toHaveBeenCalledOnce();
+  });
+});
+
+describe("claudeDiscoveryDecision", () => {
+  const now = new Date("2026-09-10T12:00:00Z");
+  const recent = "2026-09-03T12:00:00Z";
+  const old = "2026-06-01T12:00:00Z";
+  const base = { ownSweptAt: null, marketSweptAt: null, inheritedEvidence: false, now } as const;
+
+  it("lets a newly onboarded hotel inherit a market that was swept recently", () => {
+    // Robert's new client shares a city with a hotel he already runs: the sweep is paid for and
+    // `reuseNearTermEvidence` has adopted it into the new hotel.
+    for (const trigger of ["manual", "cron"] as const)
+      expect(claudeDiscoveryDecision({ ...base, trigger, marketSweptAt: recent, inheritedEvidence: true })).toBe(false);
+  });
+
+  it("pays rather than inherit a sweep whose evidence never landed", () => {
+    // Production, 2026-09-10: 315 of 373 stored assessments were behind the reusable version, so
+    // a recent run in the market proves nothing about what this hotel can actually show.
+    expect(claudeDiscoveryDecision({ ...base, trigger: "cron", marketSweptAt: recent, inheritedEvidence: false })).toBe(true);
+  });
+
+  it("still pays for the first hotel in a market, and for a market gone stale", () => {
+    expect(claudeDiscoveryDecision({ ...base, trigger: "manual" })).toBe(true);
+    expect(claudeDiscoveryDecision({ ...base, trigger: "cron", marketSweptAt: old, inheritedEvidence: true })).toBe(true);
+  });
+
+  it("keeps a manual refresh of an established hotel under the operator's control", () => {
+    // A sibling's sweep must not silence the refresh button on a hotel of one's own.
+    expect(claudeDiscoveryDecision({ ...base, trigger: "manual", ownSweptAt: recent, marketSweptAt: recent, inheritedEvidence: true })).toBe(true);
+  });
+
+  it("never brings a sweep forward that the hotel's own cadence had settled", () => {
+    // Inheritance may only skip a sweep, so a stale market cannot force one early.
+    expect(claudeDiscoveryDecision({ ...base, trigger: "cron", ownSweptAt: recent, marketSweptAt: old })).toBe(false);
   });
 });
