@@ -1313,9 +1313,10 @@ td {
   background: var(--surface);
 }
 
+/* A qualifier for the score beside it, not a heading: it was outsizing the event title. */
 .demand-summary strong {
   color: var(--blue);
-  font-size: 1.7rem;
+  font-size: 1.05rem;
 }
 
 .score-explanation {

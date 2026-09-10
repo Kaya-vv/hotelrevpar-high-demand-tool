@@ -255,7 +255,7 @@ function EventOverview({
             )}
             {score && (
               <strong className="event-overview-score">
-                {demandLabels[score.importance]}
+                {score.total}
                 <small>/100</small>
               </strong>
             )}

@@ -75,7 +75,8 @@ describe("CalendarView", () => {
     expect(
       screen.getByRole("region", { name: "Vraagmomenten met scores" })
     ).toBeInTheDocument();
-    expect(screen.queryByText("78")).not.toBeInTheDocument();
+    // The `/100` suffix demands a number: the overview rendered "Hoog/100" beside a "Hoog" badge.
+    expect(screen.getByText("78")).toBeVisible();
     expect(screen.getByText("bevestigde vraagmomenten")).toBeVisible();
     expect(screen.getAllByText("Dutch Design Week").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Hoog").length).toBeGreaterThan(0);
