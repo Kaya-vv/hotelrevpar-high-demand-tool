@@ -20,6 +20,7 @@ import {
   collectClaudeCalendar,
   geocodeVenue,
   longRangeWindow,
+  marketWindow,
   marketResultIsShareable,
   triagePredictHqCandidates,
   triageExclusionAllowed,
@@ -51,13 +52,32 @@ it("covers the gap after ninety days through the end of next year, including Aug
   expect(longRangeWindow({ start: "2026-12-01", end: "2027-03-01" })).toEqual({ start: "2027-03-02", end: "2027-12-31" });
 });
 
+it("hands every hotel in a market the same week's window so one sweep serves all of them", () => {
+  // A rolling window rotated daily, so a second hotel in the same city re-bought the whole
+  // near-term sweep for the sake of a one-day shift.
+  const week = ["2026-09-03", "2026-09-05", "2026-09-09"].map((start) => marketWindow({ start, end: "ignored" }));
+  expect(new Set(week.map((window) => JSON.stringify(window))).size).toBe(1);
+  expect(week[0]).toEqual({ start: "2026-09-03", end: "2026-12-02" });
+  // The next week must move on, and the span stays ninety days rather than widening.
+  expect(marketWindow({ start: "2026-09-10", end: "ignored" })).toEqual({ start: "2026-09-10", end: "2026-12-09" });
+});
+
+it("keeps the two horizons contiguous at the shared boundary", async () => {
+  const collect = vi.fn().mockResolvedValue({ source: "claude", candidates: [], requests: 0, usage: {} });
+  await collectClaudeCalendar({ start: "2026-09-09", end: "2026-12-08", location: "Utrecht", radiusKm: 25, longRangeEnabled: true }, collect, collect);
+  // Near-term is snapped, so long-range must start after the snapped end, not after today + 90:
+  // a gap here would leave a band that neither horizon ever searches.
+  expect(collect.mock.calls[0][0]).toMatchObject({ start: "2026-09-03", end: "2026-12-02" });
+  expect(collect.mock.calls[1][0]).toMatchObject({ start: "2026-12-03", end: "2027-12-31" });
+});
+
 it("retains the ninety-day results and reports a failed future sweep", async () => {
   const collect = vi.fn()
     .mockResolvedValueOnce({ source: "claude", candidates: [{ title: "Current event" }], requests: 12, usage: { inputTokens: 100 } })
     .mockRejectedValueOnce(new Error("Future search failed"));
   const result = await collectClaudeCalendar({ start: "2026-09-05", end: "2026-12-04", location: "Eindhoven", radiusKm: 25, longRangeEnabled: true }, collect, collect);
-  expect(collect.mock.calls[0][0]).toMatchObject({ start: "2026-09-05", end: "2026-12-04" });
-  expect(collect.mock.calls[1][0]).toMatchObject({ start: "2026-12-05", end: "2027-12-31" });
+  expect(collect.mock.calls[0][0]).toMatchObject({ start: "2026-09-03", end: "2026-12-02" });
+  expect(collect.mock.calls[1][0]).toMatchObject({ start: "2026-12-03", end: "2027-12-31" });
   expect(result.candidates).toEqual([{ title: "Current event" }]);
   expect(result.error).toContain("longRange: Future search failed");
   expect(result.usage).toMatchObject({ inputTokens: 100, nearTerm_inputTokens: 100, nearTermSucceeded: 1, longRangeFailed: 1 });

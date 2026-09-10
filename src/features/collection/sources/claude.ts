@@ -434,6 +434,29 @@ export function longRangeWindow(window: CollectionWindow): CollectionWindow {
   return { start: addDays(window.end, 1), end: `${Number(window.start.slice(0, 4)) + 1}-12-31` };
 }
 
+/**
+ * Every hotel in a market pays for its own near-term sweep unless it asks for the exact same
+ * window, because the window is what the shared market cache is keyed on. A rolling
+ * `today .. today+90` rotates daily, so a second hotel in the same city re-bought the whole sweep
+ * for the sake of a one-day shift - measured at $7.34 against production on 2026-09-10.
+ *
+ * Snapping the start back to a fixed seven-day boundary makes that window identical for everyone
+ * who runs in the same week, so the first hotel pays and the rest read the cache. The span stays
+ * 90 days: `searchWindows` is hard-capped at `start + 90` and widening it would buy a fourth
+ * month slice per category. The cost is that the far edge sits up to six days earlier than
+ * `today + 90`, which `longRangeWindow` then covers from the same boundary - the two horizons
+ * stay contiguous, they just meet a few days sooner.
+ */
+export const MARKET_WINDOW_DAYS = 7;
+
+export function marketWindow(window: CollectionWindow): CollectionWindow {
+  const bucket = MARKET_WINDOW_DAYS * 86_400_000;
+  const start = new Date(Math.floor(Date.parse(`${window.start}T00:00:00Z`) / bucket) * bucket)
+    .toISOString()
+    .slice(0, 10);
+  return { start, end: addDays(start, 90) };
+}
+
 function addDays(value: string, days: number) {
   const date = new Date(`${value}T00:00:00Z`);
   date.setUTCDate(date.getUTCDate() + days);
@@ -603,14 +626,17 @@ export async function collectClaudeCalendar(
   // Dynamic: long-range.ts imports this module, so a static import here is a require cycle.
   collectFuture = async (future: CollectClaudeInput & { seeds?: LongRangeSeed[] }) => (await import("./long-range")).collectLongRange(future),
 ): Promise<SourceResult> {
-  if (!(input.longRangeEnabled ?? process.env.LONG_RANGE_DISCOVERY === "enabled")) return collect(input);
+  // Snapped before either horizon is dispatched, so the near-term sweep is cache-shareable and
+  // the long-range sweep starts exactly where it ends.
+  const scoped = { ...input, ...marketWindow(input) };
+  if (!(input.longRangeEnabled ?? process.env.LONG_RANGE_DISCOVERY === "enabled")) return collect(scoped);
   const markets = input.longRangeMarkets ?? process.env.LONG_RANGE_MARKETS?.split(",").map((market) => market.trim()).filter(Boolean);
   if (markets?.length && !markets.some((market) => normalizeText(market) === normalizeText(input.location))) {
-    return input.runNearTerm === false ? { source: "claude", candidates: [], requests: 0, usage: { longRangeOutsidePilot: 1 } } : collect(input);
+    return input.runNearTerm === false ? { source: "claude", candidates: [], requests: 0, usage: { longRangeOutsidePilot: 1 } } : collect(scoped);
   }
   const settled = await Promise.allSettled([
-    input.runNearTerm === false ? Promise.resolve<SourceResult>({ source: "claude", candidates: [], requests: 0, usage: {} }) : collect({ ...input, agendaSeedUrls: [] }),
-    collectFuture({ ...input, ...longRangeWindow(input), seeds: input.longRangeSeeds }),
+    input.runNearTerm === false ? Promise.resolve<SourceResult>({ source: "claude", candidates: [], requests: 0, usage: {} }) : collect({ ...scoped, agendaSeedUrls: [] }),
+    collectFuture({ ...scoped, ...longRangeWindow(scoped), seeds: input.longRangeSeeds }),
   ]);
   const merged: SourceResult = { source: "claude", candidates: [], requests: 0, usage: {}, invalidatedUrls: [],
     funnel: { namesDiscovered: 0, urlsResolved: 0, pagesVerified: 0, demandAccepted: 0, drops: [] } };

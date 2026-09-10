@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { fetchJson } from "../http";
+import { isAncillaryListing } from "@/features/events/venues";
 import type { CollectionWindow, Fetcher, SourceResult } from "../types";
 
 const venueSchema = z.object({
@@ -62,6 +63,10 @@ export async function collectTicketmaster(
     requests += 1;
 
     response._embedded.events.forEach((event) => {
+      // Parking permits, hospitality boxes and seat upgrades are sold as separate listings at the
+      // same address. They are not events a hotel can fill rooms from, and they were 18% of every
+      // collected row, so they are dropped before they can reach the calendar or a score.
+      if (isAncillaryListing(event.name, event._embedded?.venues[0]?.name ?? null)) return;
       const venue = event._embedded?.venues[0];
       const startAt = dateTime(event.dates.start);
       candidates.push({

@@ -2,6 +2,7 @@ import { hasDemandEvidence, evidencedAudienceScale } from "./evidence";
 import { assessHotelDemand, hasHotelDemand } from "./demand-assessment";
 import { distanceKm } from "./distance";
 import { localParts } from "./normalize";
+import { knownVenueCapacity, venueCrowdIsAudience } from "./venues";
 import type { DemandScore, EventCandidate } from "./types";
 
 function marqueeSport(category: string, title = "", regionScope = "") {
@@ -44,29 +45,23 @@ export function impact(input: {
   aiImpactPoints?: number | null;
   category: string;
   title?: string;
+  venue?: string | null;
   evidence?: EventCandidate["evidence"];
 }): { points: number; basis: DemandScore["impactBasis"] } {
   const capSport = (points: number) =>
     input.category === "sports" && !marqueeSport(input.category, input.title) && !(input.evidence?.majorCompetition && hasDemandEvidence(input))
       ? Math.min(points, 45)
       : points;
-  if (input.aiImpactPoints !== undefined && input.aiImpactPoints !== null) {
-    return {
-      points: capSport(Math.max(0, Math.min(60, input.aiImpactPoints))),
-      basis: "ai_assessment",
-    };
-  }
-  if (input.localRank !== null) {
-    return {
-      points: capSport(
-        Math.round(Math.max(0, Math.min(100, input.localRank)) * 0.6)
-      ),
-      basis: "local_rank",
-    };
-  }
-  const people = input.attendance ?? input.venueCapacity;
-  if (people !== null) {
-    const points = capSport(
+  // A 17,000-seat arena show that the model graded 45 was scoring 63 and staying hidden. The
+  // crowd it can hold is evidence in its own right, so it is measured alongside the judgement
+  // rather than behind it - but only where that crowd is the event's own audience.
+  const people = input.attendance
+    ?? input.venueCapacity
+    ?? (venueCrowdIsAudience(input.category, input.title ?? "", input.venue ?? null)
+      ? knownVenueCapacity(input.venue ?? null)
+      : null);
+  const crowd = people === null ? null : {
+    points: capSport(
       people >= 15000
         ? 60
         : people >= 5000
@@ -76,10 +71,28 @@ export function impact(input: {
         : people >= 500
         ? 20
         : 10
-    );
-    const basis = input.attendance !== null ? "attendance" : "venue_capacity";
-    return { points, basis };
+    ),
+    basis: (input.attendance !== null ? "attendance" : "venue_capacity") as DemandScore["impactBasis"],
+  };
+  // Evidence may raise a stated grade, never lower it: the absence of a crowd figure is not
+  // evidence that the crowd is small.
+  const raise = (stated: { points: number; basis: DemandScore["impactBasis"] }) =>
+    crowd && crowd.points > stated.points ? crowd : stated;
+  if (input.aiImpactPoints !== undefined && input.aiImpactPoints !== null) {
+    return raise({
+      points: capSport(Math.max(0, Math.min(60, input.aiImpactPoints))),
+      basis: "ai_assessment",
+    });
   }
+  if (input.localRank !== null) {
+    return raise({
+      points: capSport(
+        Math.round(Math.max(0, Math.min(100, input.localRank)) * 0.6)
+      ),
+      basis: "local_rank",
+    });
+  }
+  if (crowd) return crowd;
   if (marqueeSport(input.category, input.title))
     return { points: 60, basis: "competition_rule" };
   if (input.category === "school_holiday")

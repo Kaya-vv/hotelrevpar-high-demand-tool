@@ -2,7 +2,7 @@ import { eventLocalDate, validEventRange } from "../events/normalize";
 import { uniqueEvidenceEditions } from "../events/evidence";
 import { createLongRangeStore, longRangeMarketKey, LongRangeLeaseError, type LongRangeState } from "./long-range-store";
 import { collectionWindow, publishLongRangeResult, type CollectionContext } from "./run";
-import { longRangeWindow } from "./sources/claude";
+import { longRangeWindow, marketWindow } from "./sources/claude";
 import { collectLongRange } from "./sources/long-range";
 import type { SourceResult } from "./types";
 
@@ -15,7 +15,7 @@ export type MarketWork = {
 };
 
 export function storedLongRangeResult(state: LongRangeState | null, now = new Date()): SourceResult {
-  const horizon = longRangeWindow(collectionWindow(now));
+  const horizon = longRangeWindow(marketWindow(collectionWindow(now)));
   const leads = state?.leads ?? [];
   return {
     source: "claude", requests: 0, usage: { invalidDateEditions: leads.flatMap((lead) => lead.editions).filter((event) => !validEventRange(event)).length },
@@ -46,7 +46,7 @@ export async function processMarketWork(work: MarketWork) {
   const key = longRangeMarketKey(context.area.searchLocation, context.area.radiusKm);
   if (work.kind === "market-research") {
     await collectLongRange({
-      ...longRangeWindow(collectionWindow()), location: context.area.searchLocation, radiusKm: context.area.radiusKm,
+      ...longRangeWindow(marketWindow(collectionWindow())), location: context.area.searchLocation, radiusKm: context.area.radiusKm,
       seeds: context.longRangeSeeds, batching: { enabled: process.env.ANTHROPIC_BATCHES !== "disabled" },
       requestedAt: work.requestedAt,
       onUsage: (usage) => repository.recordUsage(work.runId, "claude", usage),
