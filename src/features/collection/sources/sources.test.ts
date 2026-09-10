@@ -564,6 +564,75 @@ describe("source adapters", () => {
     expect(queries[0]).toBe("festivals en stadsevenementen Amsterdam augustus 2027");
   });
 
+  it("prices its own near-term usage instead of reporting it as free", async () => {
+    const create = vi.fn();
+    queueClaudeSearches(create);
+    const onUsage = vi.fn();
+
+    await collectClaude({
+      ...claudeWindow,
+      location: "Amsterdam",
+      radiusKm: 15,
+      model: "claude-sonnet-5",
+      client: { messages: { create } } as unknown as Anthropic,
+      triage: async () => new Map<number, string>(),
+      batching: { enabled: false },
+      onUsage,
+    });
+
+    // Only the long-range collector annotated its usage, so every near-term row landed with a
+    // null billing mode and no cost - production recorded 3.2M input tokens as $0.00 - which then
+    // invited repricing them at standard rates and overstating that half of a run by 1.9x.
+    expect(onUsage).toHaveBeenCalled();
+    for (const [event] of onUsage.mock.calls) {
+      expect(event.billingMode).toBe("standard");
+      expect(event.estimatedCostUsd).toBeGreaterThan(0);
+    }
+  });
+
+  it("keeps reading the shared city result when a run dispatches synchronously", async () => {
+    const create = vi.fn();
+    queueClaudeSearches(create);
+    const load = vi.fn().mockResolvedValue({ source: "claude", candidates: [{ title: "Cached city event" }], requests: 0, usage: {} });
+
+    const result = await collectClaude({
+      ...claudeWindow,
+      location: "Amsterdam",
+      radiusKm: 15,
+      model: "claude-sonnet-5",
+      client: { messages: { create } } as unknown as Anthropic,
+      triage: async () => new Map<number, string>(),
+      batching: { enabled: false },
+      shareMarketResult: true,
+      marketCache: { load, save: vi.fn() },
+    });
+
+    // The cache read used to be gated on batching, so a first run dispatched for speed would have
+    // re-bought a sweep its own market had already paid for - the slowest outcome of the three.
+    expect(result.candidates).toEqual([{ title: "Cached city event" }]);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("still shares a synchronous run's own result with the next hotel", async () => {
+    const create = vi.fn();
+    queueClaudeSearches(create);
+    const save = vi.fn();
+
+    await collectClaude({
+      ...claudeWindow,
+      location: "Amsterdam",
+      radiusKm: 15,
+      model: "claude-sonnet-5",
+      client: { messages: { create } } as unknown as Anthropic,
+      triage: async () => new Map<number, string>(),
+      batching: { enabled: false },
+      shareMarketResult: true,
+      marketCache: { load: async () => null, save },
+    });
+
+    expect(save).toHaveBeenCalledOnce();
+  });
+
   it("rejects an official URL that Claude searched but never fetched", async () => {
     const official = "https://official.example/event";
     const create = vi.fn();

@@ -10,6 +10,7 @@ import {
   claudeDiscoveryDecision,
   claudeDiscoveryDue,
   collectionWindow,
+  mayDispatchSynchronously,
   runCollection,
   selectClaudeRefreshUrls,
   selectLongRangeSeeds,
@@ -642,5 +643,22 @@ describe("claudeDiscoveryDecision", () => {
   it("never brings a sweep forward that the hotel's own cadence had settled", () => {
     // Inheritance may only skip a sweep, so a stale market cannot force one early.
     expect(claudeDiscoveryDecision({ ...base, trigger: "cron", ownSweptAt: recent, marketSweptAt: old })).toBe(false);
+  });
+});
+
+describe("mayDispatchSynchronously", () => {
+  it("gives a hotel with no calendar yet the fast path once", () => {
+    expect(mayDispatchSynchronously({ firstRun: true }, false)).toBe(true);
+  });
+
+  it("never repeats the trade on a redelivery", () => {
+    // Synchronous work has no checkpoint, so a run that times out halfway would otherwise
+    // re-buy the whole sweep on every attempt.
+    expect(mayDispatchSynchronously({ firstRun: true }, true)).toBe(false);
+  });
+
+  it("keeps every later run batched", () => {
+    expect(mayDispatchSynchronously({ firstRun: false }, false)).toBe(false);
+    expect(mayDispatchSynchronously({}, false)).toBe(false);
   });
 });

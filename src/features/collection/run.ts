@@ -55,6 +55,12 @@ export type CollectionContext = {
   longRangeSeeds?: LongRangeSeed[];
   claudeAgendaSeedUrls?: string[];
   runNearTermClaude?: boolean;
+  /**
+   * No run of this area has ever finished. Its calendar is empty until the first one lands, so a
+   * new client watches an empty page for as long as the Anthropic batch queue takes. That one run
+   * trades the batch discount for latency; every run after it is batched again.
+   */
+  firstRun?: boolean;
   knownEvents: { title: string; startDate: string; endDate: string | null }[];
 };
 
@@ -111,6 +117,19 @@ export function claudeDiscoveryDecision(input: {
   if (!claudeDiscoveryDue(input.ownSweptAt, input.now)) return false;
   if (input.inheritedEvidence && !claudeDiscoveryDue(input.marketSweptAt, input.now)) return false;
   return true;
+}
+
+/**
+ * Whether a run may trade the batch discount for latency. Only a hotel whose calendar has never
+ * been filled qualifies: it has nothing to show, so the batch queue is pure waiting. A redelivery
+ * never qualifies, because synchronous work has no checkpoint to resume from and re-buying it on
+ * every attempt is how a single timeout becomes repeated spend.
+ */
+export function mayDispatchSynchronously(
+  context: Pick<CollectionContext, "firstRun">,
+  resume: boolean,
+) {
+  return Boolean(context.firstRun) && !resume;
 }
 
 export function selectClaudeRefreshUrls(
@@ -295,6 +314,7 @@ function configured(value: string | undefined, source: string) {
 function defaultCollectors(
   onUsage: (source: SourceName, usage: ClaudeUsageEvent) => Promise<void>,
   runId: string,
+  resume: boolean,
 ): Partial<Record<SourceName, Collector>> {
   return {
     rijksoverheid: (context) => collectRijksoverheid({ start: context.window.start, end: longRangeWindow(context.window).end }),
@@ -321,6 +341,14 @@ function defaultCollectors(
       }),
     claude: (context) => {
       configured(process.env.ANTHROPIC_API_KEY, "Anthropic");
+      // A first run has no calendar to show yet, so it buys latency with the batch discount: the
+      // near-term horizon answers in minutes instead of waiting out the batch queue. Long-range
+      // is unaffected - `collectFuture` below enqueues it as its own job, which keeps both the
+      // discount and the worker release that lets it span hours.
+      //
+      // A redelivery must not repeat the trade. Synchronous work has no checkpoint to resume
+      // from, so re-buying it on every attempt is how one timeout becomes repeated spend.
+      const sync = mayDispatchSynchronously(context, resume);
       return collectClaudeCalendar({
         ...context.window,
         location: context.area.searchLocation,
@@ -331,6 +359,10 @@ function defaultCollectors(
         runNearTerm: context.runNearTermClaude,
         knownEvents: context.knownEvents,
         onUsage: (usage) => onUsage("claude", usage),
+        // Still shared either way: reading the city result is what lets a new hotel in a covered
+        // market skip the sweep entirely, which is faster than any dispatch mode.
+        ...(sync ? { batching: { enabled: false }, shareMarketResult: true } : {}),
+        // Dynamic: market-research.ts imports this module, so a static import here is a cycle.
       }, undefined, async () => (await import("./market-research")).readAndEnqueueResearch(context, runId));
     },
     footballdata: (context) =>
@@ -442,7 +474,7 @@ export async function runCollection(
     const observeUsage = (source: SourceName, event: ClaudeUsageEvent) =>
       repository.recordUsage(runId, source, event);
     const collectors =
-      dependencies?.collectors ?? defaultCollectors(observeUsage, runId);
+      dependencies?.collectors ?? defaultCollectors(observeUsage, runId, Boolean(input.resume));
     const demandTriageReviewer = dependencies
       ? dependencies.demandTriageReviewer
       : defaultDemandTriageReviewer(observeUsage);

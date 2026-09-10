@@ -260,6 +260,12 @@ export function createCollectionRepository(): CollectionRepository {
           holidayRegion: hotel.holiday_region,
         }],
         window,
+        firstRun: !(await supabase
+          .from("collection_runs")
+          .select("id", { count: "exact", head: true })
+          .eq("account_id", accountId)
+          .eq("collection_area_id", areaId)
+          .not("finished_at", "is", null)).count,
         knownClaudeUrls: selectClaudeRefreshUrls(
           refreshSources,
           window,

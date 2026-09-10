@@ -5,6 +5,7 @@ import type { MessageCreateParamsNonStreaming } from "@anthropic-ai/sdk/resource
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { geocodeCity, createLocationResolver } from "../research-location";
+import { estimatedCostUsd } from "../research-budget";
 import { fetchedDocumentText, eventFactsSchema, evidenceInstructions, verifyEventEvidence } from "@/features/events/evidence";
 
 import type { DemandTriage, EvidenceReview } from "@/features/events/hotel-demand";
@@ -608,6 +609,14 @@ type CollectClaudeInput = CollectionWindow & {
   // batches exist here — with no way to be exercised outside production.
   batching?: Batching;
   marketCache?: MarketCache;
+  /**
+   * Whether this run may read and write the shared city result. It defaults to `batching.enabled`
+   * only because that is what production once meant by "has a durable store"; the two are not the
+   * same thing. A first run dispatches synchronously for speed and still has to read the cache -
+   * that read is the difference between a new hotel in a covered city filling its calendar at
+   * once and re-buying a sweep - and its own result is just as shareable for the next hotel.
+   */
+  shareMarketResult?: boolean;
 };
 
 /**
@@ -716,12 +725,25 @@ export async function collectClaude(input: CollectClaudeInput): Promise<SourceRe
     knownUrls: input.knownUrls ?? [],
     discoveryMode: input.discoveryMode,
   };
-  if (batching.enabled) {
+  const shareMarketResult = input.shareMarketResult ?? batching.enabled;
+  if (shareMarketResult) {
     const cached = await marketCache.load(market);
     if (cached) return cached;
   }
-  const result = await collectClaudeFresh(input, model, discoveryModel, client, batching);
-  if (batching.enabled && marketResultIsShareable(result.usage)) {
+  // Only the long-range collector annotated its usage, so every near-term row landed with a null
+  // billing mode and no cost: 3.2M input tokens recorded as $0.00 against production on
+  // 2026-09-10. That also invited repricing them at standard rates, which overstated the near-term
+  // half of a run by 1.9x - it is batched through the same `requestMessages` path.
+  const priced: CollectClaudeInput = {
+    ...input,
+    onUsage: input.onUsage && (async (event) => {
+      event.billingMode ??= batching.enabled ? "batch" : "standard";
+      event.estimatedCostUsd ??= estimatedCostUsd(event, batching.enabled) ?? undefined;
+      await input.onUsage!(event);
+    }),
+  };
+  const result = await collectClaudeFresh(priced, model, discoveryModel, client, batching);
+  if (shareMarketResult && marketResultIsShareable(result.usage)) {
     await marketCache.save(market, result);
   }
   return result;
