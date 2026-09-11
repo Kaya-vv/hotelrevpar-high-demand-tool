@@ -198,6 +198,46 @@ describe("runCollection", () => {
     expect(repo.finishRun).toHaveBeenCalledOnce();
   });
 
+  it("finishes the run when a source returns an unusable date", async () => {
+    // Production 2026-09-11: one undated Groningen event and one reversed Rotterdam range threw
+    // out of the save loop, so no source checkpointed and the queue redelivered for a whole day.
+    const repo = repository({
+      // What production does: `normalizeCandidate` throws RangeError on an unparseable date and
+      // Postgres rejects `end_at < start_at`. Both escaped the collector's error handling.
+      persistCandidate: vi.fn().mockImplementation((_context, candidate: { startAt: string; endAt: string }) => {
+        const start = Date.parse(candidate.startAt), end = Date.parse(candidate.endAt);
+        if (!Number.isFinite(start) || !Number.isFinite(end)) throw new RangeError("Invalid time value");
+        if (end < start) throw new Error('new row for relation "events" violates check constraint "events_check"');
+        return Promise.resolve({ state: "active", duplicate: false });
+      }),
+    });
+    const event = (overrides: Record<string, unknown>) => ({
+      provider: "claude", providerEventId: "c-1", sourceUrl: "https://example.com/e", title: "Festival",
+      category: "festival", venue: null, latitude: 51.44, longitude: 5.48, regionScope: null,
+      sourceState: "active", certainty: "confirmed", localRank: null, attendance: null,
+      venueCapacity: null, evidenceText: null, primarySourceConfirmed: true, ...overrides,
+    });
+    const claude = vi.fn().mockResolvedValue({
+      source: "claude",
+      candidates: [
+        event({ providerEventId: "undated", startAt: "", endAt: "" }),
+        event({ providerEventId: "night", startAt: "2026-09-11T17:00:00+02:00", endAt: "2026-09-11T04:30:00+02:00" }),
+      ],
+      requests: 1,
+      usage: {},
+    });
+    const ticketmaster = vi.fn().mockResolvedValue({ source: "ticketmaster", candidates: [], requests: 1, usage: {} });
+    const dependencies = { repository: repo, collectors: { ticketmaster, claude } };
+
+    await expect(runCollection({ accountId: "account-1", areaId: "area-1", trigger: "manual" as const }, dependencies))
+      .resolves.toMatchObject({ status: "completed" });
+    expect(repo.finishRun).toHaveBeenCalledOnce();
+    // The undated one is unrecoverable; the night event is kept with its end rolled forward.
+    expect(repo.persistCandidate).toHaveBeenCalledOnce();
+    expect(vi.mocked(repo.persistCandidate).mock.calls[0][1]).toMatchObject({ providerEventId: "night", endAt: "2026-09-12T02:30:00.000Z" });
+    expect(repo.recordSourceResult).toHaveBeenCalledWith("run-1", "claude", expect.objectContaining({ invalidDates: 1 }));
+  });
+
   it("scores shared evidence and reloads history before continuing discovery", async () => {
     const repo = repository({ reuseNearTermEvidence: vi.fn().mockResolvedValue(1) });
     const original = await repo.loadContext("account-1", "area-1");

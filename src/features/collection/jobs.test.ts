@@ -178,6 +178,38 @@ describe("collection jobs", () => {
       expect.objectContaining({ status: "failed", attempts: 3, error_summary: "provider unavailable" }),
     ]);
   });
+
+  it("stops asking for redelivery once a job has used its attempts", async () => {
+    // Production 2026-09-11: Groningen reached 33 deliveries and Rotterdam 28 on the same
+    // unsavable event, roughly every four minutes until message retention expired.
+    const updates: Array<Record<string, unknown>> = [];
+    const jobQuery = selectable({
+      id: "job-1",
+      account_id: "account-1",
+      collection_area_id: "area-1",
+      trigger: "manual",
+      status: "failed",
+      attempts: 4,
+    });
+    Object.assign(jobQuery, {
+      update: vi.fn((value: Record<string, unknown>) => {
+        updates.push(value);
+        return { eq: vi.fn().mockResolvedValue({ error: null }) };
+      }),
+    });
+    adminHolder.current = {
+      from: vi.fn((table: string) => table === "collection_jobs" ? jobQuery
+        : table === "accounts" ? selectable({ id: "account-1" }) : selectable({ id: "area-1" })),
+    };
+    // A Supabase rejection is a plain object, which `String()` rendered as "[object Object]".
+    const run = vi.fn().mockRejectedValue({ message: 'new row for relation "events" violates check constraint "events_check"' });
+
+    await expect(processCollectionJob({ jobId: "job-1" }, delivery(29), run)).resolves.toBeUndefined();
+    expect(updates.at(-1)).toMatchObject({
+      status: "failed",
+      error_summary: 'new row for relation "events" violates check constraint "events_check" (gestopt na 5 pogingen)',
+    });
+  });
 });
 
 it.each(["running", "succeeded"])("surfaces a failed %s write without recording provider failure", async failedStatus => {

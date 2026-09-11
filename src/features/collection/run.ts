@@ -1,6 +1,6 @@
 import { longRangeWindow } from "./sources/claude";
 import { isAggregatorUrl } from "./sources/long-range";
-import { eventLocalDate } from "@/features/events/normalize";
+import { eventLocalDate, repairEventRange } from "@/features/events/normalize";
 import { distanceKm } from "@/features/events/distance";
 import {
   applyDemandTriage,
@@ -417,8 +417,9 @@ function relevantToHotel(candidate: EventCandidate, hotel: HotelContext) {
 export async function publishLongRangeResult(repository: CollectionRepository, context: CollectionContext, result: SourceResult) {
   if (!context.area.enabledSources.includes("claude")) return;
   if (result.quarantinedProviderEventIds?.length) await repository.quarantineClaudeEditions(context, result.quarantinedProviderEventIds);
-  for (const candidate of result.candidates) {
-    if (context.hotels.some((hotel) => relevantToHotel(candidate, hotel))) await repository.persistCandidate(context, candidate);
+  for (const event of result.candidates) {
+    const candidate = repairEventRange(event);
+    if (candidate && context.hotels.some((hotel) => relevantToHotel(candidate, hotel))) await repository.persistCandidate(context, candidate);
   }
   return repository.recalculateScores(context);
 }
@@ -429,7 +430,8 @@ function errorState(reason: unknown) {
   return { state: "failed", error: errorMessage(reason) };
 }
 
-function errorMessage(reason: unknown) {
+/** A Supabase rejection is a plain object, so `String(reason)` renders it as "[object Object]". */
+export function errorMessage(reason: unknown) {
   if (reason instanceof Error) return reason.message;
   if (
     reason &&
@@ -529,7 +531,12 @@ export async function runCollection(
         return;
       }
 
-      const relevant = value.candidates.filter((event) =>
+      // Every source reaches persistence through here. An unparseable or reversed date threw
+      // out of the save loop below, which sits outside the collector's error handling: one bad
+      // row aborted the run, the job never checkpointed, and the queue redelivered it forever.
+      const dated = value.candidates.map(repairEventRange).filter((event) => event !== null);
+      const invalidDateCandidates = value.candidates.length - dated.length;
+      const relevant = dated.filter((event) =>
         context.hotels.some((hotel) => relevantToHotel(event, hotel))
       );
       if (source === "claude" && value.invalidatedUrls?.length) {
@@ -802,6 +809,7 @@ export async function runCollection(
         provisional: provisionalCount,
         reviews: canonicalReviewIds.size || reviewCount,
         missingLocation: missingLocationCount,
+        invalidDates: invalidDateCandidates,
         duplicates: duplicateCount,
         usage: sourceUsage,
         ...(value.funnel ? { funnel: value.funnel } : {}),

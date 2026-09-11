@@ -6,7 +6,7 @@ import {
   publishableReviewEventIds,
 } from "./importance";
 import { classifyMatch } from "./match";
-import { normalizeCandidate, normalizeText } from "./normalize";
+import { normalizeCandidate, normalizeText, repairEventRange } from "./normalize";
 import { isEnabledPrimarySource } from "./source-evidence";
 import type { EventCandidate } from "./types";
 import { validateCandidate } from "./validate";
@@ -364,5 +364,27 @@ describe("event domain", () => {
       certainty: "provisional",
     });
   });
+  // Production 2026-09-11: Rotterdam's "Festival Downtown" arrived as 17:00 -> 04:30 on one day
+  // and Groningen's "The Jury Experience" with empty dates. Both threw out of the save loop and
+  // the queue redelivered the whole hotel every few minutes for a day.
+  it("rolls a night event's end date forward instead of rejecting it", () => {
+    const repaired = repairEventRange({ ...candidate, startAt: "2026-09-11T17:00:00+02:00", endAt: "2026-09-11T04:30:00+02:00" });
+    expect(repaired?.endAt).toBe("2026-09-12T02:30:00.000Z");
+    expect(Date.parse(repaired!.endAt)).toBeGreaterThan(Date.parse(repaired!.startAt));
+  });
+
+  it("drops a candidate whose dates cannot be read at all", () => {
+    expect(repairEventRange({ ...candidate, startAt: "", endAt: "" })).toBeNull();
+    expect(repairEventRange({ ...candidate, startAt: "2026-09-11T17:00:00+02:00", endAt: "" })).toBeNull();
+  });
+
+  it("drops an end date that stays before the start after rolling one day", () => {
+    expect(repairEventRange({ ...candidate, startAt: "2026-09-11T17:00:00+02:00", endAt: "2026-09-08T22:00:00+02:00" })).toBeNull();
+  });
+
+  it("leaves a valid range untouched", () => {
+    expect(repairEventRange(candidate)).toBe(candidate);
+  });
+
 
 });

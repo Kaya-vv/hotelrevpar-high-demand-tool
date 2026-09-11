@@ -5,6 +5,24 @@ export function validEventRange(event: Pick<EventCandidate, "startAt" | "endAt">
   return Number.isFinite(start) && Number.isFinite(end) && end >= start;
 }
 
+/**
+ * A night event is routinely published with its end time on the start date: "23:00 - 04:30"
+ * becomes 17:00 -> 04:30 on the same day. Rolling the end forward one day recovers a real
+ * event; the database rejects the row otherwise, which aborted the whole collection run.
+ * Returns null when the dates cannot be trusted at all, so the caller drops the candidate
+ * instead of letting one bad row kill every other source's work.
+ */
+export function repairEventRange<T extends Pick<EventCandidate, "startAt" | "endAt">>(event: T): T | null {
+  const start = Date.parse(event.startAt);
+  if (!Number.isFinite(start)) return null;
+  const end = Date.parse(event.endAt);
+  if (!Number.isFinite(end)) return null;
+  if (end >= start) return event;
+  const rolled = end + 86_400_000;
+  if (rolled < start) return null;
+  return { ...event, endAt: new Date(rolled).toISOString() };
+}
+
 export function normalizeText(value: string) {
   return value
     .normalize("NFD")

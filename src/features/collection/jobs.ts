@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { BatchPendingError } from "./anthropic-batches";
-import { runCollection } from "./run";
+import { errorMessage, runCollection } from "./run";
 import { processMarketWork, type MarketWork } from "./market-research";
 
 export const COLLECTION_TOPIC = "hotel-collection";
@@ -41,9 +41,12 @@ async function persistJob(write: PromiseLike<{ error: unknown }>) {
   if (error) throw new JobPersistenceError(error);
 }
 
-function message(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
-}
+/**
+ * A run that fails on its own stored data fails identically every time. Redelivery ran until the
+ * 48-hour message retention expired: Groningen burned 33 attempts on one undated event. Batch
+ * wake-ups take the resume path and never touch `attempts`, so this only counts real tries.
+ */
+const MAX_ATTEMPTS = 5;
 
 export async function enqueueCollectionAreas(
   input: {
@@ -127,7 +130,7 @@ export async function enqueueCollectionAreas(
       totals.failed += 1;
       await persistJob(admin
         .from("collection_jobs")
-        .update({ status: "failed", finished_at: new Date().toISOString(), error_summary: message(error) })
+        .update({ status: "failed", finished_at: new Date().toISOString(), error_summary: errorMessage(error) })
         .eq("id", job.id));
     }
   }
@@ -146,7 +149,7 @@ export async function processCollectionJob(
   const admin = createAdminClient();
   const { data: job, error: jobError } = await admin
     .from("collection_jobs")
-    .select("id, account_id, collection_area_id, trigger, status, pending_since")
+    .select("id, account_id, collection_area_id, trigger, status, pending_since, attempts")
     .eq("id", messageBody.jobId)
     .maybeSingle();
   if (jobError) throw jobError;
@@ -253,6 +256,7 @@ export async function processCollectionJob(
         .eq("id", job.id));
       throw error;
     }
+    const exhausted = (job.attempts ?? 0) + 1 >= MAX_ATTEMPTS;
     await persistJob(admin
       .from("collection_jobs")
       .update({
@@ -260,9 +264,14 @@ export async function processCollectionJob(
         attempts: deliveryCount,
         finished_at: new Date().toISOString(),
         pending_since: null,
-        error_summary: message(error),
+        error_summary: exhausted
+          ? `${errorMessage(error)} (gestopt na ${MAX_ATTEMPTS} pogingen)`
+          : errorMessage(error),
       })
       .eq("id", job.id));
+    // Returning acknowledges the message. Rethrowing asks for another delivery, which is only
+    // worth doing while the failure could still be transient.
+    if (exhausted) return;
     throw error;
   }
 }
