@@ -63,9 +63,9 @@ export type Database = {
       };
 
       long_range_markets: {
-        Row: { market_key: string; state: Json; updated_at: string; lease_owner: string | null; lease_until: string | null };
-        Insert: { market_key: string; state: Json; updated_at?: string; lease_owner?: string | null; lease_until?: string | null };
-        Update: { market_key?: string; state?: Json; updated_at?: string; lease_owner?: string | null; lease_until?: string | null };
+        Row: { market_key: string; state: Json; updated_at: string; lease_owner: string | null; lease_until: string | null; search_location: string | null; radius_km: number | null };
+        Insert: { market_key: string; state: Json; updated_at?: string; lease_owner?: string | null; lease_until?: string | null; search_location?: string | null; radius_km?: number | null };
+        Update: { market_key?: string; state?: Json; updated_at?: string; lease_owner?: string | null; lease_until?: string | null; search_location?: string | null; radius_km?: number | null };
         Relationships: [];
       };
       anthropic_batch_cache: {
@@ -419,6 +419,7 @@ export type Database = {
           created_at: string;
           discovery_model: string;
           expires_at: string;
+          market_key: string | null;
           model: string;
           radius_km: number;
           result: Json;
@@ -431,6 +432,7 @@ export type Database = {
           created_at?: string;
           discovery_model: string;
           expires_at: string;
+          market_key?: string | null;
           model: string;
           radius_km: number;
           result: Json;
@@ -443,6 +445,7 @@ export type Database = {
           created_at?: string;
           discovery_model?: string;
           expires_at?: string;
+          market_key?: string | null;
           model?: string;
           radius_km?: number;
           result?: Json;

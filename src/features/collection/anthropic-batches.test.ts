@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   claudeMarketCacheKey,
+  claudeMarketGroupKey,
   runAnthropicBatch,
   type BatchStore,
   type ClaudeMarketInput,
@@ -32,6 +33,16 @@ describe("Anthropic batch cache", () => {
       .not.toBe(claudeMarketCacheKey(input));
     expect(claudeMarketCacheKey({ ...input, discoveryMode: "long_range" }))
       .not.toBe(claudeMarketCacheKey(input));
+    // The radius leaves the identity so a lookup can compare it as a column: a 25 km hotel may
+    // read a 50 km search of the same city, but never a search of a different city or horizon.
+    expect(claudeMarketGroupKey({ ...input, location: " rotterdam " }))
+      .toBe(claudeMarketGroupKey(input));
+    expect(claudeMarketGroupKey({ ...input, radiusKm: 50 } as ClaudeMarketInput))
+      .toBe(claudeMarketGroupKey(input));
+    expect(claudeMarketGroupKey({ ...input, location: "Eindhoven" }))
+      .not.toBe(claudeMarketGroupKey(input));
+    expect(claudeMarketGroupKey({ ...input, discoveryMode: "long_range" }))
+      .not.toBe(claudeMarketGroupKey(input));
   });
 
   it("submits once, restores request order, and charges usage once", async () => {

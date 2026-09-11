@@ -212,9 +212,9 @@ export async function getCalendarData(
     if (researchPending && areaId) {
       const { data: area, error } = await supabase.from("collection_areas").select("search_location, radius_km").eq("account_id", accountId).eq("id", areaId).single();
       if (error) throw error;
-      const { longRangeMarketKey } = await import("../collection/long-range-store");
-      const { getMarketStatus } = await import("../collection/market-status");
-      const state = await getMarketStatus(longRangeMarketKey(area.search_location, area.radius_km));
+      const { getMarketStatus, marketKeyResolver } = await import("../collection/market-status");
+      const marketKey = await marketKeyResolver();
+      const state = await getMarketStatus(marketKey(area.search_location, area.radius_km));
       const { researchIsPending } = await import("../collection/research-status");
       researchPending = researchIsPending(true, runResult.data.started_at, state);
     }

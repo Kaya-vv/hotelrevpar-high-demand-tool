@@ -64,7 +64,7 @@ export type LongRangeState = { research?: { requestedAt: string; completedAt?: s
   budget?: { month: string; spentEur: number; reservations: Record<string, number>; billedIds: string[] };
 };
 export type LongRangeStore = {
-  acquire: (key: string) => Promise<boolean>;
+  acquire: (key: string, market?: { location: string; radiusKm: number }) => Promise<boolean>;
   release: (key: string) => Promise<void>;
   load: (key: string) => Promise<LongRangeState | null>;
   save: (key: string, state: LongRangeState) => Promise<void>;
@@ -75,18 +75,68 @@ export class LongRangeLeaseError extends Error {
   constructor() { super("Long-range market is busy or its lease expired; retry this collection job."); }
 }
 
+/** One spelling per city, matching what the market key hashes, so a column lookup agrees with it. */
+export function marketLocation(location: string) {
+  return location.trim().toLocaleLowerCase("nl-NL");
+}
+
 export function longRangeMarketKey(location: string, radiusKm: number) {
-  return createHash("sha256").update(JSON.stringify([location.trim().toLocaleLowerCase("nl-NL"), radiusKm])).digest("hex");
+  return createHash("sha256").update(JSON.stringify([marketLocation(location), radiusKm])).digest("hex");
+}
+
+export type LongRangeMarket = { key: string; location: string; radiusKm: number };
+export type MarketRow = { market_key: string; search_location: string | null; radius_km: number | null };
+
+/**
+ * The market whose research covers a hotel: same city, radius at least the hotel's own, narrowest
+ * such market first. A wider market's editions are a superset and each hotel is filtered by
+ * measured distance when published, so riding a wider one costs nothing. A narrower one would
+ * never have looked at the outer ring, so it cannot stand in.
+ */
+export function coveringMarket<T extends MarketRow>(markets: T[], location: string, radiusKm: number): T | null {
+  const city = marketLocation(location);
+  let best: T | null = null;
+  for (const market of markets) {
+    if (!market.search_location || market.radius_km === null) continue;
+    if (marketLocation(market.search_location) !== city || market.radius_km < radiusKm) continue;
+    if (!best || market.radius_km < best.radius_km!) best = market;
+  }
+  return best;
+}
+
+/** Resolves the market a hotel belongs to, falling back to its own when the city has none yet. */
+export async function resolveLongRangeMarket(location: string, radiusKm: number): Promise<LongRangeMarket> {
+  const { createAdminClient } = await import("@/lib/supabase/admin");
+  const { data, error } = await createAdminClient()
+    .from("long_range_markets")
+    .select("market_key, search_location, radius_km")
+    .eq("search_location", marketLocation(location));
+  if (error) throw error;
+  const host = coveringMarket(data, location, radiusKm);
+  if (host) return { key: host.market_key, location: marketLocation(host.search_location!), radiusKm: host.radius_km! };
+  return { key: longRangeMarketKey(location, radiusKm), location: marketLocation(location), radiusKm };
 }
 
 export function createLongRangeStore(): LongRangeStore {
   const owner = randomUUID();
   return {
-    async acquire(key) {
+    async acquire(key, market) {
       const { createAdminClient } = await import("@/lib/supabase/admin");
-      const { data, error } = await createAdminClient().rpc("claim_long_range_market", { target: key, owner });
+      const admin = createAdminClient();
+      const { data, error } = await admin.rpc("claim_long_range_market", { target: key, owner });
       if (error) throw error;
-      return data;
+      if (!data) return false;
+      // The lease helper inserts the row before it knows the city. Stamping it here is what makes
+      // a brand-new market findable by the next hotel in the same city with a narrower radius.
+      if (market) {
+        const { error: stampError } = await admin
+          .from("long_range_markets")
+          .update({ search_location: marketLocation(market.location), radius_km: market.radiusKm })
+          .eq("market_key", key)
+          .is("search_location", null);
+        if (stampError) throw stampError;
+      }
+      return true;
     },
     async release(key) {
       const { createAdminClient } = await import("@/lib/supabase/admin");

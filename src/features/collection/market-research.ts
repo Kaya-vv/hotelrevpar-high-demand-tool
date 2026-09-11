@@ -1,6 +1,6 @@
 import { eventLocalDate, validEventRange } from "../events/normalize";
 import { uniqueEvidenceEditions } from "../events/evidence";
-import { createLongRangeStore, longRangeMarketKey, LongRangeLeaseError, type LongRangeState } from "./long-range-store";
+import { createLongRangeStore, marketLocation, resolveLongRangeMarket, LongRangeLeaseError, type LongRangeState } from "./long-range-store";
 import { collectionWindow, publishLongRangeResult, type CollectionContext } from "./run";
 import { longRangeWindow, marketWindow } from "./sources/claude";
 import { collectLongRange } from "./sources/long-range";
@@ -28,7 +28,8 @@ export function storedLongRangeResult(state: LongRangeState | null, now = new Da
 /** The hotel waits for a durable enqueue, never for a provider batch. */
 export async function readAndEnqueueResearch(context: CollectionContext, runId: string): Promise<SourceResult> {
   const { publishCollectionJob } = await import("./jobs");
-  const state = await createLongRangeStore().load(longRangeMarketKey(context.area.searchLocation, context.area.radiusKm));
+  const market = await resolveLongRangeMarket(context.area.searchLocation, context.area.radiusKm);
+  const state = await createLongRangeStore().load(market.key);
   await publishCollectionJob({ kind: "market-research", accountId: context.area.accountId, areaId: context.area.id, runId, requestedAt: new Date().toISOString() });
   return { ...storedLongRangeResult(state), researchPending: true };
 }
@@ -43,10 +44,13 @@ export async function processMarketWork(work: MarketWork) {
   if (!account) return;
   const context = await repository.loadContext(work.accountId, work.areaId);
   if (!context.area.enabledSources.includes("claude")) return;
-  const key = longRangeMarketKey(context.area.searchLocation, context.area.radiusKm);
+  const market = await resolveLongRangeMarket(context.area.searchLocation, context.area.radiusKm);
+  const key = market.key;
   if (work.kind === "market-research") {
+    // Research runs at the market's radius, not this hotel's: a wider host already covers it, and
+    // narrowing the search would strand every hotel that is riding the same market.
     await collectLongRange({
-      ...longRangeWindow(marketWindow(collectionWindow())), location: context.area.searchLocation, radiusKm: context.area.radiusKm,
+      ...longRangeWindow(marketWindow(collectionWindow())), location: market.location, radiusKm: market.radiusKm,
       seeds: context.longRangeSeeds, batching: { enabled: process.env.ANTHROPIC_BATCHES !== "disabled" },
       requestedAt: work.requestedAt,
       onUsage: (usage) => repository.recordUsage(work.runId, "claude", usage),
@@ -58,13 +62,16 @@ export async function processMarketWork(work: MarketWork) {
   // Publication has its own retry and never calls an AI collector. The market lease prevents
   // clearing the publication marker while another worker is saving newer editions.
   const store = createLongRangeStore();
-  if (!await store.acquire(key)) throw new LongRangeLeaseError();
+  if (!await store.acquire(key, market)) throw new LongRangeLeaseError();
   try {
     const state = await store.load(key);
     if (!state?.publicationPending) return;
     const { data: areas, error: areaError } = await admin.from("collection_areas").select("id, account_id, search_location, radius_km, accounts!inner(active)").eq("accounts.active", true).contains("enabled_sources", ["claude"]);
     if (areaError) throw areaError;
-    const matching = areas.filter((area) => longRangeMarketKey(area.search_location, area.radius_km) === key);
+    // Every hotel this research covers, not only the one whose radius happens to match it: the
+    // editions are a superset and `publishLongRangeResult` filters each hotel by real distance.
+    const matching = areas.filter((area) =>
+      marketLocation(area.search_location) === market.location && area.radius_km <= market.radiusKm);
     if (matching.length) {
       const { data: refreshing, error } = await admin.from("collection_runs").select("id").in("collection_area_id", matching.map((area) => area.id)).is("finished_at", null).limit(1);
       if (error) throw error;

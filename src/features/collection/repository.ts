@@ -20,7 +20,7 @@ import type { Database, Json } from "@/lib/supabase/database.types";
 import {
   CLAUDE_ASSESSMENT_VERSION,
 } from "./anthropic-batches";
-import { longRangeMarketKey } from "./long-range-store";
+import { marketLocation } from "./long-range-store";
 import {
   claudeDiscoveryDecision,
   collectionWindow,
@@ -433,9 +433,11 @@ export function createCollectionRepository(): CollectionRepository {
         .from("collection_areas")
         .select("id, search_location, radius_km");
       if (areaError) throw areaError;
-      const key = longRangeMarketKey(context.area.searchLocation, context.area.radiusKm);
+      // A sweep covers this hotel only if it asked for at least this hotel's radius. A narrower
+      // neighbour's sweep never reached the outer ring, so it cannot stand in for one here.
+      const city = marketLocation(context.area.searchLocation);
       const market = areas
-        .filter((area) => longRangeMarketKey(area.search_location, area.radius_km) === key)
+        .filter((area) => marketLocation(area.search_location) === city && area.radius_km >= context.area.radiusKm)
         .map((area) => area.id);
       // What `reuseNearTermEvidence` actually left on this hotel, at the version the code can
       // reuse. An older market sweep is not inheritable evidence, however recent the run was.

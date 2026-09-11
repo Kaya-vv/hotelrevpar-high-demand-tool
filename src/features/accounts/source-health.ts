@@ -1,5 +1,5 @@
 import { runStatusLabel } from "./source-health-table";
-import { getMarketStatuses, getMarketProgress } from "../collection/market-status";
+import { getMarketStatuses, getMarketProgress, marketKeyResolver } from "../collection/market-status";
 import { fetchAllRows, fetchPagedInBatches } from "@/lib/supabase/fetch-in-batches";
 import type { DiscoveryDrop, DiscoveryFunnel } from "@/features/collection/types";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -18,8 +18,12 @@ export async function getMarketResearchHealth() {
   if (areas.error) throw areas.error;
   return markets.data.flatMap((market) => {
     const state = market as unknown as LongRangeState;
+    // The market now carries its own city and radius; an area lookup guessed wrong as soon as a
+    // wider market served hotels whose own radius differed from it.
     const area = areas.data.find((area) => longRangeMarketKey(area.search_location, area.radius_km) === market.market_key);
-    return state.research ? [{ key: market.market_key, city: area?.search_location ?? market.market_key.slice(0, 8), radius: area?.radius_km,
+    return state.research ? [{ key: market.market_key,
+      city: market.search_location ?? area?.search_location ?? market.market_key.slice(0, 8),
+      radius: market.radius_km ?? area?.radius_km,
       ...state.research, publishedAt: state.publishedAt, publicationPending: state.publicationPending,
       waves: Number(market.waves ?? 0), leads: Array.isArray(market.leadKeys) ? market.leadKeys.length : 0 }] : [];
   });
@@ -90,7 +94,8 @@ export async function getSourceHealthRuns(page = 0, runId?: string): Promise<Sou
   ]);
   if (accountsResult.error) throw accountsResult.error;
   if (areasResult.error) throw areasResult.error;
-  const markets = await getMarketProgress(areasResult.data.map(area => longRangeMarketKey(area.search_location, area.radius_km)));
+  const marketKey = await marketKeyResolver();
+  const markets = await getMarketProgress(areasResult.data.map(area => marketKey(area.search_location, area.radius_km)));
 
   const runIds = runsResult.data.map((run) => run.id);
   const usageResult = runIds.length
@@ -146,7 +151,7 @@ export async function getSourceHealthRuns(page = 0, runId?: string): Promise<Sou
       startedAt: run.started_at,
       finishedAt: run.finished_at,
       researchPending: researchIsPending(Boolean(storedSources.get("claude")?.researchPending), run.started_at,
-        area ? markets.get(longRangeMarketKey(area.search_location, area.radius_km)) : null),
+        area ? markets.get(marketKey(area.search_location, area.radius_km)) : null),
       errorSummary: run.error_summary === "[object Object]" ? "Run afgebroken door een technische fout" : run.error_summary,
       sources: sourceNames.map((name) => {
         const source = storedSources.get(name);
@@ -194,11 +199,12 @@ export async function getSourceHealthSummaries(page = 0): Promise<SourceHealthSu
   ]);
   if (accounts.error) throw accounts.error;
   if (areas.error) throw areas.error;
-  const markets = await getMarketProgress(areas.data.map(area => longRangeMarketKey(area.search_location, area.radius_km)));
+  const marketKey = await marketKeyResolver();
+  const markets = await getMarketProgress(areas.data.map(area => marketKey(area.search_location, area.radius_km)));
   return runs.map(run => {
     const area = areas.data.find(area => area.id === run.collection_area_id);
     const pending = researchIsPending(run.requested === true, run.started_at,
-      area ? markets.get(longRangeMarketKey(area.search_location, area.radius_km)) : undefined);
+      area ? markets.get(marketKey(area.search_location, area.radius_km)) : undefined);
     const states = [run.claude, run.ticketmaster, run.predicthq, run.rijksoverheid, run.openholidays, run.footballdata, run.uefa]
       .map(state => ({ state: state ?? "not_run" }));
     return { id: run.id, accountName: accounts.data.find(account => account.id === run.account_id)?.name ?? "Onbekend account",

@@ -169,7 +169,13 @@ export type ClaudeMarketInput = {
   discoveryMode?: "long_range";
 };
 
-export function claudeMarketCacheKey(input: ClaudeMarketInput) {
+/**
+ * Identifies the city search itself, with the radius deliberately left out. The radius is only a
+ * hint in the search prompt; what reaches a calendar is filtered by measured distance per hotel.
+ * So a search asked for at 50 km is a usable superset for a 25 km hotel, and the radius belongs
+ * in a column the lookup can compare rather than inside the identity.
+ */
+export function claudeMarketGroupKey(input: Omit<ClaudeMarketInput, "radiusKm" | "knownUrls">) {
   // Account history may improve the first run, but it must not partition the shared city result.
   return createHash("sha256")
     .update(JSON.stringify({
@@ -178,7 +184,6 @@ export function claudeMarketCacheKey(input: ClaudeMarketInput) {
       start: input.start,
       end: input.end,
       location: input.location.trim().toLocaleLowerCase("nl-NL"),
-      radiusKm: input.radiusKm,
       model: input.model,
       discoveryModel: input.discoveryModel,
       discoveryMode: input.discoveryMode,
@@ -186,23 +191,33 @@ export function claudeMarketCacheKey(input: ClaudeMarketInput) {
     .digest("hex");
 }
 
+/** One stored row per city search and radius. Still the primary key, so a save cannot collide. */
+export function claudeMarketCacheKey(input: ClaudeMarketInput) {
+  return createHash("sha256")
+    .update(JSON.stringify({ market: claudeMarketGroupKey(input), radiusKm: input.radiusKm }))
+    .digest("hex");
+}
+
 export async function loadClaudeMarketResult(input: ClaudeMarketInput) {
   const admin = await adminClient();
-  const key = claudeMarketCacheKey(input);
   const now = new Date().toISOString();
   const { error: deleteError } = await admin
     .from("claude_market_cache")
     .delete()
     .lt("expires_at", now);
   if (deleteError) throw deleteError;
+  // The narrowest search that still covers this hotel: a wider one carries events it would only
+  // discard, and every extra kilometre was paid for by verifying candidates outside its radius.
   const { data, error } = await admin
     .from("claude_market_cache")
     .select("result")
-    .eq("cache_key", key)
-    .maybeSingle();
+    .eq("market_key", claudeMarketGroupKey(input))
+    .gte("radius_km", input.radiusKm)
+    .order("radius_km", { ascending: true })
+    .limit(1);
   if (error) throw error;
-  if (!data) return null;
-  const result = data.result as unknown as SourceResult;
+  if (!data.length) return null;
+  const result = data[0].result as unknown as SourceResult;
   return { ...result, requests: 0, usage: {} };
 }
 
@@ -213,6 +228,7 @@ export async function saveClaudeMarketResult(
   const admin = await adminClient();
   const { error } = await admin.from("claude_market_cache").upsert({
     cache_key: claudeMarketCacheKey(input),
+    market_key: claudeMarketGroupKey(input),
     search_location: input.location.trim(),
     radius_km: input.radiusKm,
     window_start: input.start,
