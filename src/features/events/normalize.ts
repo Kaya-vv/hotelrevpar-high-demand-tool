@@ -5,6 +5,25 @@ export function validEventRange(event: Pick<EventCandidate, "startAt" | "endAt">
   return Number.isFinite(start) && Number.isFinite(end) && end >= start;
 }
 
+const OVERFLOW_HOUR = /^(\d{4}-\d{2}-\d{2})T(\d{2})(:\d{2}.*)$/;
+
+/**
+ * A night programme is often published as a 24-27 hour on the opening day: "25:00" means 01:00
+ * the next morning. Postgres rejects the literal string, so the hour is rolled into the next
+ * day before parsing. Left untouched when the shape does not match, so a genuinely unreadable
+ * date still falls through to the caller's drop.
+ */
+function rollOverflowHour(value: string) {
+  const parts = OVERFLOW_HOUR.exec(value);
+  if (!parts) return value;
+  const hour = Number(parts[2]);
+  if (hour < 24 || hour > 47) return value;
+  const midnight = Date.parse(`${parts[1]}T00:00:00Z`);
+  if (!Number.isFinite(midnight)) return value;
+  const day = new Date(midnight + 86_400_000).toISOString().slice(0, 10);
+  return `${day}T${String(hour - 24).padStart(2, "0")}${parts[3]}`;
+}
+
 /**
  * A night event is routinely published with its end time on the start date: "23:00 - 04:30"
  * becomes 17:00 -> 04:30 on the same day. Rolling the end forward one day recovers a real
@@ -13,14 +32,15 @@ export function validEventRange(event: Pick<EventCandidate, "startAt" | "endAt">
  * instead of letting one bad row kill every other source's work.
  */
 export function repairEventRange<T extends Pick<EventCandidate, "startAt" | "endAt">>(event: T): T | null {
-  const start = Date.parse(event.startAt);
+  const startAt = rollOverflowHour(event.startAt), endAt = rollOverflowHour(event.endAt);
+  const start = Date.parse(startAt);
   if (!Number.isFinite(start)) return null;
-  const end = Date.parse(event.endAt);
+  const end = Date.parse(endAt);
   if (!Number.isFinite(end)) return null;
-  if (end >= start) return event;
+  if (end >= start) return { ...event, startAt, endAt };
   const rolled = end + 86_400_000;
   if (rolled < start) return null;
-  return { ...event, endAt: new Date(rolled).toISOString() };
+  return { ...event, startAt, endAt: new Date(rolled).toISOString() };
 }
 
 export function normalizeText(value: string) {

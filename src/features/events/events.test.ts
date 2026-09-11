@@ -373,6 +373,18 @@ describe("event domain", () => {
     expect(Date.parse(repaired!.endAt)).toBeGreaterThan(Date.parse(repaired!.startAt));
   });
 
+  // Production 2026-09-11: Kapellerput's "Revolution Calling" arrived as 15:00 -> 25:00, a real
+  // concert ending at 01:00. Postgres rejected the literal hour and killed the run 34 times.
+  it("reads an hour past midnight as the next day", () => {
+    const repaired = repairEventRange({ ...candidate, startAt: "2026-11-20T15:00:00", endAt: "2026-11-20T25:00:00" });
+    expect(repaired?.endAt).toBe("2026-11-21T01:00:00");
+    expect(Date.parse(repaired!.endAt)).toBeGreaterThan(Date.parse(repaired!.startAt));
+  });
+
+  it("still drops an hour that no rolling can explain", () => {
+    expect(repairEventRange({ ...candidate, startAt: "2026-11-20T15:00:00", endAt: "2026-11-20T61:00:00" })).toBeNull();
+  });
+
   it("drops a candidate whose dates cannot be read at all", () => {
     expect(repairEventRange({ ...candidate, startAt: "", endAt: "" })).toBeNull();
     expect(repairEventRange({ ...candidate, startAt: "2026-09-11T17:00:00+02:00", endAt: "" })).toBeNull();
@@ -383,7 +395,7 @@ describe("event domain", () => {
   });
 
   it("leaves a valid range untouched", () => {
-    expect(repairEventRange(candidate)).toBe(candidate);
+    expect(repairEventRange(candidate)).toEqual(candidate);
   });
 
 
