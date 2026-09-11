@@ -3,7 +3,7 @@ import Image from "next/image";
 import { setPassword } from "./actions";
 
 const errorMessages: Record<string, string> = {
-  length: "Gebruik minstens 12 tekens.",
+  length: "Gebruik minstens 6 tekens.",
   match: "De wachtwoorden komen niet overeen.",
   save: "Het wachtwoord kon niet worden opgeslagen. Open de uitnodiging opnieuw.",
 };
@@ -24,8 +24,8 @@ export default async function SetPasswordPage({
         </div>
         {error && <p className="notice error">{errorMessages[error] ?? "Probeer het opnieuw."}</p>}
         <form action={setPassword} className="form-stack">
-          <label>Wachtwoord<input name="password" type="password" minLength={12} autoComplete="new-password" required /></label>
-          <label>Herhaal wachtwoord<input name="confirmation" type="password" minLength={12} autoComplete="new-password" required /></label>
+          <label>Wachtwoord<input name="password" type="password" minLength={6} autoComplete="new-password" required /></label>
+          <label>Herhaal wachtwoord<input name="confirmation" type="password" minLength={6} autoComplete="new-password" required /></label>
           <button className="primary" type="submit">Wachtwoord opslaan</button>
         </form>
       </section>
