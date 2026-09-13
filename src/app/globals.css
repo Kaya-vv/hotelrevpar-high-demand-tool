@@ -1538,12 +1538,6 @@ td {
   display: flex;
 }
 
-.export-mode {
-  display: grid;
-  gap: 6px;
-  max-width: 440px;
-}
-
 .export-selection {
   border: 0;
   padding: 0;
@@ -1617,6 +1611,197 @@ td {
   opacity: 0.5;
   box-shadow: none;
   cursor: not-allowed;
+}
+
+.export-tabs {
+  display: flex;
+  gap: 28px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--line);
+}
+.export-tabs a {
+  padding: 12px 0;
+  text-decoration: none;
+  color: var(--muted);
+  border-bottom: 3px solid transparent;
+}
+.export-tabs a[aria-current="page"] {
+  color: var(--navy);
+  border-color: var(--orange-action);
+  font-weight: 600;
+}
+.export-filter-panel > summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  cursor: pointer;
+}
+.export-filter-panel > summary > span:first-child {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+}
+.export-edit {
+  color: var(--navy);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.export-filter-panel[open] .export-settings {
+  padding-top: 24px;
+}
+.export-filter-panel .checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+.export-content {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.export-content[aria-busy="true"] {
+  opacity: .55;
+  pointer-events: none;
+}
+.export-loading {
+  min-height: 20px;
+  padding-top: 6px;
+  font-size: .85rem;
+  color: var(--muted);
+}
+.export-page .export-preview {
+  margin-top: 0;
+}
+.export-section-heading {
+  margin-bottom: 24px;
+}
+.export-section-heading h2, .export-history-heading h2, .export-history-heading h3 {
+  margin: 0;
+}
+.export-section-heading p, .export-history-heading p {
+  margin: 6px 0 0;
+}
+.export-event-table th:first-child {
+  width: 50%;
+}
+.export-event-table td {
+  padding-top: 17px;
+  padding-bottom: 17px;
+}
+.export-event-date {
+  min-width: 210px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.export-event-table .export-month th {
+  background: var(--surface);
+  color: var(--muted);
+  padding: 12px;
+  font-size: .8rem;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+.export-level {
+  display: inline-block;
+  border-radius: 6px;
+  padding: 4px 10px;
+  background: #edf4f6;
+  color: #18556a;
+  font-size: .85rem;
+}
+.export-level-peak {
+  background: #fff0e7;
+  color: #974021;
+}
+.export-optional {
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+.export-file-details {
+  font-size: .85rem;
+}
+.export-empty {
+  padding: 32px 16px;
+  text-align: center;
+}
+.export-empty h3 {
+  margin: 0 0 8px;
+}
+.export-select-all {
+  margin-bottom: 16px;
+}
+.export-change-note {
+  margin: 0 0 16px;
+  font-size: .9rem;
+}
+.export-history-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+}
+.export-history-item {
+  padding: 24px 0;
+  border-top: 1px solid var(--line);
+}
+.export-history-item .export-disclosure {
+  margin-top: 8px;
+}
+.export-history-change {
+  padding: 16px 0;
+  color: var(--ink);
+}
+.export-history-change p {
+  margin: 6px 0;
+}
+.export-history-pagination {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+}
+@media (max-width: 600px) {
+  .export-filter-panel > summary > span:first-child {
+    flex-direction: column;
+  }
+  .export-event-table, .export-event-table tbody {
+    display: block;
+  }
+  .export-event-table thead {
+    display: none;
+  }
+  .export-event-table tr {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    border-bottom: 1px solid var(--line);
+    padding: 10px 0;
+  }
+  .export-event-table td {
+    border: 0;
+    padding: 6px 0;
+  }
+  .export-event-table td:first-child {
+    grid-column: 1 / -1;
+  }
+  .export-event-table .export-event-date {
+    min-width: 0;
+    white-space: normal;
+    align-self: center;
+    padding-right: 12px;
+  }
+  .export-event-table .export-month {
+    display: block;
+    padding: 0;
+  }
+  .export-event-table .export-month th {
+    display: block;
+    width: 100%;
+  }
+  .export-action-bar .export-submit {
+    width: 100%;
+  }
 }
 
 @media (max-width: 800px) {

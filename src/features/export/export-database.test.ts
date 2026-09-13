@@ -97,6 +97,14 @@ describe.skipIf(!enabled)("export transactions in isolated local Supabase", () =
     expect(check(await db.from("hotel_event_scores").select("suggested_importance").eq("hotel_id", hotelId).eq("event_id", id).single()).data!.suggested_importance).toBe("Medium");
     expect(check(await db.from("announcement_export_choices").select("importance").eq("hotel_id", hotelId).eq("event_id", id).single()).data!.importance).toBe("Low");
   });
+  it("exports an all-day record on the day its stored end-of-day placeholder names", async () => {
+    const id = await addEvent();
+    check(await db.from("events").update({ start_at: "2027-06-10T00:00:00+00:00", end_at: "2027-06-12T23:59:59+00:00" }).eq("id", id));
+    const request = input(id);
+    const snapshot = exportSnapshots(selectExportEvents(await deps(id).load(request), "new", [], []))[0];
+    expect(snapshot).toMatchObject({ startDate: "2027-06-10", endDate: "2027-06-12" });
+    await expect(createExport(request, deps(id))).resolves.toBeTruthy();
+  });
   it("rolls back the entire batch on a bad choice and denies foreign accounts and direct client commits", async () => {
     const id = await addEvent(); const request = input(id);
     const bytes = Buffer.from("test workbook");
@@ -123,10 +131,10 @@ describe.skipIf(!enabled)("export transactions in isolated local Supabase", () =
     expect(check(await db.from("export_batches").select("id").eq("request_key", request.requestKey)).data).toEqual([]);
     expect(check(await db.from("hotel_event_exports").select("event_id").eq("hotel_id", hotelId).eq("event_id", id)).data).toEqual([]);
   });
-  it("rejects an export when demand support disappears during workbook generation", async () => {
+  it("rejects an export when a source turns against hotel demand during workbook generation", async () => {
     const id = await addEvent(); const request = input(id);
     await expect(createExport(request, { ...deps(id), build: async (rows) => {
-      check(await db.from("hotel_event_scores").update({ demand_assessment: null }).eq("event_id", id));
+      check(await db.from("hotel_event_scores").update({ demand_assessment: { version: 1, relevance: "not_relevant", magnitude: "Low", confidence: "high", reasons: [], sourceUrls: [] } }).eq("event_id", id));
       return buildRevControlWorkbook(rows);
     } })).rejects.toMatchObject({ code: "P0001" });
     expect(check(await db.from("export_batches").select("id").eq("request_key", request.requestKey)).data).toEqual([]);
