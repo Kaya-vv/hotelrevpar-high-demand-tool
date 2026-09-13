@@ -2,6 +2,7 @@ import Link from "next/link";
 import { eventLocalDate } from "@/features/events/normalize";
 import { demandLabels } from "@/features/events/importance";
 import { ExportControls } from "@/features/export/export-controls";
+import { ExportTabs, ExportPanel } from "@/features/export/export-tabs";
 import { ExportFilters } from "@/features/export/export-filters";
 import { exportPeriod } from "@/features/export/display";
 import { loadExportHistory } from "@/features/export/history";
@@ -25,9 +26,9 @@ export default async function ExportPage({ searchParams }: { searchParams: Promi
   const hotelNames = Object.fromEntries(scope.hotels.map((hotel) => [hotel.id, hotel.name]));
   const { events: current } = selectedHotelIds.length ? await loadExportEvents(accountId, range, selectedHotelIds, true) : { events: [] };
   const events = current.filter((event) => event.status === "active" && eventLocalDate(event.startAt) <= range.end && eventLocalDate(event.endAt) >= range.start);
-  const view = params.view === "history" || typeof params.historyPage === "string" ? "history" : params.view === "reexport" ? "reexport" : "new";
+  const view = params.view === "history" || (!params.view && typeof params.historyPage === "string") ? "history" : params.view === "reexport" ? "reexport" : "new";
   const page = Math.max(0, Math.floor(Number(params.historyPage) || 0));
-  const history = selectedHotelIds.length ? await loadExportHistory(accountId, selectedHotelIds, current, view === "history" ? page : 0) : [];
+  const history = selectedHotelIds.length ? await loadExportHistory(accountId, selectedHotelIds, current, page) : [];
   const query = new URLSearchParams({ from: range.start, to: range.end, selection: "1" });
   selectedHotelIds.forEach((id) => query.append("hotel", id));
   const viewLink = (view: string) => `/export?${query}&view=${view}`;
@@ -35,14 +36,14 @@ export default async function ExportPage({ searchParams }: { searchParams: Promi
   const changed = history.filter((batch) => batch.items.some((item) => item.latest && item.changed)).length;
   return <div className="export-page">
     <header className="page-title"><span className="eyebrow">RevControl</span><h1>Exporteren naar RevControl</h1><p>Download je events en importeer het bestand in RevControl.</p></header>
-    <nav className="export-tabs" aria-label="Exportweergave"><Link href={viewLink("new")} aria-current={view === "new" ? "page" : undefined}>Nieuwe export</Link><Link href={viewLink("history")} aria-current={view === "history" ? "page" : undefined}>Eerdere exports</Link></nav>
+    <ExportTabs initialView={view} newHref={`${viewLink("new")}${page > 0 ? `&historyPage=${page}` : ""}`} historyHref={`${viewLink("history")}${page > 0 ? `&historyPage=${page}` : ""}`} />
     <ExportFilters hotels={scope.hotels} hotelIds={selectedHotelIds} from={range.start} to={range.end} view={view}>
       {!scope.hotels.length ? <p className="panel">Voeg eerst een hotel toe.</p> : !selectedHotelIds.length ? <p className="panel">Kies een hotel via Aanpassen om de beschikbare events te bekijken.</p> : <>
-        {view !== "history" && <>
+        <ExportPanel>
           {changed > 0 && <p className="export-change-note">Er zijn events gewijzigd sinds een eerdere export. <Link href={viewLink("history")}>Bekijk wijzigingen</Link></p>}
           <ExportControls key={`${query}-${view}`} events={events} hotelIds={selectedHotelIds} hotelNames={hotelNames} from={range.start} to={range.end} reexport={view === "reexport"} />
-        </>}
-        {view === "history" && <section className="panel export-history" aria-labelledby="export-history-title">
+        </ExportPanel>
+        <ExportPanel history><section className="panel export-history" aria-labelledby="export-history-title">
           <div className="export-history-heading"><div><h2 id="export-history-title">Eerdere exports</h2><p className="muted">Download een opgeslagen bestand opnieuw.</p></div><Link className="secondary" href={viewLink("reexport")}>Nieuwe export van eerdere events</Link></div>
           <p className="muted">We houden bij welke bestanden zijn gemaakt. Of ze in RevControl zijn geïmporteerd, is hier niet bekend.</p>
           {!history.length && <div className="export-empty"><h3>Nog geen exports</h3><p>Je bestanden verschijnen hier na je eerste download.</p></div>}
@@ -56,7 +57,7 @@ export default async function ExportPage({ searchParams }: { searchParams: Promi
             </article>;
           })}
           <nav className="export-history-pagination" aria-label="Exportgeschiedenis pagina’s">{page > 0 && <Link href={pageLink(page - 1)}>Nieuwere exports</Link>} {history.length === 20 && <Link href={pageLink(page + 1)}>Oudere exports</Link>}</nav>
-        </section>}
+        </section></ExportPanel>
       </>}
     </ExportFilters>
   </div>;

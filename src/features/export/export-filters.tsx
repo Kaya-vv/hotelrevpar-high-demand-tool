@@ -3,11 +3,14 @@
 import { useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { exportPeriod } from "./display";
+import { useExportView } from "./export-tabs";
+import { ExportSkeleton } from "./export-skeleton";
 
-export function ExportFilters({ hotels, hotelIds, from, to, view, children }: {
+export function ExportFilters({ hotels, hotelIds, from, to, children }: {
   hotels: { id: string; name: string }[]; hotelIds: string[]; from: string; to: string; view: string; children: ReactNode;
 }) {
   const router = useRouter();
+  const activeView = useExportView();
   const [pending, startTransition] = useTransition();
   function update(form: HTMLFormElement) {
     if (!form.reportValidity()) return;
@@ -21,7 +24,7 @@ export function ExportFilters({ hotels, hotelIds, from, to, view, children }: {
       <summary><span><strong>{hotelIds.length === 1 ? hotels.find((hotel) => hotel.id === hotelIds[0])?.name : `${hotelIds.length} hotels`}</strong><span className="muted">{exportPeriod(from, to)}</span></span><span className="export-edit">Aanpassen</span></summary>
       <form className="export-settings" onSubmit={(event) => { event.preventDefault(); update(event.currentTarget); }}>
         <input type="hidden" name="selection" value="1" />
-        <input type="hidden" name="view" value={view} />
+        <input type="hidden" name="view" value={activeView} />
         <div className="date-range">
           <label>Van<input key={`from-${from}`} disabled={pending} name="from" type="date" defaultValue={from} max={to} required onBlur={(event) => { if (event.target.value !== from) update(event.currentTarget.form!); }} /></label>
           <label>Tot en met<input key={`to-${to}`} disabled={pending} name="to" type="date" defaultValue={to} min={from} required onBlur={(event) => { if (event.target.value !== to) update(event.currentTarget.form!); }} /></label>
@@ -31,6 +34,7 @@ export function ExportFilters({ hotels, hotelIds, from, to, view, children }: {
       </form>
     </details>
     <div role="status" className="export-loading">{pending ? "Selectie bijwerken…" : ""}</div>
-    <fieldset disabled={pending} aria-busy={pending} className="export-content">{children}</fieldset>
+    {pending && <ExportSkeleton />}
+    <fieldset hidden={pending} disabled={pending} aria-busy={pending} className="export-content">{children}</fieldset>
   </>;
 }
