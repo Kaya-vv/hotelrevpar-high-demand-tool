@@ -13,7 +13,7 @@ const addressResult = z.object({
     huisnummer: z.string().min(1),
     huisletter: z.string().nullable(),
     toevoeging: z.string().nullable(),
-    postcode: z.string().min(1),
+    postcode: z.string().min(1).nullable(),
     woonplaats_naam: z.string().min(1),
   }),
   geometry: z.object({
@@ -57,7 +57,7 @@ export async function getAddressById(id: string, fetcher: typeof fetch = fetch) 
     const suffix = `${properties.huisletter ?? ""}${properties.toevoeging ? `-${properties.toevoeging}` : ""}`;
 
     return {
-      address: `${properties.openbare_ruimte_naam} ${properties.huisnummer}${suffix}, ${properties.postcode} ${properties.woonplaats_naam}`,
+      address: `${properties.openbare_ruimte_naam} ${properties.huisnummer}${suffix}, ${[properties.postcode, properties.woonplaats_naam].filter(Boolean).join(" ")}`,
       locality: properties.woonplaats_naam,
       latitude: geometry.coordinates[1],
       longitude: geometry.coordinates[0],

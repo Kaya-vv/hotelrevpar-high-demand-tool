@@ -48,6 +48,28 @@ describe("PDOK addresses", () => {
     });
   });
 
+  it("accepts a verified BAG address without a postcode", async () => {
+    // PDOK's live record for Dorpsstraat 118 in Elst returns postcode: null.
+    const fetcher = vi.fn().mockResolvedValue(response({
+      properties: {
+        openbare_ruimte_naam: "Dorpsstraat",
+        huisnummer: "118",
+        huisletter: null,
+        toevoeging: null,
+        postcode: null,
+        woonplaats_naam: "Elst",
+      },
+      geometry: { type: "Point", coordinates: [5.841916311229969, 51.91930141428114] },
+    }));
+
+    await expect(getAddressById("942d614a-bbad-5b6f-81f0-2c9ab8b8e1e8", fetcher)).resolves.toEqual({
+      address: "Dorpsstraat 118, Elst",
+      locality: "Elst",
+      latitude: 51.91930141428114,
+      longitude: 5.841916311229969,
+    });
+  });
+
   it("rejects an invalid selected address", async () => {
     const fetcher = vi.fn().mockResolvedValue(new Response("Not found", { status: 404 }));
 
