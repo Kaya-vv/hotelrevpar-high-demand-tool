@@ -1,61 +1,139 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { z } from "zod";
 
 import { provisionSubscriber } from "@/features/accounts/provision-subscriber";
 import { requirePlatformAdmin } from "@/lib/auth/require-account";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createAdminClient, type AdminClient } from "@/lib/supabase/admin";
+
+class AccountActionError extends Error {}
+
+async function runAccountAction(success: string, operation: () => Promise<void>) {
+  let notice = success;
+  try {
+    await operation();
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error ? String(error.code) : undefined;
+    notice = error instanceof AccountActionError ? error.message
+      : code === "email_exists" || code === "user_already_exists" ? "existing"
+      : code === "over_email_send_rate_limit" || code === "over_request_rate_limit" ? "rate"
+      : "failed";
+    // Do not log email addresses, links, tokens or form contents.
+    console.error("Subscriber action failed", { operation: success, code, notice });
+  }
+  revalidatePath("/admin/accounts");
+  redirect(`/admin/accounts?notice=${notice}`);
+}
+
+function passwordRedirect() {
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+  if (!siteUrl) throw new Error("NEXT_PUBLIC_SITE_URL ontbreekt.");
+  return new URL("/auth/confirm?next=/auth/set-password", siteUrl).toString();
+}
+
+async function subscriberMember(admin: AdminClient, formData: FormData, currentUserId: string) {
+  const userId = String(formData.get("userId") ?? "");
+  const accountId = String(formData.get("accountId") ?? "");
+  if (!userId || !accountId) throw new AccountActionError("missing");
+  const { data, error } = await admin.from("account_members")
+    .select("user_id, role").eq("account_id", accountId).eq("user_id", userId).maybeSingle();
+  if (error) throw error;
+  if (!data) throw new AccountActionError("missing");
+  if (data.role === "platform_admin" || data.user_id === currentUserId) throw new AccountActionError("protected");
+  return data;
+}
+
+async function activeAccount(admin: AdminClient, accountId: string) {
+  const { data, error } = await admin.from("accounts").select("id, active").eq("id", accountId).maybeSingle();
+  if (error) throw error;
+  if (!data) throw new AccountActionError("missing");
+  if (!data.active) throw new AccountActionError("inactive");
+}
 
 export async function createSubscriberAccount(formData: FormData) {
   await requirePlatformAdmin();
-  const accountName = String(formData.get("accountName") ?? "").trim();
-  const email = String(formData.get("email") ?? "").trim().toLowerCase();
-  if (!accountName || !email) throw new Error("Accountnaam en e-mailadres zijn verplicht.");
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
-  if (!siteUrl) throw new Error("NEXT_PUBLIC_SITE_URL ontbreekt.");
+  return runAccountAction("invited", async () => {
+    const accountName = String(formData.get("accountName") ?? "").trim();
+    const accountId = String(formData.get("accountId") ?? "");
+    const email = String(formData.get("email") ?? "").trim().toLowerCase();
+    if ((!accountId && !accountName) || !z.email().safeParse(email).success) throw new AccountActionError("input");
+    const redirectTo = passwordRedirect();
+    const admin = createAdminClient();
+    if (accountId) await activeAccount(admin, accountId);
 
-  const admin = createAdminClient();
-  await provisionSubscriber(
-    { accountName, email },
-    {
+    await provisionSubscriber({ accountName, email }, {
       inviteUser: async (inviteEmail) => {
-        const redirectTo = new URL("/auth/confirm?next=/auth/set-password", siteUrl).toString();
-        const { data, error } = await admin.auth.admin.inviteUserByEmail(inviteEmail, { redirectTo });
-        if (error || !data.user) throw error ?? new Error("De uitnodiging is mislukt.");
-        return data.user.id;
+        // Reserve a NEW identity first. Re-inviting an existing unconfirmed user
+        // must never reach provisioning rollback and delete their existing login.
+        const created = await admin.auth.admin.createUser({ email: inviteEmail, email_confirm: false });
+        if (created.error || !created.data.user) throw created.error ?? new Error("User creation failed");
+        const userId = created.data.user.id;
+        const invited = await admin.auth.admin.inviteUserByEmail(inviteEmail, { redirectTo });
+        if (invited.error) {
+          const removed = await admin.auth.admin.deleteUser(userId);
+          if (removed.error) throw removed.error;
+          throw invited.error;
+        }
+        return userId;
       },
       createAccount: async ({ accountName: name, userId }) => {
-        const { data: account, error: accountError } = await admin
-          .from("accounts")
-          .insert({ name })
-          .select("id")
-          .single();
-        if (accountError) throw accountError;
-
-        const { error: memberError } = await admin
-          .from("account_members")
-          .insert({ account_id: account.id, user_id: userId });
-        if (memberError) {
-          await admin.from("accounts").delete().eq("id", account.id);
-          throw memberError;
+        let targetId = accountId;
+        if (!targetId) {
+          const { data, error } = await admin.from("accounts").insert({ name }).select("id").single();
+          if (error) throw error;
+          targetId = data.id;
+        }
+        const { error } = await admin.from("account_members").insert({ account_id: targetId, user_id: userId });
+        if (error) {
+          if (!accountId) {
+            const cleanup = await admin.from("accounts").delete().eq("id", targetId);
+            if (cleanup.error) throw cleanup.error;
+          }
+          throw error;
         }
       },
       removeUser: async (userId) => {
         const { error } = await admin.auth.admin.deleteUser(userId);
         if (error) throw error;
       },
-    },
-  );
+    });
+  });
+}
 
-  revalidatePath("/admin/accounts");
+export async function resendSubscriberLink(formData: FormData) {
+  const current = await requirePlatformAdmin();
+  return runAccountAction("resent", async () => {
+    const admin = createAdminClient();
+    const member = await subscriberMember(admin, formData, current.userId);
+    await activeAccount(admin, String(formData.get("accountId")));
+    const { data, error } = await admin.auth.admin.getUserById(member.user_id);
+    if (error) throw error;
+    if (!data.user?.email) throw new AccountActionError("missing");
+    const result = await admin.auth.resetPasswordForEmail(data.user.email, { redirectTo: passwordRedirect() });
+    if (result.error) throw result.error;
+  });
+}
+
+export async function deleteSubscriberUser(formData: FormData) {
+  const current = await requirePlatformAdmin();
+  return runAccountAction("deleted", async () => {
+    const admin = createAdminClient();
+    const member = await subscriberMember(admin, formData, current.userId);
+    // The database removes membership with the auth user. Account data stays.
+    const { error } = await admin.auth.admin.deleteUser(member.user_id);
+    if (error) throw error;
+  });
 }
 
 export async function disableAccount(formData: FormData) {
   await requirePlatformAdmin();
-  const accountId = String(formData.get("accountId") ?? "");
-  if (!accountId) throw new Error("Account ontbreekt.");
-
-  const { error } = await createAdminClient().from("accounts").update({ active: false }).eq("id", accountId);
-  if (error) throw error;
-  revalidatePath("/admin/accounts");
+  return runAccountAction("disabled", async () => {
+    const accountId = String(formData.get("accountId") ?? "");
+    if (!accountId) throw new AccountActionError("missing");
+    const admin = createAdminClient();
+    const { error } = await admin.from("accounts").update({ active: false }).eq("id", accountId);
+    if (error) throw error;
+  });
 }

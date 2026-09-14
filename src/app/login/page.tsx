@@ -6,7 +6,7 @@ const errorMessages: Record<string, string> = {
   account: "Dit account is niet actief. Neem contact op met DemandRadar.",
   credentials: "Controleer je e-mailadres en wachtwoord.",
   invite:
-    "De uitnodiging is verlopen of ongeldig. Vraag DemandRadar om een nieuwe uitnodiging.",
+    "Deze link is ongeldig, verlopen of al gebruikt. Vraag DemandRadar om een nieuwe wachtwoordlink.",
 };
 
 export default async function LoginPage({

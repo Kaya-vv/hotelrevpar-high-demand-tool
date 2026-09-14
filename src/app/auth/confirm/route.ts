@@ -21,6 +21,17 @@ export async function GET(request: NextRequest) {
   const type = request.nextUrl.searchParams.get("type") as EmailOtpType | null;
 
   if (tokenHash && type && otpTypes.has(type)) {
+    // Mail security scanners follow GET links. Consume password links only when
+    // the recipient submits their new password, never while opening the email.
+    if (type === "invite" || type === "recovery") {
+      const target = new URL("/auth/set-password", request.url);
+      target.searchParams.set("token_hash", tokenHash);
+      target.searchParams.set("type", type);
+      const response = NextResponse.redirect(target);
+      response.headers.set("Cache-Control", "no-store");
+      response.headers.set("Referrer-Policy", "no-referrer");
+      return response;
+    }
     const supabase = await createServerClient();
     const { error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type });
     if (!error) {

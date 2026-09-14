@@ -26,3 +26,11 @@ site_url = "http://127.0.0.1:3000"
 additional_redirect_urls = ["http://localhost:3000"]
 jwt_expiry = 3600
 enable_signup = true
+
+[auth.email.template.invite]
+subject = "Je uitnodiging voor DemandRadar"
+content_path = "./supabase/templates/invite.html"
+
+[auth.email.template.recovery]
+subject = "Je wachtwoord instellen voor DemandRadar"
+content_path = "./supabase/templates/recovery.html"

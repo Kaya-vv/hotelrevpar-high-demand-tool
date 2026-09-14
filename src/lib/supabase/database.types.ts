@@ -35,9 +35,9 @@ export type Database = {
   public: {
     Tables: {
       export_batches: {
-        Row: { id: string; account_id: string; created_by: string; created_at: string; request_key: string; request_hash: string; selection: Json; workbook: string };
-        Insert: { id?: string; account_id: string; created_by: string; created_at?: string; request_key: string; request_hash: string; selection: Json; workbook: string };
-        Update: { id?: string; account_id?: string; created_by?: string; created_at?: string; request_key?: string; request_hash?: string; selection?: Json; workbook?: string };
+        Row: { id: string; account_id: string; created_by: string | null; created_at: string; request_key: string; request_hash: string; selection: Json; workbook: string };
+        Insert: { id?: string; account_id: string; created_by: string | null; created_at?: string; request_key: string; request_hash: string; selection: Json; workbook: string };
+        Update: { id?: string; account_id?: string; created_by?: string | null; created_at?: string; request_key?: string; request_hash?: string; selection?: Json; workbook?: string };
         Relationships: [];
       };
 
