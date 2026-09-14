@@ -126,14 +126,3 @@ export async function deleteSubscriberUser(formData: FormData) {
     if (error) throw error;
   });
 }
-
-export async function disableAccount(formData: FormData) {
-  await requirePlatformAdmin();
-  return runAccountAction("disabled", async () => {
-    const accountId = String(formData.get("accountId") ?? "");
-    if (!accountId) throw new AccountActionError("missing");
-    const admin = createAdminClient();
-    const { error } = await admin.from("accounts").update({ active: false }).eq("id", accountId);
-    if (error) throw error;
-  });
-}

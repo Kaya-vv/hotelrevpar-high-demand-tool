@@ -43,8 +43,9 @@ existing identity.
    Both must be able to choose a password. Verify duplicate creation and email
    rate limits show a readable message instead of a server error page.
 7. For an approved disposable login, verify deletion removes access while
-   retaining hotels, decisions and downloadable export history. Invite a new
-   login from the retained account row and check it sees the saved hotels.
+   retaining hotels, decisions and downloadable export history in the database.
+   Once its last login is removed, the account row must disappear from Abonnees.
+   The retained account is no longer shown with a replacement-email form.
 
 The password form verifies the token only after password validation, on POST.
 This protects against link scanners that perform GET requests; it is not a

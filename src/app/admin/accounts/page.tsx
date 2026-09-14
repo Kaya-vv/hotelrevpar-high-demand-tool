@@ -1,7 +1,7 @@
 import { requirePlatformAdmin } from "@/lib/auth/require-account";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-import { createSubscriberAccount, deleteSubscriberUser, disableAccount, resendSubscriberLink } from "./actions";
+import { createSubscriberAccount, deleteSubscriberUser, resendSubscriberLink } from "./actions";
 import { accountMessages } from "./messages";
 import { SubmitButton } from "./submit-button";
 
@@ -48,19 +48,19 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
         <h2>Bestaande accounts</h2>
         <div className="table-wrap">
           <table>
-            <thead><tr><th>Naam</th><th>Status</th><th>E-mailadres</th><th /></tr></thead>
+            <thead><tr><th>Naam</th><th>Status</th><th>E-mailadres</th></tr></thead>
             <tbody>
-              {accounts?.map((account) => (
+              {accounts?.filter((account) => members.some((member) => member.account_id === account.id)).map((account) => (
                 <tr key={account.id}>
                   <td>{account.name}</td>
                   <td>{account.active ? "Actief" : "Uitgeschakeld"}</td>
                   <td>
                     <div className="form-stack">
                       {members.filter((member) => member.account_id === account.id).map((member) => (
-                        <div key={member.user_id} className="form-stack">
+                        <div key={member.user_id} className="subscriber-login">
                           <span>{member.email}</span>
                           {member.role !== "platform_admin" && member.user_id !== current.userId && (
-                            <div className="hotel-card-actions">
+                            <div className="subscriber-login-actions">
                               {account.active && (
                                 <form action={resendSubscriberLink}>
                                   <input type="hidden" name="accountId" value={account.id} />
@@ -71,33 +71,13 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
                               <form action={deleteSubscriberUser}>
                                 <input type="hidden" name="accountId" value={account.id} />
                                 <input type="hidden" name="userId" value={member.user_id} />
-                                <SubmitButton confirmation={`Login van ${member.email} definitief verwijderen? Hotels en exportgeschiedenis blijven bewaard.`}>Login verwijderen</SubmitButton>
+                                <SubmitButton confirmation={`Login van ${member.email} definitief verwijderen? Hotels en exportgeschiedenis blijven bewaard.`}>Verwijderen</SubmitButton>
                               </form>
                             </div>
                           )}
                         </div>
                       ))}
-                      {!members.some((member) => member.account_id === account.id) && (
-                        <>
-                          <span>Geen login. Hotelgegevens zijn bewaard.</span>
-                          {account.active && (
-                            <form action={createSubscriberAccount} className="form-stack">
-                              <input type="hidden" name="accountId" value={account.id} />
-                              <label>E-mailadres voor nieuwe login<input name="email" type="email" required /></label>
-                              <SubmitButton>Login uitnodigen</SubmitButton>
-                            </form>
-                          )}
-                        </>
-                      )}
                     </div>
-                  </td>
-                  <td>
-                    {account.active && (
-                      <form action={disableAccount}>
-                        <input type="hidden" name="accountId" value={account.id} />
-                        <SubmitButton>Uitschakelen</SubmitButton>
-                      </form>
-                    )}
                   </td>
                 </tr>
               ))}

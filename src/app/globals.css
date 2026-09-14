@@ -1108,6 +1108,24 @@ a {
   overflow-x: auto;
 }
 
+.subscriber-login,
+.subscriber-login-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.subscriber-login {
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.subscriber-login-actions {
+  margin-left: auto;
+  justify-content: flex-end;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
