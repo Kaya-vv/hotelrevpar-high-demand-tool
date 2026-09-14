@@ -114,6 +114,8 @@ export function repairObservedUrl(value: string | null, observed: string[]) {
 
 export type LongRangeInput = CollectionWindow & {
   requestedAt?: string;
+  fastFirstSearch?: boolean;
+  onProgress?: (state: import("../long-range-store").LongRangeState) => Promise<boolean>;
   location: string;
   radiusKm: number;
   now?: Date;
@@ -242,7 +244,7 @@ function unfetchedEvidenceUrl(lead: Lead, message: Anthropic.Message) {
 export async function collectLongRange(input: LongRangeInput): Promise<SourceResult> {
   const store = input.store ?? createLongRangeStore();
   const key = longRangeMarketKey(input.location, input.radiusKm);
-  if (!await store.acquire(key)) throw new LongRangeLeaseError();
+  if (!await store.acquire(key, { location: input.location, radiusKm: input.radiusKm })) throw new LongRangeLeaseError();
   try {
     return await collectLockedLongRange({ ...input, store }, key);
   } finally {
@@ -254,8 +256,13 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
   const now = input.now ?? new Date();
   const store = input.store;
   const version = LONG_RANGE_VERSION * 1000 + CLAUDE_ASSESSMENT_VERSION;
-  const state = await store.load(key) ?? { version, discoveredAt: null, leads: [] };
+  const stored = await store.load(key);
+  const state = stored ?? { version, discoveredAt: null, leads: [] };
+  const firstSearch = !stored || (stored.version === 0 && !stored.research && !stored.cycle && !stored.discoveredAt && !stored.leads.length);
   if (input.requestedAt && (!state.research || state.research.completedAt)) state.research = { requestedAt: input.requestedAt };
+  // Persist the first-search mode under the market lease. Existing searches, including
+  // already submitted batches, retain their original processing path on deployment.
+  if (firstSearch && input.fastFirstSearch && state.research) state.research.billingMode = "standard";
   // Storage upgrades retain discovery cadence, evidence and the spend ledger.
   state.storageVersion = 1;
   state.pageCache ??= {};
@@ -283,6 +290,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
   const resolutionModel = input.resolutionModel?.trim() || process.env.ANTHROPIC_TRIAGE_MODEL?.trim() || DEFAULT_TRIAGE_MODEL;
   const client = input.client ?? new Anthropic();
   const batching = { ...(input.batching ?? { enabled: !input.client && process.env.ANTHROPIC_BATCHES !== "disabled" }), usageHandledByCaller: true };
+  if (state.research?.billingMode === "standard") batching.enabled = false;
   const usage: Record<string, number> = { inputTokens: 0, outputTokens: 0, webSearchRequests: 0, webFetchRequests: 0, estimatedCostUsd: 0 };
   const budget = researchBudget(state, now, input.budgetEur);
   // Drain submitted batches using their original manifest before upgrading. Never abandon
@@ -847,6 +855,18 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
     delete workCycle.pending;
     workCycle.queued = [...next, ...deepCandidates].map(serializeJob);
     await store.save(key, state);
+    if (input.onProgress) {
+      state.locations ??= {};
+      const resolve = createLocationResolver({ venue: input.geocode ?? geocodeVenue, city: input.geocodeCity, cache: state.locations });
+      const editions = state.leads.filter(lead => lead.outcome !== "conflict").flatMap(lead => lead.editions);
+      for (const event of editions.filter(event => event.primarySourceConfirmed && validEventRange(event))) await resolve(event);
+      state.publicationPending = true;
+      await store.save(key, state);
+      if (await input.onProgress(state)) {
+        state.progressPublishedAt = new Date().toISOString();
+        await store.save(key, state);
+      }
+    }
     pending = [...next, ...deepCandidates.splice(0)];
   }
   if (repairFirst && !workCycle.pending) await discover();

@@ -93,7 +93,7 @@ describe("hotel refresh and shared research separation", () => {
     expect(coveringMarket([{ market_key: "legacy", search_location: null, radius_km: null }], "Eindhoven", 25)).toBeNull();
   });
 
-  it("publishes one market's research to every narrower hotel in the city", async () => {
+  it.each(["market-publication", "market-research"] as const)("publishes %s results to every narrower hotel in the city", async kind => {
     const areas = [
       { id: "own", account_id: "a", search_location: "Eindhoven", radius_km: 25 },
       { id: "narrower", account_id: "b", search_location: "eindhoven", radius_km: 15 },
@@ -124,7 +124,14 @@ describe("hotel refresh and shared research separation", () => {
       recalculateScores: async () => ({}),
     } as unknown as ReturnType<typeof createCollectionRepository>);
 
-    await processMarketWork({ kind: "market-publication", accountId: "a", areaId: "own", runId: "run", requestedAt: "2026-09-11T12:00:00Z" });
+    if (kind === "market-research") vi.mocked(collectLongRange).mockImplementationOnce(async input => {
+      const state: NonNullable<Parameters<typeof storedLongRangeResult>[0]> = { version: 2003, discoveredAt: null, leads: [], publicationPending: true };
+      expect(input.fastFirstSearch).toBe(true);
+      expect(await input.onProgress!(state)).toBe(true);
+      expect(state.publishedAt).toBeUndefined();
+      return { source: "claude", candidates: [], requests: 0, usage: {} };
+    });
+    await processMarketWork({ kind, accountId: "a", areaId: "own", runId: "run", requestedAt: "2026-09-11T12:00:00Z" });
 
     // The first loadContext is the market's own area; the rest are the hotels it publishes to.
     expect(published.slice(1).sort()).toEqual(["narrower", "own"]);

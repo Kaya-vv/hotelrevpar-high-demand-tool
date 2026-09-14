@@ -7,7 +7,7 @@ import {
   type BatchProgress,
 } from "@/features/workspace/batch-progress";
 import { longRangeMarketKey } from "./long-range-store";
-import { getMarketProgress } from "./market-status";
+import { getMarketProgress, marketKeyResolver } from "./market-status";
 import { researchIsPending } from "./research-status";
 
 export type CollectionStatus = {
@@ -78,19 +78,21 @@ export async function getCollectionStatus(
           .range(from, to),
       )
     : [];
+  const marketKey = areas.length ? await marketKeyResolver() : longRangeMarketKey;
   const markets = await getMarketProgress(
     areas.map((area) =>
-      longRangeMarketKey(area.search_location, area.radius_km),
+      marketKey(area.search_location, area.radius_km),
     ),
   );
   const states = runs.map((run) => {
     const area = areas.find((area) => area.id === run.collection_area_id);
     const market = area
-      ? markets.get(longRangeMarketKey(area.search_location, area.radius_km))
+      ? markets.get(marketKey(area.search_location, area.radius_km))
       : undefined;
     return {
       id: run.id,
       finished: run.finished_at,
+      progressPublishedAt: market?.progressPublishedAt,
       pending:
         !run.finished_at ||
         researchIsPending(run.requested === true, run.started_at, market),

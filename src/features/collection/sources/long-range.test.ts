@@ -42,6 +42,68 @@ const toolNames = (call: { tools: { name: string }[] }[]) => call[0].tools.map((
 describe("long-range source leads", () => {
   afterEach(() => vi.unstubAllEnvs());
 
+  it.each([null, { version: 0, discoveredAt: null, leads: [] }])("runs a fresh market directly even when later searches use batches", async initial => {
+    const memory = memoryStore(initial);
+    const create = vi.fn().mockResolvedValue({ stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify({ leads: [] }) }],
+      usage: { input_tokens: 100, output_tokens: 20, server_tool_use: { web_search_requests: 1 } } });
+    const onUsage = vi.fn();
+    await collectLongRange({ ...input, store: memory.store, client: client(create), batching: { enabled: true },
+      fastFirstSearch: true, requestedAt: now.toISOString(), onUsage });
+    expect(create).toHaveBeenCalled();
+    expect(memory.state().research?.billingMode).toBe("standard");
+    expect(onUsage.mock.calls.every(([usage]) => usage.billingMode === "standard")).toBe(true);
+  });
+
+  it("keeps an interrupted first search direct and publishes before research completion", async () => {
+    const memory = memoryStore(warmState(undefined, { research: { requestedAt: now.toISOString(), billingMode: "standard" } }));
+    const create = vi.fn().mockResolvedValue(response([event()]));
+    const onProgress = vi.fn(async (state: LongRangeState) => {
+      expect(state.research?.completedAt).toBeUndefined();
+      expect(state.publishedAt).toBeUndefined();
+      expect(state.cycle?.pending).toBeUndefined();
+      expect(state.leads.some(lead => lead.editions.length)).toBe(true);
+      return true;
+    });
+    await collectLongRange({ ...input, store: memory.store, client: client(create), batching: { enabled: true },
+      fastFirstSearch: true, requestedAt: now.toISOString(), onProgress });
+    expect(onProgress).toHaveBeenCalled();
+    expect(memory.state().progressPublishedAt).toBeDefined();
+    expect(memory.state().research?.completedAt).toBeDefined();
+    expect(memory.state().publishedAt).toBeUndefined();
+  });
+
+  it("does not convert an existing batch search to direct requests", async () => {
+    const memory = memoryStore(warmState(undefined, { research: { requestedAt: now.toISOString() } }));
+    const create = vi.fn();
+    // An expired invocation must checkpoint and yield to its existing batch path.
+    await expect(collectLongRange({ ...input, store: memory.store, client: client(create), batching: { enabled: true, deadline: 0 },
+      fastFirstSearch: true, requestedAt: now.toISOString() })).rejects.toThrow("Batch is still processing");
+    expect(create).not.toHaveBeenCalled();
+    expect(memory.state().research?.billingMode).toBeUndefined();
+  });
+
+  it("returns a completed first search to batch pricing on its next update", async () => {
+    const memory = memoryStore(warmState(undefined, { research: { requestedAt: now.toISOString(), completedAt: now.toISOString(), billingMode: "standard" } }));
+    const create = vi.fn();
+    await expect(collectLongRange({ ...input, store: memory.store, client: client(create), batching: { enabled: true, deadline: 0 },
+      fastFirstSearch: true, requestedAt: "2026-09-06T12:00:00Z" })).rejects.toThrow("Batch is still processing");
+    expect(create).not.toHaveBeenCalled();
+    expect(memory.state().research?.billingMode).toBeUndefined();
+  });
+
+  it("checkpoints verification before a publication failure so retry does not buy it again", async () => {
+    const memory = memoryStore(warmState(undefined, { research: { requestedAt: now.toISOString(), billingMode: "standard" } }));
+    const create = vi.fn().mockResolvedValue(response([event()]));
+    const onProgress = vi.fn().mockRejectedValueOnce(new Error("Publication unavailable")).mockResolvedValue(true);
+    const run = () => collectLongRange({ ...input, store: memory.store, client: client(create), onProgress });
+    await expect(run()).rejects.toThrow("Publication unavailable");
+    expect(memory.state().publicationPending).toBe(true);
+    expect(memory.state().research?.completedAt).toBeUndefined();
+    const paid = create.mock.calls.length;
+    await run();
+    expect(create).toHaveBeenCalledTimes(paid);
+  });
+
   it("finishes both follow-up stages for all due leads when budget permits", async () => {
     const about = "https://organizer.example/about";
     const create = vi.fn().mockImplementation(async (request) => {

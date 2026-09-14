@@ -60,7 +60,7 @@ export type Lead = {
   editions: EventCandidate[];
   notes: string[];
 };
-export type LongRangeState = { research?: { requestedAt: string; completedAt?: string; usage?: Record<string, number>; error?: string }; publishedAt?: string; cycle?: ResearchCycle; publicationPending?: boolean; locations?: Record<string, { latitude: number; longitude: number }>;  retrievalFailures?: Record<string, { checkedAt: string; message: string }>; pageCache?: Lead["pageCache"]; searchCycle?: { dueAt: string; broad: boolean; tasks?: { group: number; query: string; focus: string }[]; completed: string[] }; version: number; storageVersion?: number; announcementSearchAt?: string; discoveredAt: string | null; discoveryAttemptAt?: string; lastPassAt?: string; lastSweepAt?: string; leads: Lead[];
+export type LongRangeState = { research?: { billingMode?: "standard"; requestedAt: string; completedAt?: string; usage?: Record<string, number>; error?: string }; publishedAt?: string; progressPublishedAt?: string; cycle?: ResearchCycle; publicationPending?: boolean; locations?: Record<string, { latitude: number; longitude: number }>;  retrievalFailures?: Record<string, { checkedAt: string; message: string }>; pageCache?: Lead["pageCache"]; searchCycle?: { dueAt: string; broad: boolean; tasks?: { group: number; query: string; focus: string }[]; completed: string[] }; version: number; storageVersion?: number; announcementSearchAt?: string; discoveredAt: string | null; discoveryAttemptAt?: string; lastPassAt?: string; lastSweepAt?: string; leads: Lead[];
   budget?: { month: string; spentEur: number; reservations: Record<string, number>; billedIds: string[] };
 };
 export type LongRangeStore = {

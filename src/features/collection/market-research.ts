@@ -46,13 +46,37 @@ export async function processMarketWork(work: MarketWork) {
   if (!context.area.enabledSources.includes("claude")) return;
   const market = await resolveLongRangeMarket(context.area.searchLocation, context.area.radiusKm);
   const key = market.key;
+  // Called under the research or publication lease; partial publication never marks
+  // the research complete, and waits for an overlapping hotel refresh.
+  async function publishState(state: LongRangeState) {
+    const { data: areas, error: areaError } = await admin.from("collection_areas").select("id, account_id, search_location, radius_km, accounts!inner(active)").eq("accounts.active", true).contains("enabled_sources", ["claude"]);
+    if (areaError) throw areaError;
+    // Every hotel this research covers, not only the one whose radius happens to match it: the
+    // editions are a superset and `publishLongRangeResult` filters each hotel by real distance.
+    const matching = areas.filter((area) =>
+      marketLocation(area.search_location) === market.location && area.radius_km <= market.radiusKm);
+    if (matching.length) {
+      const { data: refreshing, error } = await admin.from("collection_runs").select("id").in("collection_area_id", matching.map((area) => area.id)).is("finished_at", null).limit(1);
+      if (error) throw error;
+      if (refreshing.length) return false;
+    }
+    const result = storedLongRangeResult(state);
+    const publication: Record<string, number> = {};
+    for (const area of matching) {
+      const counts = await publishLongRangeResult(repository, await repository.loadContext(area.account_id, area.id), result);
+      for (const [name, count] of Object.entries(counts ?? {})) publication[name] = (publication[name] ?? 0) + count;
+    }
+    if (state.research) state.research.usage = { ...state.research.usage, ...result.usage, ...publication };
+    return true;
+  }
   if (work.kind === "market-research") {
     // Research runs at the market's radius, not this hotel's: a wider host already covers it, and
     // narrowing the search would strand every hotel that is riding the same market.
     await collectLongRange({
       ...longRangeWindow(marketWindow(collectionWindow())), location: market.location, radiusKm: market.radiusKm,
       seeds: context.longRangeSeeds, batching: { enabled: process.env.ANTHROPIC_BATCHES !== "disabled" },
-      requestedAt: work.requestedAt,
+      requestedAt: work.requestedAt, fastFirstSearch: true,
+      onProgress: publishState,
       onUsage: (usage) => repository.recordUsage(work.runId, "claude", usage),
     });
     const { publishCollectionJob } = await import("./jobs");
@@ -66,24 +90,7 @@ export async function processMarketWork(work: MarketWork) {
   try {
     const state = await store.load(key);
     if (!state?.publicationPending) return;
-    const { data: areas, error: areaError } = await admin.from("collection_areas").select("id, account_id, search_location, radius_km, accounts!inner(active)").eq("accounts.active", true).contains("enabled_sources", ["claude"]);
-    if (areaError) throw areaError;
-    // Every hotel this research covers, not only the one whose radius happens to match it: the
-    // editions are a superset and `publishLongRangeResult` filters each hotel by real distance.
-    const matching = areas.filter((area) =>
-      marketLocation(area.search_location) === market.location && area.radius_km <= market.radiusKm);
-    if (matching.length) {
-      const { data: refreshing, error } = await admin.from("collection_runs").select("id").in("collection_area_id", matching.map((area) => area.id)).is("finished_at", null).limit(1);
-      if (error) throw error;
-      if (refreshing.length) throw new Error("Publication waits for the active hotel refresh to finish before applying newer evidence");
-    }
-    const result = storedLongRangeResult(state);
-    const publication: Record<string, number> = {};
-    for (const area of matching) {
-      const counts = await publishLongRangeResult(repository, await repository.loadContext(area.account_id, area.id), result);
-      for (const [name, count] of Object.entries(counts ?? {})) publication[name] = (publication[name] ?? 0) + count;
-    }
-    if (state.research) state.research.usage = { ...state.research.usage, ...result.usage, ...publication };
+    if (!await publishState(state)) throw new Error("Publication waits for the active hotel refresh to finish before applying newer evidence");
     state.publicationPending = false;
     state.publishedAt = new Date().toISOString();
     await store.save(key, state);
