@@ -229,6 +229,18 @@ export type CollectionRepository = {
     context: CollectionContext,
     candidates: EventCandidate[]
   ) => Promise<void>;
+  /**
+   * A candidate the collector verified but could not place on the map. `relevantToHotel` cannot
+   * accept it and scoring cannot rank it, so before this existed it was dropped without trace:
+   * Grand Hotel Ter Duin lost four of its five verified near-term events that way on 2026-09-14.
+   * Parking it keeps the verified quotes so an operator can supply the address and put the event
+   * through the normal check and score. It never reaches a calendar on its own.
+   */
+  recordUnresolvedLocations: (
+    context: CollectionContext,
+    candidates: EventCandidate[],
+    horizon: "near_term" | "long_range",
+  ) => Promise<void>;
   invalidateClaudeSources: (
     context: CollectionContext,
     sourceUrls: string[]
@@ -417,10 +429,20 @@ function relevantToHotel(candidate: EventCandidate, hotel: HotelContext) {
 export async function publishLongRangeResult(repository: CollectionRepository, context: CollectionContext, result: SourceResult) {
   if (!context.area.enabledSources.includes("claude")) return;
   if (result.quarantinedProviderEventIds?.length) await repository.quarantineClaudeEditions(context, result.quarantinedProviderEventIds);
+  const unplaceable: EventCandidate[] = [];
   for (const event of result.candidates) {
     const candidate = repairEventRange(event);
-    if (candidate && context.hotels.some((hotel) => relevantToHotel(candidate, hotel))) await repository.persistCandidate(context, candidate);
+    if (!candidate) continue;
+    if (context.hotels.some((hotel) => relevantToHotel(candidate, hotel))) {
+      await repository.persistCandidate(context, candidate);
+      continue;
+    }
+    // Long-range research already keeps these leads, but nothing surfaced them. Park the edition
+    // so an operator can supply the address; Enschede Marathon sat here scoring nothing.
+    if (!["school_holiday", "public_holiday"].includes(candidate.category)
+      && (candidate.latitude === null || candidate.longitude === null)) unplaceable.push(candidate);
   }
+  if (unplaceable.length) await repository.recordUnresolvedLocations(context, unplaceable, "long_range");
   return repository.recalculateScores(context);
 }
 
@@ -484,11 +506,16 @@ export async function runCollection(
       ? dependencies.evidenceReviewer
       : defaultEvidenceReviewer(observeUsage);
     const sourcesToRun: SourceName[] = [];
+    // Whether this run bought a new AI search, leaned on saved research for the same city, or
+    // postponed the search. Recorded so a report can never present reuse or a postponement as a
+    // fresh successful search, which is how a three-minute empty run read as a success.
+    let claudeDiscoveryMode: "fresh" | "reused" | "deferred" = "fresh";
     for (const source of context.area.enabledSources) {
       if (
         source === "claude" &&
         !(await repository.shouldRunClaudeDiscovery(context, input.trigger))
       ) {
+        claudeDiscoveryMode = reused ? "reused" : "deferred";
         if (process.env.LONG_RANGE_DISCOVERY === "enabled") {
           context.runNearTermClaude = false;
           sourcesToRun.push(source);
@@ -496,6 +523,7 @@ export async function runCollection(
         }
         sourceResults.claude = {
           state: "skipped",
+          discoveryMode: claudeDiscoveryMode,
           reason: "Claude discovery runs at most once every 30 days per market.",
         };
       } else {
@@ -548,11 +576,23 @@ export async function runCollection(
       if (source === "claude" && value.quarantinedProviderEventIds?.length) {
         await repository.quarantineClaudeEditions(context, value.quarantinedProviderEventIds);
       }
-      const missingLocationCount = value.candidates.filter(
-        (event) =>
+      // Verified but impossible to place on the map. `relevantToHotel` has to reject these and
+      // scoring cannot rank them, so park them for an operator rather than discarding them.
+      // Counted after date repair and de-duplication, so the reported number is the number of
+      // rows actually waiting - the old count read straight off the raw list and could exceed
+      // the candidate total.
+      const unplaceable = [...new Map(dated
+        .filter((event) =>
           !["school_holiday", "public_holiday"].includes(event.category) &&
-          (event.latitude === null || event.longitude === null)
-      ).length;
+          (event.latitude === null || event.longitude === null))
+        .map((event) => [`${event.provider}:${event.providerEventId}`, event])).values()];
+      const missingLocationCount = unplaceable.length;
+      for (const horizon of ["near_term", "long_range"] as const) {
+        // The 90-day collection window is the same boundary that splits the two AI searches.
+        const slice = unplaceable.filter((event) =>
+          (eventLocalDate(event.startAt) <= context.window.end) === (horizon === "near_term"));
+        if (slice.length) await repository.recordUnresolvedLocations(context, slice, horizon);
+      }
       const unique = new Map(
         relevant.map((event) => [
           `${event.provider}:${event.providerEventId}`,
@@ -798,6 +838,7 @@ export async function runCollection(
         state: sourceError ? "partial" : candidates.length ? "success" : "zero",
         ...(sourceError ? { error: sourceError } : {}),
         ...(value.researchPending ? { researchPending: true } : {}),
+        ...(source === "claude" ? { discoveryMode: claudeDiscoveryMode } : {}),
         candidates: candidates.length,
         found: value.candidates.length,
         unique: canonicalIds.size || candidates.length,

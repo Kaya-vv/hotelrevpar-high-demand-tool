@@ -155,6 +155,7 @@ function repository(overrides: Partial<CollectionRepository> = {}): CollectionRe
     loadContext: vi.fn().mockResolvedValue({
       area: { id: "area-1", accountId: "account-1", name: "MATCH", searchLocation: "Eindhoven", latitude: 51.44, longitude: 5.48, radiusKm: 30, enabledSources: ["ticketmaster", "claude"] },
       hotels: [{ id: "hotel-1", latitude: 51.44, longitude: 5.48, demandRadiusKm: 25, holidayRegion: "south" }],
+      window: { start: "2026-09-10", end: "2026-12-09" },
       knownClaudeUrls: [],
     }),
     persistCandidate: vi.fn().mockResolvedValue({ state: "active", duplicate: false }),
@@ -163,6 +164,7 @@ function repository(overrides: Partial<CollectionRepository> = {}): CollectionRe
     loadEvidenceReviews: vi.fn().mockResolvedValue({}),
     saveEvidenceReviews: vi.fn().mockResolvedValue(undefined),
     hideCandidates: vi.fn().mockResolvedValue(undefined),
+    recordUnresolvedLocations: vi.fn().mockResolvedValue(undefined),
     invalidateClaudeSources: vi.fn().mockResolvedValue(undefined),
     quarantineClaudeEditions: vi.fn().mockResolvedValue(undefined),
     shouldRunClaudeDiscovery: vi.fn().mockResolvedValue(true),
@@ -341,6 +343,57 @@ describe("runCollection", () => {
     expect(result.sourceResults.ticketmaster).not.toHaveProperty("funnel");
   });
 
+  it("parks a verified candidate it cannot place on the map instead of discarding it", async () => {
+    const nearTerm = { ...candidate, provider: "claude" as const, providerEventId: "claude-near",
+      title: "Military Boekelo", latitude: null, longitude: null,
+      startAt: "2026-10-01T00:00:00+02:00", endAt: "2026-10-04T23:59:59+02:00" };
+    // Same edition twice: the parked list must hold one row, not one per discovery lead.
+    const duplicate = { ...nearTerm, venue: "Ander veld" };
+    const yearAhead = { ...nearTerm, providerEventId: "claude-far", title: "Enschede Marathon",
+      startAt: "2027-04-11T00:00:00+02:00", endAt: "2027-04-11T23:59:59+02:00" };
+    const holiday = { ...nearTerm, providerEventId: "claude-holiday", title: "Kerstvakantie",
+      category: "school_holiday", regionScope: "south" };
+    const repo = repository();
+    const result = await runCollection(
+      { accountId: "account-1", areaId: "area-1", trigger: "manual" },
+      {
+        repository: repo,
+        collectors: {
+          claude: vi.fn().mockResolvedValue({ source: "claude", requests: 1, usage: {},
+            candidates: [nearTerm, duplicate, yearAhead, holiday] }),
+        },
+      },
+    );
+    expect(repo.recordUnresolvedLocations).toHaveBeenCalledWith(
+      expect.anything(), [expect.objectContaining({ providerEventId: "claude-near" })], "near_term");
+    expect(repo.recordUnresolvedLocations).toHaveBeenCalledWith(
+      expect.anything(), [expect.objectContaining({ providerEventId: "claude-far" })], "long_range");
+    // A holiday needs no map point, so it keeps its normal path and never queues for an address.
+    expect(repo.persistCandidate).toHaveBeenCalledTimes(1);
+    expect(repo.persistCandidate).toHaveBeenCalledWith(
+      expect.anything(), expect.objectContaining({ providerEventId: "claude-holiday" }));
+    expect(result.sourceResults.claude).toMatchObject({ missingLocation: 2, candidates: 1 });
+  });
+
+  it("reports whether the AI search was bought, reused or postponed", async () => {
+    const bought = await runCollection({ accountId: "account-1", areaId: "area-1", trigger: "manual" },
+      { repository: repository(), collectors: { claude: vi.fn().mockResolvedValue({ source: "claude", candidates: [], requests: 1, usage: {} }) } });
+    expect(bought.sourceResults.claude).toMatchObject({ discoveryMode: "fresh" });
+
+    const postponed = repository({ shouldRunClaudeDiscovery: vi.fn().mockResolvedValue(false) });
+    const deferred = await runCollection({ accountId: "account-1", areaId: "area-1", trigger: "cron" },
+      { repository: postponed, collectors: {} });
+    expect(deferred.sourceResults.claude).toMatchObject({ state: "skipped", discoveryMode: "deferred" });
+
+    const shared = repository({
+      shouldRunClaudeDiscovery: vi.fn().mockResolvedValue(false),
+      reuseNearTermEvidence: vi.fn().mockResolvedValue(3),
+    });
+    const reused = await runCollection({ accountId: "account-1", areaId: "area-1", trigger: "cron" },
+      { repository: shared, collectors: {} });
+    expect(reused.sourceResults.claude).toMatchObject({ state: "skipped", discoveryMode: "reused" });
+  });
+
   it("returns already_running for the native unique lock", async () => {
     const error = Object.assign(new Error("duplicate"), { code: "23505" });
     const result = await runCollection(
@@ -365,6 +418,7 @@ describe("runCollection", () => {
       loadContext: vi.fn().mockResolvedValue({
         area: { id: "area-1", accountId: "account-1", name: "MATCH", searchLocation: "Eindhoven", latitude: 51.44, longitude: 5.48, radiusKm: 30, enabledSources: ["ticketmaster"] },
         hotels: [{ id: "hotel-1", latitude: 51.44, longitude: 5.48, demandRadiusKm: 25, holidayRegion: "south" }],
+        window: { start: "2026-09-10", end: "2026-12-09" },
       }),
     });
     await runCollection(
@@ -388,6 +442,7 @@ describe("runCollection", () => {
       loadContext: vi.fn().mockResolvedValue({
         area: { id: "area-1", accountId: "account-1", name: "MATCH", searchLocation: "Eindhoven", latitude: 51.44, longitude: 5.48, radiusKm: 25, enabledSources: ["ticketmaster"] },
         hotels: [{ id: "hotel-1", latitude: 51.44, longitude: 5.48, demandRadiusKm: 25, holidayRegion: "south" }],
+        window: { start: "2026-09-10", end: "2026-12-09" },
       }),
     });
 
@@ -467,6 +522,7 @@ describe("runCollection", () => {
       loadContext: vi.fn().mockResolvedValue({
         area: { id: "area-1", accountId: "account-1", name: "Testhotel", searchLocation: "Eindhoven", latitude: 51.44, longitude: 5.48, radiusKm: 25, enabledSources: ["predicthq"] },
         hotels: [{ id: "hotel-1", latitude: 51.44, longitude: 5.48, demandRadiusKm: 25, holidayRegion: "south" }],
+        window: { start: "2026-09-10", end: "2026-12-09" },
       }),
     });
     const triageReview = { providerEventId: "phq-major", decision: "verify" as const, confidence: "high" as const, demandLevel: "high" as const, evidenceText: "Landelijke vakbeurs." };
@@ -504,6 +560,7 @@ describe("runCollection", () => {
       loadContext: vi.fn().mockResolvedValue({
         area: { id: "area-1", accountId: "account-1", name: "Testhotel", searchLocation: "Eindhoven", latitude: 51.44, longitude: 5.48, radiusKm: 25, enabledSources: ["predicthq"] },
         hotels: [{ id: "hotel-1", latitude: 51.44, longitude: 5.48, demandRadiusKm: 25, holidayRegion: "south" }],
+        window: { start: "2026-09-10", end: "2026-12-09" },
       }),
       loadDemandTriages: vi.fn().mockResolvedValue({ "phq-major": cachedTriage }),
       loadEvidenceReviews: vi.fn().mockResolvedValue({ "phq-major": cachedEvidence }),
@@ -534,6 +591,7 @@ describe("runCollection", () => {
       loadContext: vi.fn().mockResolvedValue({
         area: { id: "area-1", accountId: "account-1", name: "Testhotel", searchLocation: "Eindhoven", latitude: 51.44, longitude: 5.48, radiusKm: 25, enabledSources: ["predicthq"] },
         hotels: [{ id: "hotel-1", latitude: 51.44, longitude: 5.48, demandRadiusKm: 25, holidayRegion: "south" }],
+        window: { start: "2026-09-10", end: "2026-12-09" },
       }),
     });
     const demandTriageReviewer = vi.fn().mockResolvedValue({
@@ -577,6 +635,7 @@ describe("runCollection", () => {
       loadContext: vi.fn().mockResolvedValue({
         area: { id: "area-1", accountId: "account-1", name: "Testhotel", searchLocation: "Eindhoven", latitude: 51.44, longitude: 5.48, radiusKm: 25, enabledSources: ["predicthq"] },
         hotels: [{ id: "hotel-1", latitude: 51.44, longitude: 5.48, demandRadiusKm: 25, holidayRegion: "south" }],
+        window: { start: "2026-09-10", end: "2026-12-09" },
       }),
     });
     const demandTriageReviewer = vi.fn().mockResolvedValue({
@@ -615,6 +674,7 @@ describe("runCollection", () => {
       loadContext: vi.fn().mockResolvedValue({
         area: { id: "area-1", accountId: "account-1", name: "Testhotel", searchLocation: "Eindhoven", latitude: 51.44, longitude: 5.48, radiusKm: 25, enabledSources: ["claude"] },
         hotels: [{ id: "hotel-1", latitude: 51.44, longitude: 5.48, demandRadiusKm: 25, holidayRegion: "south" }],
+        window: { start: "2026-09-10", end: "2026-12-09" },
       }),
     });
 
@@ -626,6 +686,7 @@ describe("runCollection", () => {
     expect(claude).not.toHaveBeenCalled();
     expect(result.sourceResults.claude).toEqual({
       state: "skipped",
+      discoveryMode: "deferred",
       reason: "Claude discovery runs at most once every 30 days per market.",
     });
   });
@@ -638,6 +699,7 @@ describe("runCollection", () => {
       loadContext: vi.fn().mockResolvedValue({
         area: { id: "area-1", accountId: "account-1", name: "Testhotel", searchLocation: "Eindhoven", latitude: 51.44, longitude: 5.48, radiusKm: 25, enabledSources: ["claude"] },
         hotels: [{ id: "hotel-1", latitude: 51.44, longitude: 5.48, demandRadiusKm: 25, holidayRegion: "south" }],
+        window: { start: "2026-09-10", end: "2026-12-09" },
       }),
     });
 

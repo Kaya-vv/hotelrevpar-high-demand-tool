@@ -449,6 +449,9 @@ describe("source adapters", () => {
           verifiedEvent({ sourceUrl: nameOnlyUrl, title: "Naamloos concert", ownerType: "club", impactPoints: 20 }),
         ]),
       );
+    // "Agenda-item" resolved to an aggregator page, so it earns one recovery attempt. This one
+    // finds no other owner page, which must leave the two successful candidates untouched.
+    create.mockResolvedValueOnce(verificationResponse(agendaOfficial, []));
 
     const result = await collectClaude({
       ...claudeWindow,
@@ -459,7 +462,7 @@ describe("source adapters", () => {
       triage: async () => new Map<number, string>(),
     });
 
-    expect(create).toHaveBeenCalledTimes(16);
+    expect(create).toHaveBeenCalledTimes(17);
     create.mock.calls.slice(0, 12).forEach(([request]) => {
       expect(request.max_tokens).toBe(4_000);
       expect(request.tools[0]).toMatchObject({
@@ -521,9 +524,16 @@ describe("source adapters", () => {
     ]);
     expect(nameVerification.messages[0].content).toContain("Naamloos concert");
 
-    expect(result.requests).toBe(16);
+    const recovery = create.mock.calls[16][0];
+    expect(recovery.tools.map((tool: { name: string; max_uses: number }) => [tool.name, tool.max_uses]))
+      .toEqual([["web_fetch", 2], ["web_search", 1]]);
+    expect(recovery.messages[0].content).toContain(agendaOfficial);
+    expect(recovery.messages[0].content).toContain("Agenda-item");
+
+    expect(result.requests).toBe(17);
     expect(result.usage.webSearchRequests).toBe(12);
-    expect(result.usage.webFetchRequests).toBe(4);
+    expect(result.usage.webFetchRequests).toBe(5);
+    expect(result.usage).toMatchObject({ recoveryAttempts: 1, recoveredEditions: 0, recoveryPending: 0 });
     expect(result.candidates).toHaveLength(2);
     expect(result.candidates[0]).toMatchObject({
       sourceUrl: official,
@@ -651,6 +661,8 @@ describe("source adapters", () => {
         server_tool_use: { web_fetch_requests: 1 },
       },
     });
+    // The search-only URL earns one recovery attempt; this one finds no owner page either.
+    create.mockResolvedValueOnce(verificationResponse(official, []));
 
     const result = await collectClaude({
       ...claudeWindow,
@@ -665,6 +677,7 @@ describe("source adapters", () => {
     expect(result.funnel?.urlsResolved).toBe(0);
     expect(result.funnel?.drops).toEqual([
       { title: "Dutch Design Week", stage: "verification", reason: "Geen gefetchte officiële URL." },
+      { title: "Dutch Design Week", stage: "verification", reason: "Tweede poging vond geen andere officiële eigenaarspagina." },
     ]);
   });
 
@@ -733,6 +746,9 @@ describe("source adapters", () => {
         verificationResponse(urls[1], [verifiedEvent({ sourceUrl: urls[1], impactPoints: 20 })]),
       )
       .mockRejectedValueOnce(new Error("403 Forbidden"));
+    // Kandidaat 0 landed on an aggregator, so it gets one second attempt. Kandidaat 2 never
+    // opened a page at all and is already covered by the existing fetch retry, so it gets none.
+    create.mockResolvedValueOnce(verificationResponse(urls[0], []));
 
     const result = await collectClaude({
       ...claudeWindow,
@@ -747,8 +763,75 @@ describe("source adapters", () => {
     expect(result.funnel?.drops).toEqual([
       { title: "Kandidaat 2", stage: "verification", reason: "Fetch mislukt: 403 Forbidden" },
       { title: "Kandidaat 0", stage: "verification", reason: "Pagina is geen eigenaarspagina (ownerType other)." },
+      { title: "Kandidaat 0", stage: "verification", reason: "Tweede poging vond geen andere officiële eigenaarspagina." },
     ]);
     expect(result.funnel?.demandAccepted).toBe(1);
+  });
+
+  // Military Boekelo - Enschede, 2026-09-14. Discovery handed verification the site's visitor-map
+  // page, which carries no dates, so the event was dropped while the organiser's own
+  // accommodation page - one click away - names the hotel it drives demand for.
+  it("recovers an event whose first verification opened the wrong page on the right site", async () => {
+    const mapPage = "https://www.military-boekelo.nl/plattegronden";
+    const stayPage = "https://www.military-boekelo.nl/overnachten";
+    const create = vi.fn();
+    queueClaudeSearches(create, [
+      discoveredCandidate({ title: "Military Boekelo", city: "Enschede", venue: "Military-terrein", officialUrl: mapPage }),
+    ]);
+    create.mockResolvedValueOnce(
+      verificationResponse(mapPage, [
+        verifiedEvent({ sourceUrl: mapPage, title: "Military Boekelo", dateConfirmed: false, locationConfirmed: false }),
+      ]),
+    );
+    create.mockResolvedValueOnce(
+      verificationResponse(stayPage, [
+        verifiedEvent({ sourceUrl: stayPage, title: "Military Boekelo", category: "sports" }),
+      ]),
+    );
+
+    const result = await collectClaude({
+      ...claudeWindow,
+      location: "Enschede",
+      radiusKm: 50,
+      model: "claude-test",
+      client: { messages: { create } } as unknown as Anthropic,
+      triage: async () => new Map<number, string>(),
+    });
+
+    expect(create).toHaveBeenCalledTimes(14);
+    expect(create.mock.calls[13][0].messages[0].content).toContain(mapPage);
+    // The unconfirmed first attempt stays as an unverified source; the recovered page is the one
+    // that can reach a calendar, and `persistCandidate` merges them onto the same event.
+    expect(result.candidates).toMatchObject([
+      { sourceUrl: mapPage, title: "Military Boekelo", primarySourceConfirmed: false },
+      { sourceUrl: stayPage, title: "Military Boekelo", primarySourceConfirmed: true },
+    ]);
+    expect(result.funnel).toMatchObject({ pagesVerified: 1, demandAccepted: 1 });
+    expect(result.usage).toMatchObject({ recoveryAttempts: 1, recoveredEditions: 1 });
+  });
+
+  it("spends no recovery attempt once the search allowance is gone", async () => {
+    const names = Array.from({ length: 38 }, (_, index) =>
+      discoveredCandidate({ title: `Evenement ${index}`, startDate: "2027-09-01", endDate: null }),
+    );
+    const create = vi.fn();
+    for (let index = 0; index < 12; index += 1) {
+      create.mockResolvedValueOnce(discoveryResponse(names.slice(index * 6, index * 6 + 6)));
+    }
+    // Every name-only candidate consumes a search slot, so the 36 verifications leave none over.
+    create.mockResolvedValue(verificationResponse(null, []));
+
+    const result = await collectClaude({
+      ...claudeWindow,
+      location: "Eindhoven",
+      radiusKm: 25,
+      model: "claude-test",
+      client: { messages: { create } } as unknown as Anthropic,
+      triage: async () => new Map<number, string>(),
+    });
+
+    expect(create).toHaveBeenCalledTimes(12 + 36);
+    expect(result.usage).toMatchObject({ recoveryAttempts: 0, recoveryPending: 36 });
   });
 
   it("stops giving the search tool to name-only candidates past the search budget", async () => {
@@ -803,7 +886,8 @@ describe("source adapters", () => {
     });
 
     expect(result.funnel?.namesDiscovered).toBe(1);
-    expect(create).toHaveBeenCalledTimes(13);
+    // 12 searches, one verification, and one second attempt because that verification confirmed nothing.
+    expect(create).toHaveBeenCalledTimes(14);
     const verification = create.mock.calls[12][0];
     expect(verification.messages[0].content).toContain(official);
     expect(verification.tools.map((tool: { name: string }) => tool.name)).toEqual(["web_fetch"]);
@@ -916,6 +1000,8 @@ describe("source adapters", () => {
       ],
       usage: { input_tokens: 200, output_tokens: 80, server_tool_use: { web_fetch_requests: 1 } },
     });
+    // An unconfirmed date is a failed check, so it earns one second attempt on another page.
+    create.mockResolvedValueOnce(verificationResponse(plain, []));
 
     const result = await collectClaude({
       ...claudeWindow,
@@ -928,11 +1014,18 @@ describe("source adapters", () => {
 
     expect(result.candidates).toMatchObject([{ sourceUrl: plain, primarySourceConfirmed: false }]);
     expect(result.funnel?.pagesVerified).toBe(0);
-    expect(result.funnel?.drops).toEqual([{
-      title: "ASML Marathon Eindhoven",
-      stage: "verification",
-      reason: `Niet bevestigd op ${plain} (ontbreekt: datum, ownerType organizer).`,
-    }]);
+    expect(result.funnel?.drops).toEqual([
+      {
+        title: "ASML Marathon Eindhoven",
+        stage: "verification",
+        reason: `Niet bevestigd op ${plain} (ontbreekt: datum, ownerType organizer).`,
+      },
+      {
+        title: "ASML Marathon Eindhoven",
+        stage: "verification",
+        reason: "Tweede poging vond geen andere officiële eigenaarspagina.",
+      },
+    ]);
   });
 
 
@@ -1034,7 +1127,8 @@ describe("source adapters", () => {
       expect.objectContaining({ title: "Meerdaags Festival" }),
       expect.objectContaining({ title: "Clubavond" }),
     ]);
-    expect(create).toHaveBeenCalledTimes(13);
+    // 12 searches, one verification, and one second attempt because that verification confirmed nothing.
+    expect(create).toHaveBeenCalledTimes(14);
     expect(create.mock.calls[12][0].messages[0].content).toContain(festival);
     expect(result.funnel?.namesDiscovered).toBe(2);
     expect(result.funnel?.drops).toContainEqual({
@@ -1671,6 +1765,8 @@ describe("source adapters", () => {
         }),
       ]),
     );
+    // The truncated answer earns one second attempt, which here also confirms nothing.
+    create.mockResolvedValueOnce(verificationResponse(urls[0], []));
 
     const result = await collectClaude({
       ...claudeWindow,
@@ -1681,11 +1777,12 @@ describe("source adapters", () => {
       triage: async () => new Map<number, string>(),
     });
 
-    expect(result.requests).toBe(14);
+    expect(result.requests).toBe(15);
     expect(result.candidates).toHaveLength(1);
     expect(result.usage.failedFetches).toBe(1);
     expect(result.funnel?.drops).toEqual([
       { title: "Kapotte pagina", stage: "verification", reason: "Tokenlimiet bereikt." },
+      { title: "Kapotte pagina", stage: "verification", reason: "Tweede poging vond geen andere officiële eigenaarspagina." },
     ]);
   });
 

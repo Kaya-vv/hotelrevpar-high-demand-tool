@@ -35,6 +35,15 @@ export const DEFAULT_TRIAGE_MODEL = "claude-haiku-4-5-20251001";
 // roughly $0.30, so the ceiling was never the constraint the numbers implied.
 const VERIFICATION_BUDGET = 60;
 const SEARCH_BUDGET = 36;
+// Military Boekelo - Enschede was discovered twice on 2026-09-14 and lost both times. The event
+// is real, its organiser site even names Resort Bad Boekelo as accommodation partner, and the
+// score it would have earned from that page is 75/High with no override. Verification opened the
+// site map and a visitor-map page instead, neither of which carries a date, and the existing
+// retry only fires when NO page was opened at all. So a usable answer that fails ownership, the
+// essential facts or evidence validation gets one more attempt - this time with a search, so the
+// model can reach a different official owner page rather than the URL discovery guessed.
+// Four per run, paid for out of the unspent search allowance, never by displacing discovery.
+const RECOVERY_LIMIT = 4;
 
 export type ClaudeUsageEvent = {
   phase: "discovery" | "discovery_fetch" | "demand_triage" | "demand_verification";
@@ -1230,7 +1239,7 @@ async function collectClaudeFresh(
   let urlsResolved = 0;
   let pagesVerified = 0;
   const invalidatedUrls: string[] = [];
-  const events = verified.flatMap(({ entry, message }) => {
+  const parseVerification = (entry: VerificationEntry, message: Anthropic.Message) => {
     const label = entry.title ?? entry.officialUrl ?? "";
     try {
       if (message.stop_reason === "max_tokens") {
@@ -1288,8 +1297,87 @@ async function collectClaudeFresh(
       );
       return [];
     }
+  };
+  // A titled candidate that reached no confirmed page failed on the page it opened, not on the
+  // event itself: Military Boekelo came back with `dateConfirmed: false` from a visitor-map page,
+  // which is a returned event but not a verified one. A confirmed page - including a confirmed
+  // cancellation, and including one that simply quoted no demand - is a real answer and is never
+  // re-asked. Collected in discovery order for the bounded recovery attempt below.
+  const recoverable: VerificationEntry[] = [];
+  const events = verified.flatMap(({ entry, message }) => {
+    const parsed = parseVerification(entry, message);
+    if (entry.title !== null && !parsed.some((event) => event.primarySourceConfirmed)) recoverable.push(entry);
+    return parsed;
   });
   if (!parsedFetches && firstFailure) throw firstFailure;
+  const recoveryMessages: Anthropic.Message[] = [];
+  let recoveryAttempts = 0;
+  let recoveredEditions = 0;
+  // Near-term only, and only out of spare search allowance and remaining execution time. The
+  // year-ahead sweep runs its own multi-stage research in `collectLongRange`, which already
+  // re-opens a lead on a later round; a run about to hand its batch back to the queue recovers
+  // nothing and reports the shortfall as `recoveryPending`.
+  const recoveryQueue = longRange ? [] : recoverable.slice(0, Math.min(RECOVERY_LIMIT, searchBudget));
+  if (recoveryQueue.length && !(batching.deadline !== undefined && Date.now() >= batching.deadline)) {
+    searchBudget -= recoveryQueue.length;
+    recoveryAttempts = recoveryQueue.length;
+    const settledRecovery = await requestMessages(client, "verification", recoveryQueue.map((entry): MessageRequest => ({
+      options: verificationRequestOptions,
+      params: {
+        model,
+        max_tokens: 2_000,
+        ...(model.startsWith("claude-sonnet-5") ? { thinking: { type: "disabled" as const } } : {}),
+        tools: [
+          {
+            type: "web_fetch_20260318",
+            name: "web_fetch",
+            allowed_callers: ["direct"],
+            max_uses: 2,
+            max_content_tokens: 6_000,
+            citations: { enabled: false },
+            response_inclusion: "full",
+          },
+          {
+            type: "web_search_20260318",
+            name: "web_search",
+            allowed_callers: ["direct"],
+            max_uses: 1,
+            response_inclusion: "full",
+            user_location: userLocation,
+          },
+        ],
+        output_config: { format: zodOutputFormat(eventWireOutputSchema) },
+        messages: [{
+          role: "user",
+          content: `Een eerdere controle van dit evenement leverde geen bevestiging op${entry.officialUrl ? ` op ${entry.officialUrl}` : ""}: die pagina bevestigde de titel, de datum, de locatie of de eigenaar niet. Zoek met één zoekopdracht een ANDERE officiële eigenaarspagina van de organisator, de gemeente, de sportbond, de locatie of de ticketverkoper, en open die pagina. Sla die eerdere pagina over. Gebruik de naam, de datum en de plaats hieronder alleen als zoekhulp en nooit als bewijs: bevestig titel, datum, locatie en status opnieuw op de pagina's die je zelf ophaalt. Evenement: ${entry.title}, ${entry.startDate}${entry.venue ? `, ${entry.venue}` : ""}, ${entry.city}. ${verificationInstructions(input)}`,
+        }],
+      },
+    })), batching);
+    for (let index = 0; index < settledRecovery.length; index += 1) {
+      const result = settledRecovery[index];
+      const entry = recoveryQueue[index];
+      const label = entry.title ?? "";
+      if (result.status !== "fulfilled") {
+        recordDrop(label, "verification", `Tweede poging mislukt: ${dropReason(result.reason)}`);
+        continue;
+      }
+      await observeUsage(input.onUsage, usageEvent(result.value, "discovery_fetch", model));
+      recoveryMessages.push(result.value);
+      if (!fetched(result.value) || result.value.stop_reason === "pause_turn") {
+        recordDrop(label, "verification", "Tweede poging opende geen pagina.");
+        continue;
+      }
+      const parsed = parseVerification(entry, result.value);
+      if (!parsed.length) {
+        recordDrop(label, "verification", "Tweede poging vond geen andere officiële eigenaarspagina.");
+        continue;
+      }
+      // An unsuccessful recovery never replaces a saved result: these entries produced nothing
+      // the first time, so there is no earlier evidence for them to overwrite.
+      recoveredEditions += parsed.length;
+      events.push(...parsed);
+    }
+  }
   const geocode = input.geocode ?? geocodeVenue;
   const resolveLocation = createLocationResolver({ venue: geocode, city: input.geocodeCity });
   const candidates = await Promise.all(events.map(async (event) => {
@@ -1332,13 +1420,18 @@ async function collectClaudeFresh(
   return {
     source: "claude",
     candidates,
-    requests: searches.length + agendaTargets.length + triage.requests + queue.length,
-    usage: usageTotals(
-      [...searches, ...agendaMessages, ...triage.messages, ...verified.map(({ message }) => message)],
-      failedFetches,
-      parsedSearches,
-      searchTasks.length,
-    ),
+    requests: searches.length + agendaTargets.length + triage.requests + queue.length + recoveryAttempts,
+    usage: {
+      ...usageTotals(
+        [...searches, ...agendaMessages, ...triage.messages, ...verified.map(({ message }) => message), ...recoveryMessages],
+        failedFetches,
+        parsedSearches,
+        searchTasks.length,
+      ),
+      recoveryAttempts,
+      recoveredEditions,
+      recoveryPending: longRange ? 0 : recoverable.length - recoveryAttempts,
+    },
     invalidatedUrls: [...new Set(invalidatedUrls)],
     funnel: {
       namesDiscovered,

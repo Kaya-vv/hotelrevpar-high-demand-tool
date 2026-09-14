@@ -15,6 +15,36 @@ export function runStatusLabel(
     ? "Deels voltooid"
     : "Voltooid";
 }
+function discoveryModeLabel(
+  mode: SourceHealthRun["sources"][number]["discoveryMode"],
+) {
+  switch (mode) {
+    case "fresh":
+      return "Nieuwe AI-zoekopdracht gekocht";
+    case "reused":
+      return "Bewaard onderzoek voor deze stad gratis hergebruikt";
+    case "deferred":
+      return "AI-zoekopdracht uitgesteld";
+    default:
+      return "Niet vastgelegd";
+  }
+}
+
+// "success" on its own read as a win even when a source published nothing, which is how a
+// three-minute empty run was reported as a successful search. Name the outcome instead. Only an
+// AI sweep has a demand funnel; a feed source can honestly only report how many events it
+// returned, so it must not claim zero demand it never measured.
+function sourceStateLabel(
+  source: SourceHealthRun["sources"][number],
+  finishedAt: string | null,
+) {
+  if (!finishedAt && source.state === "not_run") return "Wachten";
+  if (!["success", "zero"].includes(source.state)) return source.state;
+  if (source.namesDiscovered > 0) {
+    return `Afgerond: ${source.demandAccepted} evenementen met aangetoonde hotelvraag, ${source.unresolvedLocations} zonder locatie`;
+  }
+  return `Afgerond: ${source.unique} evenementen${source.unresolvedLocations ? `, ${source.unresolvedLocations} zonder locatie` : ""}`;
+}
 
 export function SourceHealthTable({ runs }: { runs: SourceHealthRun[] }) {
   return (
@@ -43,6 +73,7 @@ export function SourceHealthDetails({ run }: { run: SourceHealthRun }) {
             <tr>
               <th>Bron</th>
               <th>Status</th>
+              <th>AI-onderzoek</th>
               <th>Laatste succes</th>
               <th>Fout</th>
               <th>Gevonden</th>
@@ -52,6 +83,7 @@ export function SourceHealthDetails({ run }: { run: SourceHealthRun }) {
               <th>Officiële URL&apos;s</th>
               <th>Geverifieerd</th>
               <th>Vraag beoordeeld</th>
+              <th>Zonder locatie</th>
               <th>Review</th>
               <th>Requests</th>
               <th>AI-calls</th>
@@ -65,11 +97,8 @@ export function SourceHealthDetails({ run }: { run: SourceHealthRun }) {
             {run.sources.map((source) => (
               <tr key={source.name}>
                 <td>{source.name}</td>
-                <td>
-                  {!run.finishedAt && source.state === "not_run"
-                    ? "Wachten"
-                    : source.state}
-                </td>
+                <td>{sourceStateLabel(source, run.finishedAt)}</td>
+                <td>{discoveryModeLabel(source.discoveryMode)}</td>
                 <td>
                   {source.lastSuccess
                     ? new Date(source.lastSuccess).toLocaleString("nl-NL")
@@ -83,6 +112,7 @@ export function SourceHealthDetails({ run }: { run: SourceHealthRun }) {
                 <td>{source.urlsResolved}</td>
                 <td>{source.pagesVerified}</td>
                 <td>{source.demandAccepted}</td>
+                <td>{source.unresolvedLocations}</td>
                 <td>{source.reviews}</td>
                 <td>{source.requests}</td>
                 <td>{source.usageCalls}</td>

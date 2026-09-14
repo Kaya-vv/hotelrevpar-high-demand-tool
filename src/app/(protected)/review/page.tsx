@@ -1,4 +1,5 @@
 import { getReviewData } from "@/features/calendar/query";
+import { unresolvedEventLocations } from "@/features/collection/unresolved-locations";
 import {
   acceptEvent,
   applyReviewChange,
@@ -7,12 +8,20 @@ import {
   keepCurrentEvent,
   mergeEvent,
 } from "@/features/review/actions";
+import {
+  dismissEventLocation,
+  resolveEventLocation,
+} from "@/features/review/location-actions";
+import { UnresolvedLocationsList } from "@/features/review/unresolved-locations-list";
 import { ReviewList } from "@/features/review/review-list";
 import { requirePlatformAdmin } from "@/lib/auth/require-account";
 
 export default async function ReviewPage() {
   const { accountId } = await requirePlatformAdmin();
-  const data = await getReviewData(accountId);
+  const [data, unresolvedLocations] = await Promise.all([
+    getReviewData(accountId),
+    unresolvedEventLocations(accountId),
+  ]);
   const selectedHotel = data.hotels.find(
     (hotel) => hotel.id === data.selectedHotelId
   );
@@ -26,6 +35,26 @@ export default async function ReviewPage() {
           hier. Hotelmanagers zien deze interne wachtrij niet.
         </p>
       </header>
+      {unresolvedLocations.length > 0 && (
+        <section>
+          <header className="page-title">
+            <span className="eyebrow">Locatie aanvullen</span>
+            <h2>Evenementen zonder kaartlocatie</h2>
+            <p>
+              Deze evenementen zijn wel gevonden, maar konden niet op de kaart
+              worden gezet. Ze staan daarom nog op geen enkele kalender. Vul
+              het adres in om ze door de gewone controle en score te halen.
+            </p>
+          </header>
+          <UnresolvedLocationsList
+            items={unresolvedLocations}
+            actions={{
+              resolve: resolveEventLocation,
+              dismiss: dismissEventLocation,
+            }}
+          />
+        </section>
+      )}
       <ReviewList
         events={data.events}
         actions={{

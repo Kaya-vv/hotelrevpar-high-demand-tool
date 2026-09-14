@@ -621,6 +621,59 @@ export type Database = {
           }
         ];
       };
+      unresolved_event_locations: {
+        Row: {
+          candidate: Json;
+          collection_area_id: string;
+          discovered_at: string;
+          end_at: string;
+          horizon: string;
+          provider: string;
+          provider_event_id: string;
+          resolution: string | null;
+          resolved_at: string | null;
+          start_at: string;
+          title: string;
+          venue: string | null;
+        };
+        Insert: {
+          candidate: Json;
+          collection_area_id: string;
+          discovered_at?: string;
+          end_at: string;
+          horizon: string;
+          provider: string;
+          provider_event_id: string;
+          resolution?: string | null;
+          resolved_at?: string | null;
+          start_at: string;
+          title: string;
+          venue?: string | null;
+        };
+        Update: {
+          candidate?: Json;
+          collection_area_id?: string;
+          discovered_at?: string;
+          end_at?: string;
+          horizon?: string;
+          provider?: string;
+          provider_event_id?: string;
+          resolution?: string | null;
+          resolved_at?: string | null;
+          start_at?: string;
+          title?: string;
+          venue?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "unresolved_event_locations_collection_area_id_fkey";
+            columns: ["collection_area_id"];
+            isOneToOne: false;
+            referencedRelation: "collection_areas";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
       event_evidence_cache: {
         Row: {
           checked_at: string;

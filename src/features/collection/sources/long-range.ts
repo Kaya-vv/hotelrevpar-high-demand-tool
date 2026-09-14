@@ -704,7 +704,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
     lead.checkedAt = now.toISOString();
     lead.nextCheck = nextCheckAt(lead, now);
     if (lead.outcome === "failed" || lead.outcome === "conflict") failures.push(`${lead.title}: ${lead.notes.join(" ")}`);
-    if (!lead.editions.length) drops.push({ title: lead.title, stage: "verification", reason: lead.notes.join(" ") });
+    if (!lead.editions.length) drops.push({ title: lead.title, stage: "verification", reason: `Langetermijnonderzoek ${input.start} t/m ${input.end}: ${lead.notes.join(" ")}` });
   };
 
   // Resolve and fetch first, then share the deeper-page slots across both paths. Capture queue

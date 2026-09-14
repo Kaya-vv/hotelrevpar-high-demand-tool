@@ -478,6 +478,37 @@ export function createCollectionRepository(): CollectionRepository {
       }
     },
 
+    async recordUnresolvedLocations(context, candidates, horizon) {
+      const unresolved = new Map(
+        candidates
+          .filter((candidate) => candidate.providerEventId)
+          .map((candidate) => [
+            `${candidate.provider}\0${candidate.providerEventId}`,
+            candidate,
+          ]),
+      );
+      if (!unresolved.size) return;
+      const rows = [...unresolved.values()].map((candidate) => ({
+        collection_area_id: context.area.id,
+        provider: candidate.provider,
+        provider_event_id: candidate.providerEventId,
+        horizon,
+        title: candidate.title,
+        venue: candidate.venue,
+        start_at: candidate.startAt,
+        end_at: candidate.endAt,
+        candidate: JSON.parse(JSON.stringify(candidate)) as Json,
+      }));
+      for (let index = 0; index < rows.length; index += 200) {
+        const { error } = await supabase
+          .from("unresolved_event_locations")
+          .upsert(rows.slice(index, index + 200), {
+            onConflict: "collection_area_id,provider,provider_event_id",
+          });
+        if (error) throw error;
+      }
+    },
+
     async persistCandidate(context, candidate) {
       const { data: existingSource, error: sourceError } = await supabase
         .from("event_sources")

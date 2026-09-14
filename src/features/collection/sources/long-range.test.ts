@@ -372,6 +372,28 @@ describe("long-range source leads", () => {
     expect(memory.state().leads[0].outcome).toBe("failed");
   });
 
+  it("names the searched period when a lead has no announced edition", async () => {
+    const modelWords = "The 2026 dates fall outside the requested window.";
+    const create = vi.fn().mockResolvedValue({
+      ...response(),
+      content: [
+        { type: "web_fetch_tool_result", content: { type: "web_fetch_result", url } },
+        { type: "text", text: JSON.stringify({ events: [], reason: modelWords }) },
+      ],
+    });
+    const result = await collectLongRange({
+      ...input,
+      store: memoryStore(warmState()).store,
+      client: client(create),
+    });
+
+    expect(result.funnel?.drops).toContainEqual({
+      title: "Annual Arts Week",
+      stage: "verification",
+      reason: `Langetermijnonderzoek ${input.start} t/m ${input.end}: ${modelWords}`,
+    });
+  });
+
   it("accepts multiple dated federation entries but rejects unconfirmed evidence and out-of-window dates", async () => {
     const create = vi.fn().mockResolvedValue(response([
       event({ title: "First tournament", ownerType: "federation" }),

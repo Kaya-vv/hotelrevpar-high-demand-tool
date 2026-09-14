@@ -42,6 +42,8 @@ export type SourceHealth = {
   urlsResolved: number;
   pagesVerified: number;
   demandAccepted: number;
+  discoveryMode: "fresh" | "reused" | "deferred" | null;
+  unresolvedLocations: number;
   drops: DiscoveryDrop[];
   reviews: number;
   requests: number;
@@ -65,6 +67,8 @@ export type SourceHealthRun = {
 
 type RawSource = {
   researchPending?: boolean;
+  discoveryMode?: "fresh" | "reused" | "deferred";
+  missingLocation?: number;
   state?: string;
   error?: string;
   candidates?: number;
@@ -169,6 +173,8 @@ export async function getSourceHealthRuns(page = 0, runId?: string): Promise<Sou
           urlsResolved: source?.funnel?.urlsResolved ?? 0,
           pagesVerified: source?.funnel?.pagesVerified ?? 0,
           demandAccepted: source?.funnel?.demandAccepted ?? 0,
+          discoveryMode: source?.discoveryMode ?? null,
+          unresolvedLocations: source?.missingLocation ?? 0,
           drops: source?.funnel?.drops ?? [],
           reviews: source?.reviews ?? 0,
           requests: source?.requests ?? 0,
