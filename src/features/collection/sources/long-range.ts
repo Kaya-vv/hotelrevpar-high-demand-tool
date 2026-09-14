@@ -64,6 +64,25 @@ const CYCLE_LEAD_LIMIT = 60;
 // must fit in one cycle. The monthly spend ledger still bounds paid work.
 const CYCLE_WAVE_LIMIT = 5;
 
+// 198 leads sat at the demand stage on 2026-09-14; 159 of them had every official page fully
+// read, so each weekly cycle bought another demand search for evidence those pages do not
+// contain, and outranked leads never checked once. Two searches is the whole attempt: after
+// that the edition keeps the dates and location it proved and stops costing money. A page that
+// is still part-read keeps its stage, because there is text left to extract.
+const DEMAND_SEARCH_LIMIT = 2;
+/** The exact editions the next demand search would be buying evidence for. A 2028 edition is a
+ *  new question and starts fresh; an unchanged week reproduces the same scope. */
+function demandScope(editions: EventCandidate[]) {
+  const pending = editions.filter((event) => needsDemandResearch(event)).map((event) => event.providerEventId);
+  return pending.length ? [...pending].sort().join("|") : null;
+}
+function demandStage(lead: Lead, editions: EventCandidate[]) {
+  const scope = demandScope(editions);
+  if (!scope) return undefined;
+  const spent = lead.demandSearches?.scope === scope ? lead.demandSearches.attempts : 0;
+  return spent < DEMAND_SEARCH_LIMIT ? "demand" as const : undefined;
+}
+
 // A lead URL only earns a fetch when it can own the event's dates. Aggregators, wikis and tourist
 // listings republish them, so a fetch there confirms nothing. Extend this list when a new host
 // shows up in the verification drops.
@@ -280,6 +299,9 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
     lead.firstSeenAt ??= lead.checkedAt ?? lead.nextCheck;
     lead.officialPages ??= [...new Set([lead.officialPage, lead.url].filter((url): url is string => Boolean(url)))];
     if (lead.checkedAt && lead.nextCheck > later(new Date(lead.checkedAt), 7)) lead.nextCheck = later(new Date(lead.checkedAt), 7);
+    // Resolve the demand allowance before anything is queued, so an exhausted lead neither buys
+    // another search nor keeps outranking leads that have never been checked once.
+    if (lead.pendingStage === "demand" && !demandStage(lead, lead.editions)) delete lead.pendingStage;
   }
   for (const lead of state.leads) scheduleEvidenceRepair(lead, now.toISOString(), input.end);
   const model = input.model?.trim() || process.env.ANTHROPIC_MODEL?.trim();
@@ -556,6 +578,8 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
       request.params.output_config = { format: zodOutputFormat(resolutionSchema) };
       const locationWork = lead.pendingStage === "location";
       const demandWork = lead.pendingStage === "demand";
+      // Remember what this search is for; the allowance is charged only once it really ran.
+      if (demandWork) job.demandScope = demandScope(lead.editions) ?? undefined;
       const seriesName = lead.title.replace(/\b20\d{2}\b/g, "").trim();
       const query = locationWork ? `${lead.editions.find((event) => event.venue)?.venue ?? seriesName} ${input.location} officieel adres bezoek contact` : demandWork ? `${seriesName} bezoekers herkomst overnachten official visitors hotels` : `${seriesName} ${input.location} official about upcoming editions dates`;
       request.params.messages = [{ role: "user", content: `Search once for "${query}". Find ${locationWork ? "the official physical venue address/contact page" : demandWork ? "official series or comparable past-edition audience, attendance, hotel or travel evidence" : "the organizer's official about, dates, announcement or calendar page"}, beyond ${fetchTarget(lead)}. Return its exact observed URL and a short reason, or null if absent. Future dates or the target year do NOT have to appear in a search snippet: an official about/calendar page with a current-edition header is a valid retrieval target. Do not fetch or confirm dates: the application will fetch this page itself.` }];
@@ -573,6 +597,18 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
       // and its observed announcement/about link. A venue's practical page must not consume it.
       const retrieved = job.pages ? { pages: job.pages, errors: [] } : await retrieveOfficialPages(target ?? fetchTarget(lead)!, input.end.slice(0, 4), boundedFetch, kind === "fetch" ? lead.officialPages : [], lead.title, 2, lead.pendingStage === "demand" ? "demand" : "dates");
       for (const error of retrieved.errors) failures.push(`${lead.title}: ${error}`);
+      // Concert at SEA sat on a tourist page that reset the connection on every one of four
+      // attempts, while its own organiser pages downloaded fine as remembered extras. The dead
+      // URL kept the first of only two retrieval slots, so the page carrying the 2027 dates was
+      // never read. Hand the slot to a page that answered; the refused one stays as evidence.
+      if (kind === "fetch" && !target && retrieved.pages.length) {
+        const pinned = fetchTarget(lead)!;
+        const working = retrieved.pages.find((page) => page.url !== pinned && !isAggregatorUrl(page.url));
+        if (working && state.retrievalFailures![pinned] && !retrieved.pages.some((page) => page.url === pinned)) {
+          lead.url = working.url;
+          lead.officialPage ??= working.url;
+        }
+      }
       if (!retrieved.pages.length) {
         const cachedUrl = target ?? fetchTarget(lead)!;
         const cached = state.pageCache![cachedUrl];
@@ -591,7 +627,14 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
       }
       lead.officialPages = [...new Set([...retrieved.pages.map((page) => page.url), ...(lead.officialPages ?? [])])].slice(0, 4);
       const extractionVersion = Number(`${MONITORING_VERSION}${CLAUDE_ASSESSMENT_VERSION}${input.end.slice(0, 4)}`);
-      const incompleteExtraction = repairPending(lead) || lead.pendingStage === "extraction";
+      // A lead that failed with nothing to show keeps pages marked fully extracted, so the cache
+      // answered "already done" and the lead was finalized without ever being extracted again.
+      // 142 leads held downloaded text no edition was ever built from. Re-read that text once per
+      // extraction version. `unannounced` is a real answer and is never re-read.
+      const recoverable = !lead.editions.length && lead.extractedVersion !== extractionVersion
+        && (lead.outcome === "failed" || lead.pendingStage === "retrieval");
+      const incompleteExtraction = repairPending(lead) || lead.pendingStage === "extraction" || recoverable;
+      if (recoverable) lead.extractedVersion = extractionVersion;
       const unprocessed = retrieved.pages.filter((page) => {
         const entry = state.pageCache![page.url];
         return (incompleteExtraction && !pageOwners.has(page.url)) || !entry || entry.hash !== pageHash(page) || entry.version !== extractionVersion || !entry.complete;
@@ -671,7 +714,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
       return [candidate];
     });
     if (editions.length) {
-      lead.pendingStage = editions.some((event) => !event.evidence?.dateText) ? "extraction" : editions.some((event) => !event.evidence?.locationText || (event.evidence.locationScope === "venue" && !event.evidence.venueAddress)) ? "location" : editions.some((event) => needsDemandResearch(event)) ? "demand" : undefined;
+      lead.pendingStage = editions.some((event) => !event.evidence?.dateText) ? "extraction" : editions.some((event) => !event.evidence?.locationText || (event.evidence.locationScope === "venue" && !event.evidence.venueAddress)) ? "location" : demandStage(lead, editions);
       const ownEdition = editions.find((edition) => labelKey(edition.title) === labelKey(lead.title));
       const sameEditionDates = (a: EventCandidate, b: EventCandidate) => labelKey(a.title) === labelKey(b.title) && eventLocalDate(a.startAt) === eventLocalDate(b.startAt) && eventLocalDate(a.endAt) === eventLocalDate(b.endAt);
       // Several editions can legitimately share a series and year. A date is ambiguous only when
@@ -751,6 +794,13 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
       if (prepared[index].status === "fulfilled" && !job.cached && result && !(result.status === "rejected" && result.reason instanceof ResearchDeferredError)) {
         requests++;
         usage[`${job.kind}Requests`] = (usage[`${job.kind}Requests`] ?? 0) + 1;
+        // A postponed request buys nothing, so it must not spend the demand allowance. Charging
+        // here also survives a resumed batch: the restored job carries its scope and is counted once.
+        if (job.demandScope) {
+          const spent = job.lead.demandSearches?.scope === job.demandScope ? job.lead.demandSearches.attempts : 0;
+          job.lead.demandSearches = { scope: job.demandScope, attempts: spent + 1 };
+          delete job.demandScope;
+        }
       }
     });
     const next: Job[] = [];
@@ -880,7 +930,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
     if (lead.outcome === "conflict" || lead.editions.some((event) => !validEventRange(event))) lead.pendingStage = "conflict";
     else if (lead.editions.some((event) => !event.evidence?.dateText)) lead.pendingStage = "extraction";
     else if (lead.editions.some((event) => event.latitude === null || event.longitude === null)) lead.pendingStage = "location";
-    else if (lead.editions.some((event) => needsDemandResearch(event))) lead.pendingStage = "demand";
+    else if (demandStage(lead, lead.editions) === "demand") lead.pendingStage = "demand";
     else if (lead.editions.length) delete lead.pendingStage;
     else if (!fetchTarget(lead)) lead.pendingStage = "url";
   }
@@ -916,6 +966,9 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
   usage.cachedEditions = candidates.filter((event) => originalIds.has(event.providerEventId)).length;
   usage.pendingLocation = candidates.filter((event) => event.latitude === null || event.longitude === null).length;
   usage.pendingDemand = candidates.filter((event) => needsDemandResearch(event)).length;
+  // Editions whose hotel evidence the official pages never carried. They keep proven dates and
+  // location and stop buying searches; the number must stay visible, not vanish into pendingDemand.
+  usage.demandSearchExhausted = state.leads.filter((lead) => demandScope(lead.editions) && !demandStage(lead, lead.editions)).length;
   usage.blockedSources = Object.values(state.retrievalFailures).filter((failure) => /HTTP 40[13]/.test(failure.message)).length;
   usage.unavailableSources = Object.keys(state.retrievalFailures).length;
   usage.extractionFailures = state.leads.filter((lead) => lead.pendingStage === "extraction").length;

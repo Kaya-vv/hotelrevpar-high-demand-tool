@@ -5,7 +5,9 @@ import type { Json } from "@/lib/supabase/database.types";
 import type { MessageRequest } from "./sources/claude";
 import type { OfficialPage } from "./official-pages";
 
-export type ResearchJob = { leadKey: string; windowStart?: string; kind: "fetch" | "deep" | "resolve" | "evidence"; target?: string; providerFallback?: boolean; checkedAt?: string; pages?: OfficialPage[]; cached?: boolean; chunks?: { url: string; hash: string; index: number; total: number }[] };
+/** `demandScope` records which editions a deep search is buying hotel evidence for, so the
+ *  allowance is charged once the request really ran, and survives a resumed batch. */
+export type ResearchJob = { leadKey: string; windowStart?: string; kind: "fetch" | "deep" | "resolve" | "evidence"; target?: string; providerFallback?: boolean; checkedAt?: string; pages?: OfficialPage[]; cached?: boolean; demandScope?: string; chunks?: { url: string; hash: string; index: number; total: number }[] };
 export type ResearchCycle = {
   monitoringVersion?: number;
   startedAt: string; waves: number; leadKeys: string[]; finished?: boolean;
@@ -35,6 +37,13 @@ export type Lead = {
   firstSeenAt?: string;
   discoveryGroups?: number[];
   pageCache?: Record<string, { text?: string; links?: { url: string; label: string }[]; hash: string; version: number; cursor: number; complete: boolean; chunks: number; checkedAt: string }>;
+  /** Extraction version whose cached pages this lead has already been re-read against. Bounds
+   *  recovery of a lead that failed without editions to one retry per version. */
+  extractedVersion?: number;
+  /** Demand searches already executed for one exact set of editions awaiting hotel evidence.
+   *  A new edition is a new question, so it starts with the full allowance; an unchanged week
+   *  reuses the same scope and cannot buy another search. */
+  demandSearches?: { scope: string; attempts: number };
   key: string;
   title: string;
   url: string | null;

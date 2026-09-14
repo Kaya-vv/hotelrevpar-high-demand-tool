@@ -521,10 +521,12 @@ describe("coordinated long-range research", () => {
     });
     await collectLongRange(test.input);
     expect(test.create).toHaveBeenCalledTimes(2);
+    // A cached date extraction must not cancel the hunt for hotel evidence.
+    expect(test.state().leads[0].pendingStage).toBe("demand");
     test.state().announcementSearchAt = "2026-09-14T12:00:00Z";
     await collectLongRange({ ...test.input, now: new Date("2026-09-14T12:00:00Z") });
     expect(test.create).toHaveBeenCalledTimes(3);
-    expect(test.state().leads[0].pendingStage).toBe("demand");
+    expect(JSON.stringify(test.create.mock.calls.at(-1))).toContain("overnachten official visitors hotels");
   });
 
   it("finds an announcement on the next weekly check within the 14-day target", async () => {
