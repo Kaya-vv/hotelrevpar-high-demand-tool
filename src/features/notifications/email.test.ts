@@ -41,4 +41,15 @@ describe("event notification email", () => {
     expect(message.text).toContain("Locatie: nog niet bekend");
     expect(message.text).toContain("Aangekondigd");
   });
+
+  it("accepts the production domain without an explicit protocol", () => {
+    const message = renderEventNotification(
+      { id: "hotel-1", name: "Hotel", events: [] },
+      [],
+      "demandradar-nu.vercel.app",
+    );
+    expect(message.html).toContain(
+      "https://demandradar-nu.vercel.app/open-calendar/hotel-1",
+    );
+  });
 });

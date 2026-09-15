@@ -34,11 +34,12 @@ export function renderEventNotification(
   const count = events.length;
   const eventWord = count === 1 ? "nieuw event" : "nieuwe events";
   const subject = `${count} ${eventWord} voor ${hotel.name}`;
+  const baseUrl = /^https?:\/\//i.test(siteUrl) ? siteUrl : `https://${siteUrl}`;
   const calendarUrl = new URL(
     `/open-calendar/${encodeURIComponent(hotel.id)}`,
-    siteUrl,
+    baseUrl,
   ).toString();
-  const accountUrl = new URL("/account", siteUrl).toString();
+  const accountUrl = new URL("/account", baseUrl).toString();
   const rows = events
     .map(
       (event) => `<tr>
