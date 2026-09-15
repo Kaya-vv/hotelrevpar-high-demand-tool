@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { fetchInBatches } from "@/lib/supabase/fetch-in-batches";
+import { fetchAllRows, fetchInBatches } from "@/lib/supabase/fetch-in-batches";
 import { createAdminClient, type AdminClient } from "@/lib/supabase/admin";
 
 import { renderEventNotification } from "./email";
@@ -220,28 +220,32 @@ async function reserveForMember(
   const existing = await fetchInBatches(eventIds, (ids) =>
     admin
       .from("event_notification_items")
-      .select("event_id")
+      .select("event_id, batch_id, suppressed")
       .eq("user_id", userId)
       .eq("hotel_id", hotelId)
       .in("event_id", ids),
   );
   const known = new Set(existing.map((item) => item.event_id));
   const fresh = eventIds.filter((eventId) => !known.has(eventId));
-  if (!fresh.length) return null;
-  const { error: insertError } = await admin
-    .from("event_notification_items")
-    .upsert(
-      fresh.map((eventId) => ({
-        account_id: accountId,
-        hotel_id: hotelId,
-        event_id: eventId,
-        user_id: userId,
-        suppressed: !enabled,
-        created_at: now.toISOString(),
-      })),
-      { onConflict: "user_id,hotel_id,event_id", ignoreDuplicates: true },
-    );
-  if (insertError) throw insertError;
+  // A previous attempt may have recorded items before creating or claiming its batch.
+  const unclaimed = existing.some((item) => !item.batch_id && !item.suppressed);
+  if (!fresh.length && !unclaimed) return null;
+  if (fresh.length) {
+    const { error: insertError } = await admin
+      .from("event_notification_items")
+      .upsert(
+        fresh.map((eventId) => ({
+          account_id: accountId,
+          hotel_id: hotelId,
+          event_id: eventId,
+          user_id: userId,
+          suppressed: !enabled,
+          created_at: now.toISOString(),
+        })),
+        { onConflict: "user_id,hotel_id,event_id", ignoreDuplicates: true },
+      );
+    if (insertError) throw insertError;
+  }
   if (!enabled) return null;
 
   const batchId = randomUUID();
@@ -418,6 +422,16 @@ export async function baselineAllEventNotifications(input: {
 export async function enqueuePendingEventNotifications() {
   if (!notificationsEnabled()) return { queued: 0 };
   const admin = createAdminClient();
+  // Recover items even when no further new event arrives to prompt another staging attempt.
+  const orphans = await fetchAllRows((from, to) => admin
+    .from("event_notification_items")
+    .select("account_id, hotel_id, user_id, event_id")
+    .is("batch_id", null)
+    .eq("suppressed", false)
+    .order("user_id").order("hotel_id").order("event_id")
+    .range(from, to));
+  const hotels = new Map(orphans.map((item) => [item.hotel_id, item.account_id]));
+  let queued = 0;
   const { data: batches, error } = await admin
     .from("event_notification_batches")
     .select("id, status")
@@ -425,13 +439,18 @@ export async function enqueuePendingEventNotifications() {
     .order("created_at")
     .limit(100);
   if (error) throw error;
-  let queued = 0;
   for (const batch of batches) {
     const status =
       batch.status === "preparing"
         ? await prepareNotificationBatch(admin, batch.id)
         : batch.status;
     if (status === "pending" && (await publishPreparedBatch(batch.id))) queued += 1;
+  }
+  for (const [hotelId, accountId] of hotels) {
+    const { data: area, error: areaError } = await admin.from("collection_areas")
+      .select("id").eq("account_id", accountId).eq("hotel_id", hotelId).maybeSingle();
+    if (areaError) throw areaError;
+    if (area) queued += (await stageHotelEventNotifications(accountId, area.id)).queued;
   }
   return { queued };
 }

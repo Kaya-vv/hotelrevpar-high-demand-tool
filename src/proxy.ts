@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
+import { loginDestination } from "@/lib/auth/login-destination";
 
 export function isPublicPath(pathname: string) {
   return pathname === "/login" || pathname === "/api/cron/collect" || pathname === "/api/queues/collect-hotel";
@@ -28,6 +29,8 @@ export async function proxy(request: NextRequest) {
   if (!data?.claims) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
+    const destination = loginDestination(request.nextUrl.pathname);
+    if (destination !== "/calendar") url.searchParams.set("next", destination);
     return NextResponse.redirect(url);
   }
 

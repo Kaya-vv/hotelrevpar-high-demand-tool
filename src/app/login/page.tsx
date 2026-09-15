@@ -1,6 +1,7 @@
 import Image from "next/image";
 
 import { login } from "./actions";
+import { loginDestination } from "@/lib/auth/login-destination";
 
 const errorMessages: Record<string, string> = {
   account: "Dit account is niet actief. Neem contact op met DemandRadar.",
@@ -12,9 +13,9 @@ const errorMessages: Record<string, string> = {
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; next?: string }>;
 }) {
-  const { error } = await searchParams;
+  const { error, next } = await searchParams;
 
   return (
     <main className="login-page">
@@ -25,6 +26,7 @@ export default async function LoginPage({
         </div>
         {error && <p className="notice error">{errorMessages[error] ?? "Inloggen is mislukt."}</p>}
         <form action={login} className="form-stack">
+          <input type="hidden" name="next" value={loginDestination(next)} />
           <label>
             E-mailadres
             <input name="email" type="email" autoComplete="email" required />
