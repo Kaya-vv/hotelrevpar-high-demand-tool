@@ -1,7 +1,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
-select plan(10);
+select plan(12);
 
 insert into auth.users(id, email) values
   ('91400000-0000-0000-0000-000000000001', 'delete-login@subscriber.test'),
@@ -19,6 +19,10 @@ insert into export_batches(id, account_id, created_by, request_key, request_hash
   ('91400000-0000-0000-0000-000000000040', '91400000-0000-0000-0000-000000000010', '91400000-0000-0000-0000-000000000001', gen_random_uuid(), 'test', '{}', decode('010203', 'hex'));
 insert into export_items(batch_id, account_id, hotel_id, event_id, snapshot) values
   ('91400000-0000-0000-0000-000000000040', '91400000-0000-0000-0000-000000000010', '91400000-0000-0000-0000-000000000020', '91400000-0000-0000-0000-000000000030', '{"title":"Saved event"}');
+insert into event_notification_batches(id, account_id, hotel_id, user_id) values
+  ('91400000-0000-0000-0000-000000000050', '91400000-0000-0000-0000-000000000010', '91400000-0000-0000-0000-000000000020', '91400000-0000-0000-0000-000000000001');
+insert into event_notification_items(account_id, hotel_id, event_id, user_id, batch_id) values
+  ('91400000-0000-0000-0000-000000000010', '91400000-0000-0000-0000-000000000020', '91400000-0000-0000-0000-000000000030', '91400000-0000-0000-0000-000000000001', '91400000-0000-0000-0000-000000000050');
 
 delete from auth.users where id = '91400000-0000-0000-0000-000000000001';
 
@@ -30,6 +34,8 @@ select is((select decided_by from account_events where event_id = '91400000-0000
 select is((select encode(workbook, 'hex') from export_batches where id = '91400000-0000-0000-0000-000000000040'), '010203', 'workbook bytes remain unchanged');
 select is((select created_by from export_batches where id = '91400000-0000-0000-0000-000000000040'), null::uuid, 'only export author reference is cleared');
 select is((select snapshot->>'title' from export_items where batch_id = '91400000-0000-0000-0000-000000000040'), 'Saved event', 'export snapshot remains');
+select is((select count(*) from event_notification_batches where id = '91400000-0000-0000-0000-000000000050'), 0::bigint, 'deleting a login removes its mail batch');
+select is((select count(*) from event_notification_items where user_id = '91400000-0000-0000-0000-000000000001'), 0::bigint, 'deleting a login removes its mail history');
 
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"91400000-0000-0000-0000-000000000001","role":"authenticated"}', true);

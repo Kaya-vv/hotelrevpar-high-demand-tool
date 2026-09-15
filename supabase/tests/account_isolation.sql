@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(8);
+select plan(10);
 
 insert into auth.users (
   instance_id,
@@ -135,6 +135,14 @@ select ok(
 select ok(
   has_column_privilege('authenticated', 'hotel_event_scores', 'importance_override', 'UPDATE'),
   'operators can override importance'
+);
+select ok(
+  not has_table_privilege('authenticated', 'event_notification_batches', 'SELECT'),
+  'mail batches are service-only'
+);
+select ok(
+  not has_table_privilege('authenticated', 'event_notification_items', 'SELECT'),
+  'mail recipient history is service-only'
 );
 select * from finish();
 

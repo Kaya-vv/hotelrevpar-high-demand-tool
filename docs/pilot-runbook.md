@@ -20,6 +20,21 @@ Record the evidence for each gate before calling the data-quality demo ready. De
 | 14 | Deferred: import the generated workbook into RevControl without repairing headers or dates. |  |  |  |  |
 | 15 | If PredictHQ grants written permission, run a separate paired comparison over the same window. |  |  |  |  |
 
+## Email notification rollout
+
+Keep `EVENT_NOTIFICATIONS_ENABLED=disabled` until steps 1 through 4 are complete.
+
+1. Apply the database migration and deploy the code with sending disabled.
+2. Verify an owned sending subdomain in Resend. Add its SPF and DKIM records. Prefer Resend's European region.
+3. Configure `NEXT_PUBLIC_SITE_URL`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, and optionally `RESEND_REPLY_TO_EMAIL`. Do not put their values in this runbook or application logs.
+4. Run `pnpm notifications:baseline`. Save the dry-run totals. Then run `pnpm notifications:baseline -- --apply` and confirm `recorded` equals the dry-run `visiblePairs`.
+5. Add `RESEND_TEST_EMAIL` and `NOTIFICATION_TEST_HOTEL_ID` to the local `.env.production.local` file. Run `pnpm notifications:test`. This sends up to three existing visible events to the test inbox without running event discovery or changing the outbox.
+6. Confirm the email reached the inbox, its calendar link selects the right hotel, the Dutch dates and levels are correct, and the sender identity is correct. A Resend API acceptance result alone is not delivery proof.
+7. Remove the two local test values. Enable `EVENT_NOTIFICATIONS_ENABLED=enabled` in Vercel.
+8. Run the first real hotel update. Compare the inbox message with the saved notification batch and the visible calendar entries.
+
+If a batch becomes `uncertain`, check it manually in Resend before sending anything again. The automatic retry window ends after 23 hours so it stays inside Resend's 24-hour idempotency window.
+
 ## Demo benchmark
 
 | City | Peak | High or higher |

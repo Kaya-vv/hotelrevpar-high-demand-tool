@@ -6,6 +6,7 @@ type CronDependencies = {
   secret: string | undefined;
   listAreas: () => Promise<Array<{ id: string; accountId: string }>>;
   enqueue: (input: { accountId: string; areaIds: string[]; trigger: "cron" }) => Promise<EnqueueResult>;
+  enqueueNotifications?: () => Promise<{ queued: number }>;
 };
 
 export function createCronHandler(dependencies: CronDependencies) {
@@ -21,7 +22,17 @@ export function createCronHandler(dependencies: CronDependencies) {
         dependencies.enqueue({ accountId, areaIds: accountAreas.map((area) => area.id), trigger: "cron" }),
       ),
     );
-    return Response.json({ batches });
+    let notifications = { queued: 0 };
+    if (dependencies.enqueueNotifications) {
+      try {
+        notifications = await dependencies.enqueueNotifications();
+      } catch (error) {
+        console.error("Pending event notifications could not be queued", {
+          error: error instanceof Error ? error.name : "unknown",
+        });
+      }
+    }
+    return Response.json({ batches, notifications });
   };
 }
 
@@ -29,6 +40,10 @@ export async function GET(request: Request) {
   return createCronHandler({
     secret: process.env.CRON_SECRET,
     enqueue: enqueueCollectionAreas,
+    enqueueNotifications: async () => {
+      const { enqueuePendingEventNotifications } = await import("@/features/notifications/service");
+      return enqueuePendingEventNotifications();
+    },
     listAreas: async () => {
       const { createAdminClient } = await import("@/lib/supabase/admin");
       const admin = createAdminClient();

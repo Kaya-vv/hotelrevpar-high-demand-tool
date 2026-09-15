@@ -48,7 +48,7 @@ export async function processMarketWork(work: MarketWork) {
   const key = market.key;
   // Called under the research or publication lease; partial publication never marks
   // the research complete, and waits for an overlapping hotel refresh.
-  async function publishState(state: LongRangeState) {
+  async function publishState(state: LongRangeState, notify = false) {
     const { data: areas, error: areaError } = await admin.from("collection_areas").select("id, account_id, search_location, radius_km, accounts!inner(active)").eq("accounts.active", true).contains("enabled_sources", ["claude"]);
     if (areaError) throw areaError;
     // Every hotel this research covers, not only the one whose radius happens to match it: the
@@ -65,6 +65,17 @@ export async function processMarketWork(work: MarketWork) {
     for (const area of matching) {
       const counts = await publishLongRangeResult(repository, await repository.loadContext(area.account_id, area.id), result);
       for (const [name, count] of Object.entries(counts ?? {})) publication[name] = (publication[name] ?? 0) + count;
+      if (notify) {
+        try {
+          const { stageHotelEventNotifications } = await import("@/features/notifications/service");
+          await stageHotelEventNotifications(area.account_id, area.id);
+        } catch (notificationError) {
+          console.error("Event notifications could not be prepared", {
+            areaId: area.id,
+            error: notificationError instanceof Error ? notificationError.name : "unknown",
+          });
+        }
+      }
     }
     if (state.research) state.research.usage = { ...state.research.usage, ...result.usage, ...publication };
     return true;
@@ -90,7 +101,7 @@ export async function processMarketWork(work: MarketWork) {
   try {
     const state = await store.load(key);
     if (!state?.publicationPending) return;
-    if (!await publishState(state)) throw new Error("Publication waits for the active hotel refresh to finish before applying newer evidence");
+    if (!await publishState(state, true)) throw new Error("Publication waits for the active hotel refresh to finish before applying newer evidence");
     state.publicationPending = false;
     state.publishedAt = new Date().toISOString();
     await store.save(key, state);

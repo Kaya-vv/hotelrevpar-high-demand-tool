@@ -5,7 +5,7 @@ import { readEventEvidence } from "@/features/events/evidence";
 import { eventLocalDate } from "@/features/events/normalize";
 import { createServerClient } from "@/lib/supabase/server";
 import {
-  isAnnouncedLongRange,
+  hotelCalendarVisibility,
   isPublishableDemand,
   publishableReviewEventIds,
   type DemandLevel,
@@ -34,7 +34,7 @@ async function loadAccountEvents(
   const supabase = await createServerClient();
   const decisions = await fetchInBatches([...linkedIds], ids => supabase
     .from("account_events")
-    .select("event_id, state, override_title, override_venue, override_start_at, override_end_at, review_target_event_id, review_source_id, review_reason")
+    .select("event_id, state, merged_into_event_id, override_title, override_venue, override_start_at, override_end_at, review_target_event_id, review_source_id, review_reason")
     .eq("account_id", accountId).eq("state", state).in("event_id", ids));
   const eventIds = decisions.map(decision => decision.event_id);
   const candidates = await fetchInBatches(eventIds, ids => supabase.from("events")
@@ -119,6 +119,8 @@ export async function getCalendarData(
     .filter((event) => event.certainty === "confirmed")
     .map((event) => {
       const decision = decisionsByEvent.get(event.id);
+      const startAt = decision?.override_start_at ?? event.start_at;
+      const endAt = decision?.override_end_at ?? event.end_at;
       const publishedSources = sources
         .filter(
           (source) =>
@@ -154,9 +156,12 @@ export async function getCalendarData(
       // Kept even when the publish gate hides the grade: the calendar's manual override
       // updates this row.
       const assessedScore = eventScores[0];
-      const announced = isAnnouncedLongRange({
-        startDate: eventLocalDate(event.start_at),
-        endDate: eventLocalDate(event.end_at),
+      const visibility = hotelCalendarVisibility({
+        active: !decision?.merged_into_event_id,
+        confirmed: event.certainty === "confirmed",
+        supported: publishedSources.length > 0,
+        startDate: eventLocalDate(startAt),
+        endDate: eventLocalDate(endAt),
         nearTermHorizon,
         demandRadiusKm: selectedRadiusKm,
         category: event.category,
@@ -177,17 +182,17 @@ export async function getCalendarData(
         title: decision?.override_title ?? event.title,
         category: event.category,
         venue: decision?.override_venue ?? event.venue,
-        startAt: decision?.override_start_at ?? event.start_at,
-        endAt: decision?.override_end_at ?? event.end_at,
+        startAt,
+        endAt,
         sources: publishedSources,
         hotelScores,
-        announced,
+        announced: visibility.announced,
+        visible: visibility.visible,
         assessedScore,
         demandAssessment: assessedScore?.assessment,
       };
     })
-    .filter((event) => event.sources.length > 0)
-    .filter((event) => event.hotelScores.length > 0 || event.announced)
+    .filter((event) => event.visible)
     .filter((event) => eventLocalDate(event.startAt) <= bounds.end && eventLocalDate(event.endAt) >= bounds.start);
   const categories = [...new Set(mapped.map((event) => event.category))].sort();
   const filtered = mapped

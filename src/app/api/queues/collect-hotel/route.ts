@@ -9,6 +9,7 @@ export const maxDuration = 1800;
 const messageSchema = z.union([
   z.object({ jobId: z.uuid() }),
   z.object({ kind: z.enum(["market-research", "market-publication"]), accountId: z.uuid(), areaId: z.uuid(), runId: z.uuid(), requestedAt: z.iso.datetime() }),
+  z.object({ kind: z.literal("event-notification"), batchId: z.uuid() }),
 ]);
 
 export const POST = handleCallback<CollectionJobMessage>(

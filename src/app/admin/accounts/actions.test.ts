@@ -4,6 +4,7 @@ vi.mock("next/navigation", () => ({ redirect: vi.fn((url: string) => { throw new
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/auth/require-account", () => ({ requirePlatformAdmin: vi.fn() }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: vi.fn() }));
+vi.mock("@/features/notifications/service", () => ({ baselineMemberNotifications: vi.fn().mockResolvedValue(0) }));
 import { requirePlatformAdmin } from "@/lib/auth/require-account";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createSubscriberAccount, deleteSubscriberUser, resendSubscriberLink } from "./actions";
@@ -16,11 +17,11 @@ const from = vi.fn();
 function query(data: unknown, error: unknown = null) {
   const result = { data, error };
   const builder = {
-    select: vi.fn(), eq: vi.fn(), insert: vi.fn(), delete: vi.fn(),
+    select: vi.fn(), eq: vi.fn(), insert: vi.fn(), update: vi.fn(), delete: vi.fn(),
     single: vi.fn().mockResolvedValue(result), maybeSingle: vi.fn().mockResolvedValue(result),
     then: (resolve: (value: typeof result) => unknown) => Promise.resolve(result).then(resolve),
   };
-  for (const method of [builder.select, builder.eq, builder.insert, builder.delete]) method.mockReturnValue(builder);
+  for (const method of [builder.select, builder.eq, builder.insert, builder.update, builder.delete]) method.mockReturnValue(builder);
   return builder;
 }
 function form(values: Record<string, string> = {}) {
@@ -98,12 +99,12 @@ describe("subscriber actions", () => {
 
   it("attaches a replacement login to the retained account without inserting another account", async () => {
     const membership = query(null);
-    from.mockReturnValueOnce(query({ id: "account-1", active: true })).mockReturnValueOnce(membership);
+    from.mockReturnValueOnce(query({ id: "account-1", active: true })).mockReturnValue(membership);
     auth.admin.createUser.mockResolvedValue({ data: { user: { id: "replacement" } }, error: null });
     auth.admin.inviteUserByEmail.mockResolvedValue({ data: { user: { id: "replacement" } }, error: null });
     await expect(createSubscriberAccount(form({ email: "new@example.com" }))).rejects.toThrow("notice=invited");
-    expect(membership.insert).toHaveBeenCalledWith({ account_id: "account-1", user_id: "replacement" });
-    expect(from.mock.calls).toEqual([["accounts"], ["account_members"]]);
+    expect(membership.insert).toHaveBeenCalledWith({ account_id: "account-1", user_id: "replacement", event_notifications_enabled: false });
+    expect(membership.update).toHaveBeenCalledWith({ event_notifications_enabled: true });
   });
 
   it("reports deletion failure without deleting any portfolio records", async () => {

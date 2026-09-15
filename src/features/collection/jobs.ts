@@ -6,7 +6,8 @@ import { processMarketWork, type MarketWork } from "./market-research";
 
 export const COLLECTION_TOPIC = "hotel-collection";
 
-export type CollectionJobMessage = { jobId: string } | MarketWork;
+export type EventNotificationWork = { kind: "event-notification"; batchId: string };
+export type CollectionJobMessage = { jobId: string } | MarketWork | EventNotificationWork;
 export type CollectionJobTrigger = "cron" | "manual";
 export type EnqueueResult = { batchId: string; queued: number; skipped: number; failed: number };
 
@@ -26,10 +27,13 @@ export async function publishCollectionJob(
     // A pending hotel refresh revisits this publisher. Research belongs to the run,
     // while an explicitly requested publication may be repeated for that same run.
     idempotencyKey: "jobId" in message ? message.jobId
-      : message.kind === "market-research" ? `${message.runId}:${message.kind}`
-        : `${message.runId}:${message.kind}:${message.requestedAt}`,
+      : message.kind === "event-notification" ? `event-notification:${message.batchId}`
+        : message.kind === "market-research" ? `${message.runId}:${message.kind}`
+          : `${message.runId}:${message.kind}:${message.requestedAt}`,
     // Anthropic batches may use their full 24-hour processing window before a retry completes.
-    retentionSeconds: 172_800,
+    retentionSeconds: "kind" in message && message.kind === "event-notification"
+      ? 82_800
+      : 172_800,
   });
 }
 
@@ -143,6 +147,10 @@ export async function processCollectionJob(
   metadata: { deliveryCount: number; expiresAt: Date },
   run = runCollection,
 ) {
+  if ("kind" in messageBody && messageBody.kind === "event-notification") {
+    const { sendEventNotification } = await import("@/features/notifications/service");
+    return sendEventNotification(messageBody.batchId);
+  }
   if ("kind" in messageBody) return processMarketWork(messageBody);
   const { deliveryCount } = metadata;
   const { createAdminClient } = await import("@/lib/supabase/admin");
@@ -229,6 +237,15 @@ export async function processCollectionJob(
         pending_since: null,
       })
       .eq("id", job.id));
+    try {
+      const { stageHotelEventNotifications } = await import("@/features/notifications/service");
+      await stageHotelEventNotifications(job.account_id, job.collection_area_id);
+    } catch (error) {
+      console.error("Event notifications could not be prepared", {
+        jobId: job.id,
+        error: error instanceof Error ? error.name : "unknown",
+      });
+    }
   } catch (error) {
     // A failed terminal write is not a provider failure. Preserve the run for retry.
     if (error instanceof JobPersistenceError) throw error;

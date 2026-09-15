@@ -11,6 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:export-db": "node scripts/test-export-database.mjs",
+    "notifications:baseline": "node scripts/baseline-event-notifications.mjs",
+    "notifications:test": "node scripts/send-test-event-notification.mjs",
     "test:replay": "vitest run src/features/collection/sources/long-range.replay.test.ts",
     "test:watch": "vitest"
   },

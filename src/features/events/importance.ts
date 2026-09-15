@@ -81,6 +81,40 @@ export function isAnnouncedLongRange(input: {
   return assessed || destination;
 }
 
+export type HotelCalendarVisibilityScore = {
+  importance: DemandLevel;
+  impactBasis: string;
+  distanceKm: number | null;
+  assessment?: unknown;
+};
+
+/** One policy for the customer calendar, exports, and new-event notifications. */
+export function hotelCalendarVisibility(input: {
+  active: boolean;
+  confirmed: boolean;
+  supported: boolean;
+  startDate: string;
+  endDate: string;
+  nearTermHorizon: string;
+  demandRadiusKm: number | null;
+  category: string;
+  hasConfirmedDateAndLocation: boolean;
+  scores: HotelCalendarVisibilityScore[];
+}) {
+  if (!input.active || !input.confirmed || !input.supported) {
+    return { visible: false, announced: false };
+  }
+  if (
+    input.scores.some((score) =>
+      isPublishableDemand(score.importance, score.impactBasis)
+    )
+  ) {
+    return { visible: true, announced: false };
+  }
+  const announced = isAnnouncedLongRange(input);
+  return { visible: announced, announced };
+}
+
 export function publishableReviewEventIds(
   decisions: { event_id: string; state: string }[],
   scores: {

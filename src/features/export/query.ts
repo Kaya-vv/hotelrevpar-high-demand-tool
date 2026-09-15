@@ -1,6 +1,6 @@
 import { eventLocalDate } from "@/features/events/normalize";
 import { readEventEvidence } from "@/features/events/evidence";
-import { isAnnouncedLongRange, type DemandLevel } from "@/features/events/importance";
+import { hotelCalendarVisibility, type DemandLevel } from "@/features/events/importance";
 import { createServerClient } from "@/lib/supabase/server";
 import { fetchAllRows, fetchInBatches, fetchPagedInBatches } from "@/lib/supabase/fetch-in-batches";
 import { isEnabledPrimarySource } from "@/features/events/source-evidence";
@@ -100,8 +100,10 @@ export async function loadExportEvents(accountId: string, range: ExportRange, se
       hotels: scores.filter((score) => score.event_id === event.id).map((score) => {
         const hotel = hotels.find((hotel) => hotel.id === score.hotel_id)!;
         const importance = (score.importance_override ?? score.suggested_importance) as DemandLevel;
-        const available = active && supported(event.id, score.hotel_id);
-        const announced = available && isAnnouncedLongRange({
+        const visibility = hotelCalendarVisibility({
+          active,
+          confirmed: event.certainty === "confirmed",
+          supported: supported(event.id, score.hotel_id),
           startDate: eventLocalDate(startAt), endDate: eventLocalDate(endAt),
           nearTermHorizon: new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10),
           demandRadiusKm: hotel.demand_radius_km,
@@ -115,7 +117,7 @@ export async function loadExportEvents(accountId: string, range: ExportRange, se
         });
         const claim = claims.find((claim) => claim.event_id === event.id && claim.hotel_id === hotel.id);
         return { id: hotel.id, code: hotelCodes.get(hotel.id)!, importance, impactBasis: score.impact_basis,
-          available, announced,
+          available: visibility.visible, announced: visibility.announced,
           exportLevel: (choices.find((choice) => choice.event_id === event.id && choice.hotel_id === hotel.id)?.importance as DemandLevel | undefined) ?? null,
           exportedAt: batches.find((batch) => batch.id === claim?.latest_batch_id)?.created_at ?? null,
         };

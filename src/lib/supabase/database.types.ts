@@ -242,16 +242,19 @@ export type Database = {
       account_members: {
         Row: {
           account_id: string;
+          event_notifications_enabled: boolean;
           role: Database["public"]["Enums"]["account_role"];
           user_id: string;
         };
         Insert: {
           account_id: string;
+          event_notifications_enabled?: boolean;
           role?: Database["public"]["Enums"]["account_role"];
           user_id: string;
         };
         Update: {
           account_id?: string;
+          event_notifications_enabled?: boolean;
           role?: Database["public"]["Enums"]["account_role"];
           user_id?: string;
         };
@@ -264,6 +267,93 @@ export type Database = {
             referencedColumns: ["id"];
           }
         ];
+      };
+      event_notification_batches: {
+        Row: {
+          account_id: string;
+          attempt_count: number;
+          created_at: string;
+          error_code: string | null;
+          first_attempt_at: string | null;
+          hotel_id: string;
+          html_body: string | null;
+          id: string;
+          last_attempt_at: string | null;
+          provider_message_id: string | null;
+          recipient_email: string | null;
+          sent_at: string | null;
+          status: string;
+          subject: string | null;
+          text_body: string | null;
+          user_id: string;
+        };
+        Insert: {
+          account_id: string;
+          attempt_count?: number;
+          created_at?: string;
+          error_code?: string | null;
+          first_attempt_at?: string | null;
+          hotel_id: string;
+          html_body?: string | null;
+          id?: string;
+          last_attempt_at?: string | null;
+          provider_message_id?: string | null;
+          recipient_email?: string | null;
+          sent_at?: string | null;
+          status?: string;
+          subject?: string | null;
+          text_body?: string | null;
+          user_id: string;
+        };
+        Update: {
+          account_id?: string;
+          attempt_count?: number;
+          created_at?: string;
+          error_code?: string | null;
+          first_attempt_at?: string | null;
+          hotel_id?: string;
+          html_body?: string | null;
+          id?: string;
+          last_attempt_at?: string | null;
+          provider_message_id?: string | null;
+          recipient_email?: string | null;
+          sent_at?: string | null;
+          status?: string;
+          subject?: string | null;
+          text_body?: string | null;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
+      event_notification_items: {
+        Row: {
+          account_id: string;
+          batch_id: string | null;
+          created_at: string;
+          event_id: string;
+          hotel_id: string;
+          suppressed: boolean;
+          user_id: string;
+        };
+        Insert: {
+          account_id: string;
+          batch_id?: string | null;
+          created_at?: string;
+          event_id: string;
+          hotel_id: string;
+          suppressed?: boolean;
+          user_id: string;
+        };
+        Update: {
+          account_id?: string;
+          batch_id?: string | null;
+          created_at?: string;
+          event_id?: string;
+          hotel_id?: string;
+          suppressed?: boolean;
+          user_id?: string;
+        };
+        Relationships: [];
       };
       accounts: {
         Row: {
@@ -985,6 +1075,10 @@ export type Database = {
       claim_long_range_market: { Args: { target: string; owner: string }; Returns: boolean };
       save_long_range_market: { Args: { target: string; owner: string; value: Json }; Returns: boolean };
       release_long_range_market: { Args: { target: string; owner: string }; Returns: undefined };
+      claim_event_notification_items: {
+        Args: { p_account: string; p_hotel: string; p_user: string; p_batch: string };
+        Returns: { event_id: string }[];
+      };
       is_account_member: { Args: { target: string }; Returns: boolean };
     };
     Enums: {

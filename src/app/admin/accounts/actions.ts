@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { provisionSubscriber } from "@/features/accounts/provision-subscriber";
+import { baselineMemberNotifications } from "@/features/notifications/service";
 import { requirePlatformAdmin } from "@/lib/auth/require-account";
 import { createAdminClient, type AdminClient } from "@/lib/supabase/admin";
 
@@ -85,13 +86,34 @@ export async function createSubscriberAccount(formData: FormData) {
           if (error) throw error;
           targetId = data.id;
         }
-        const { error } = await admin.from("account_members").insert({ account_id: targetId, user_id: userId });
+        const { error } = await admin.from("account_members").insert({
+          account_id: targetId,
+          user_id: userId,
+          event_notifications_enabled: false,
+        });
         if (error) {
           if (!accountId) {
             const cleanup = await admin.from("accounts").delete().eq("id", targetId);
             if (cleanup.error) throw cleanup.error;
           }
           throw error;
+        }
+        try {
+          await baselineMemberNotifications(targetId, userId, admin);
+          const enabled = await admin.from("account_members")
+            .update({ event_notifications_enabled: true })
+            .eq("account_id", targetId)
+            .eq("user_id", userId);
+          if (enabled.error) throw enabled.error;
+        } catch (notificationError) {
+          const membershipCleanup = await admin.from("account_members")
+            .delete().eq("account_id", targetId).eq("user_id", userId);
+          if (membershipCleanup.error) throw membershipCleanup.error;
+          if (!accountId) {
+            const accountCleanup = await admin.from("accounts").delete().eq("id", targetId);
+            if (accountCleanup.error) throw accountCleanup.error;
+          }
+          throw notificationError;
         }
       },
       removeUser: async (userId) => {

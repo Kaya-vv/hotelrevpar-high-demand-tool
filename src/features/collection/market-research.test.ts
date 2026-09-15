@@ -7,12 +7,16 @@ import { collectLongRange } from "./sources/long-range";
 import { coveringMarket, createLongRangeStore, type MarketRow } from "./long-range-store";
 import type { CollectionContext } from "./run";
 import fixture from "../../../tests/fixtures/the-match-repair.json";
+import { stageHotelEventNotifications } from "@/features/notifications/service";
 
 vi.mock("./jobs", () => ({ publishCollectionJob: vi.fn(async () => {}) }));
 vi.mock("./sources/long-range", () => ({ collectLongRange: vi.fn() }));
 vi.mock("./long-range-store", async (actual) => ({ ...await actual<object>(), createLongRangeStore: vi.fn() }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: vi.fn() }));
 vi.mock("./repository", () => ({ createCollectionRepository: vi.fn() }));
+vi.mock("@/features/notifications/service", () => ({
+  stageHotelEventNotifications: vi.fn(async () => ({ queued: 0 })),
+}));
 
 /**
  * `resolveLongRangeMarket` reads the markets table to find a wider city research this hotel can
@@ -94,6 +98,7 @@ describe("hotel refresh and shared research separation", () => {
   });
 
   it.each(["market-publication", "market-research"] as const)("publishes %s results to every narrower hotel in the city", async kind => {
+    vi.mocked(stageHotelEventNotifications).mockClear();
     const areas = [
       { id: "own", account_id: "a", search_location: "Eindhoven", radius_km: 25 },
       { id: "narrower", account_id: "b", search_location: "eindhoven", radius_km: 15 },
@@ -135,5 +140,8 @@ describe("hotel refresh and shared research separation", () => {
 
     // The first loadContext is the market's own area; the rest are the hotels it publishes to.
     expect(published.slice(1).sort()).toEqual(["narrower", "own"]);
+    expect(stageHotelEventNotifications).toHaveBeenCalledTimes(
+      kind === "market-publication" ? 2 : 0,
+    );
   });
 });

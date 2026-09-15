@@ -54,6 +54,8 @@ export type CalendarEvent = {
   assessedScore?: CalendarHotelScore;
   /** Confirmed beyond the near-term horizon, demand assessed but not yet gradeable. */
   announced?: boolean;
+  /** Internal result of the shared calendar publication rule. */
+  visible?: boolean;
 };
 
 export type LatestRun = {

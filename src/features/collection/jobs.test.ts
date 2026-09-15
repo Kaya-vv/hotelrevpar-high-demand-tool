@@ -5,9 +5,17 @@ const adminHolder = vi.hoisted(() => ({ current: {} }));
 
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => adminHolder.current }));
 vi.mock("@vercel/queue", () => ({ send: vi.fn().mockResolvedValue({ messageId: "message" }) }));
+vi.mock("@/features/notifications/service", () => ({
+  sendEventNotification: vi.fn().mockResolvedValue(undefined),
+  stageHotelEventNotifications: vi.fn().mockResolvedValue({ queued: 0 }),
+}));
 
 import { enqueueCollectionAreas, processCollectionJob, publishCollectionJob } from "./jobs";
 import { send } from "@vercel/queue";
+import {
+  sendEventNotification,
+  stageHotelEventNotifications,
+} from "@/features/notifications/service";
 
 function selectable(data: unknown) {
   const query = {
@@ -47,6 +55,26 @@ describe("collection jobs", () => {
     await publishCollectionJob({ ...work, requestedAt: "2026-09-08T10:05:00Z" });
     const keys = vi.mocked(send).mock.calls.map((call) => call[2]?.idempotencyKey);
     expect(keys[0]).not.toBe(keys[1]);
+  });
+
+  it("queues notification retries with one stable key inside Resend's retry window", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.mocked(send).mockClear();
+    const message = { kind: "event-notification" as const, batchId: "batch-1" };
+    await publishCollectionJob(message);
+    await publishCollectionJob(message);
+    expect(vi.mocked(send).mock.calls.map((call) => call[2])).toEqual([
+      expect.objectContaining({ idempotencyKey: "event-notification:batch-1", retentionSeconds: 82_800 }),
+      expect.objectContaining({ idempotencyKey: "event-notification:batch-1", retentionSeconds: 82_800 }),
+    ]);
+  });
+
+  it("routes notification messages directly to the mail worker", async () => {
+    await processCollectionJob(
+      { kind: "event-notification", batchId: "batch-1" },
+      delivery(2),
+    );
+    expect(sendEventNotification).toHaveBeenCalledWith("batch-1");
   });
 
   it("processes a development job without Vercel authentication", async () => {
@@ -97,7 +125,11 @@ describe("collection jobs", () => {
     expect(run).not.toHaveBeenCalled();
   });
 
-  it("closes a timed-out run and resumes its cached batch on redelivery", async () => {
+  it.each([
+    ["completed", "succeeded"],
+    ["partial", "partial"],
+  ] as const)("prepares mail after a %s hotel update", async (runStatus, jobStatus) => {
+    vi.mocked(stageHotelEventNotifications).mockClear();
     const jobUpdates: Array<Record<string, unknown>> = [];
     const jobQuery = selectable({
       id: "job-1",
@@ -131,7 +163,7 @@ describe("collection jobs", () => {
             ? accountQuery
             : areaQuery),
     };
-    const run = vi.fn().mockResolvedValue({ runId: "run-2", status: "completed" });
+    const run = vi.fn().mockResolvedValue({ runId: "run-2", status: runStatus });
 
     await processCollectionJob({ jobId: "job-1" }, delivery(2), run);
 
@@ -146,8 +178,12 @@ describe("collection jobs", () => {
     }));
     expect(jobUpdates).toEqual([
       expect.objectContaining({ status: "running", attempts: 2 }),
-      expect.objectContaining({ status: "succeeded", collection_run_id: "run-2" }),
+      expect.objectContaining({ status: jobStatus, collection_run_id: "run-2" }),
     ]);
+    expect(stageHotelEventNotifications).toHaveBeenCalledWith(
+      "account-1",
+      "area-1",
+    );
   });
 
   it("records a failed attempt and rethrows so Vercel can retry it", async () => {
