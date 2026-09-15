@@ -16,7 +16,7 @@ import { BatchPendingError, CLAUDE_ASSESSMENT_VERSION } from "../anthropic-batch
 import { projectEditions, projectionInstructions, rememberEdition } from "../series-projections";
 import { fetchOfficialPage, retrieveOfficialPages, type PageFetcher, type OfficialPage } from "../official-pages";
 import { createLongRangeStore, LONG_RANGE_VERSION, LongRangeLeaseError, longRangeMarketKey, type Lead, type LongRangeSeed, type LongRangeStore, type ResearchJob } from "../long-range-store";
-import { claudeProviderEventId, DEFAULT_TRIAGE_MODEL, eventWireSchema, fetchedUrls, geocodeVenue, normalizeEventResponse, observedUrl, outputSchema, requestMessages, sourceUrls, usageEvent, type Batching, type MessageRequest, type ClaudeUsageEvent } from "./claude";
+import { claudeProviderEventId, DEFAULT_TRIAGE_MODEL, eventWireSchema, fetchedUrls, geocodeEventVenue, normalizeEventResponse, observedUrl, outputSchema, requestMessages, sourceUrls, usageEvent, type Batching, type MessageRequest, type ClaudeUsageEvent } from "./claude";
 
 const groups = [
   { topic: "universiteit introductie open dagen", futureTopic: "university conference open day introduction", focus: "physical university open days, introductions and scientific congresses; exclude online events" },
@@ -146,7 +146,7 @@ export type LongRangeInput = CollectionWindow & {
   batching?: Batching;
   store?: LongRangeStore;
   onUsage?: (event: ClaudeUsageEvent) => void | Promise<void>;
-  geocode?: typeof geocodeVenue;
+  geocode?: typeof geocodeEventVenue;
   geocodeCity?: typeof geocodeCity;
   budgetEur?: number;
   /** False is reserved for replaying legacy provider-tool responses. Production fetches pages directly. */
@@ -907,7 +907,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
     await store.save(key, state);
     if (input.onProgress) {
       state.locations ??= {};
-      const resolve = createLocationResolver({ venue: input.geocode ?? geocodeVenue, city: input.geocodeCity, cache: state.locations });
+      const resolve = createLocationResolver({ venue: input.geocode ?? geocodeEventVenue, city: input.geocodeCity, cache: state.locations });
       const editions = state.leads.filter(lead => lead.outcome !== "conflict").flatMap(lead => lead.editions);
       for (const event of editions.filter(event => event.primarySourceConfirmed && validEventRange(event))) await resolve(event);
       state.publicationPending = true;
@@ -924,7 +924,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
     .filter((event) => eventLocalDate(event.startAt) <= input.end && eventLocalDate(event.endAt) >= now.toISOString().slice(0, 10)));
   const unresolved = state.leads.filter((lead) => lead.outcome !== "confirmed").length;
   state.locations ??= {};
-  const resolveLocation = createLocationResolver({ venue: input.geocode ?? geocodeVenue, city: input.geocodeCity, cache: state.locations });
+  const resolveLocation = createLocationResolver({ venue: input.geocode ?? geocodeEventVenue, city: input.geocodeCity, cache: state.locations });
   for (const event of candidates) await resolveLocation(event);
   for (const lead of state.leads) {
     if (lead.outcome === "conflict" || lead.editions.some((event) => !validEventRange(event))) lead.pendingStage = "conflict";

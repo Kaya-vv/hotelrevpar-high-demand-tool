@@ -3,7 +3,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { collectLongRange, selectDueLeads } from "./sources/long-range";
 import { collectClaudeCalendar, parseDiscovery } from "./sources/claude";
 import { parseOfficialPage } from "./official-pages";
-import { geocodeCity, createLocationResolver } from "./research-location";
+import { geocodeCity, geocodeStreet, createLocationResolver } from "./research-location";
 import { researchBudget } from "./research-budget";
 import { localDateBoundary, verifyEventEvidence } from "../events/evidence";
 import { localParts, eventLocalDate } from "../events/normalize";
@@ -286,6 +286,51 @@ describe("coordinated long-range research", () => {
     expect(candidate.latitude).toBeNull();
   });
 
+  // Enschede Marathon, 2026-09-14: a 75-point event with its 2027 date, proven demand, the venue
+  // "Van Heekplein" and host city Enschede was discarded for having no map point, because the AI
+  // graded the page's location "unclear" and that label alone switched off the lookup.
+  it("resolves a venue the page named even when the AI graded the location unclear", async () => {
+    const quote = "Van Heekplein vormde opnieuw het kloppend hart van het evenement.";
+    const evidence = verifyEventEvidence({ ...facts, locationText: quote, hostCity: "Enschede", locationScope: "unknown" }, url, [{ url, text: `${text} ${quote}` }], now.toISOString())!;
+    const candidate = { venue: "Van Heekplein", latitude: null as number | null, longitude: null as number | null, evidence };
+    const venue = vi.fn(async () => ({ latitude: 52.22, longitude: 6.89 }));
+    await createLocationResolver({ venue, city: async () => null })(candidate);
+    expect(venue).toHaveBeenCalledWith("Van Heekplein, Enschede");
+    expect(candidate.latitude).toBe(52.22);
+  });
+
+  it("refuses a venue name the page never quoted", async () => {
+    const evidence = verifyEventEvidence({ ...facts, locationText: "Tickets are on sale now.", hostCity: null, locationScope: "unknown" }, url, [{ url, text: `${text} Tickets are on sale now.` }], now.toISOString())!;
+    const candidate = { venue: "De Grote Kerk", latitude: null, longitude: null, evidence };
+    const venue = vi.fn(async () => ({ latitude: 52.22, longitude: 6.89 }));
+    await createLocationResolver({ venue, city: async () => null })(candidate);
+    expect(venue).not.toHaveBeenCalled();
+    expect(candidate.latitude).toBeNull();
+  });
+
+  describe("street lookup", () => {
+    const docs = (...items: string[]) => async () => new Response(JSON.stringify({
+      response: { docs: items.map((name) => ({ weergavenaam: name, centroide_ll: "POINT(6.8937 52.2191)" })) } }));
+
+    it("accepts the street a quote names, including a fuller official name", async () => {
+      expect(await geocodeStreet("Van Heekplein, Enschede", docs("H.J. van Heekplein, Enschede"))).toEqual({ latitude: 52.2191, longitude: 6.8937 });
+    });
+
+    it("prefers the exact street over a longer one containing it", async () => {
+      const chosen = await geocodeStreet("Brouwersdam, Scharendijke", docs("Strand Brouwersdam, Scharendijke", "Brouwersdam, Scharendijke", "Brouwersdam binnenzijde, Scharendijke"));
+      expect(chosen).toEqual({ latitude: 52.2191, longitude: 6.8937 });
+    });
+
+    it("refuses a street in another town and a name that is not the quoted place", async () => {
+      expect(await geocodeStreet("De Grolsch Veste, Enschede", docs("De Veste, Apeldoorn", "De Veste, Arnhem"))).toBeNull();
+      expect(await geocodeStreet("Metropool, Enschede", docs("Aamsveenweg, Enschede"))).toBeNull();
+    });
+
+    it("refuses an ambiguous set with no exact match", async () => {
+      expect(await geocodeStreet("Kerkstraat, Enschede", docs("Kleine Kerkstraat, Enschede", "Grote Kerkstraat, Enschede"))).toBeNull();
+    });
+  });
+
   it("keeps prior-edition local dates after Supabase timestamp serialization", () => {
     expect(eventLocalDate("2026-10-16T22:00:00+00:00")).toBe("2026-10-17");
     expect(eventLocalDate("2026-10-25T23:59:59+00:00")).toBe("2026-10-25");
@@ -329,7 +374,7 @@ describe("coordinated long-range research", () => {
     expect(test.state().leads.find((lead) => lead.key === "arts")?.knownEdition).toEqual(prior);
   });
 
-  it("reuses only an unambiguous physical address on the host venue's own page", () => {
+  it("reuses only an unambiguous physical address on the host venue's own page", async () => {
     const sourceUrl = "https://www.ahoy.nl/agenda";
     const quote = "The conference takes place at Rotterdam Ahoy.";
     const page = { url: sourceUrl, text: `${facts.dateText}\n${quote}\nRotterdam Ahoy\nAhoyweg 10\n3084BA Rotterdam` };
@@ -337,6 +382,14 @@ describe("coordinated long-range research", () => {
     const evidence = verifyEventEvidence(venueFacts, sourceUrl, [page], now.toISOString(), { venue: "Rotterdam Ahoy", ownerType: "venue" });
     expect(evidence?.venueAddress).toBe("Ahoyweg 10\n3084BA Rotterdam");
     expect(evidence?.locationAddressEvidence?.sourceUrl).toBe(sourceUrl);
+    const venue = vi.fn(async () => ({ latitude: 51.882, longitude: 4.488 }));
+    const city = vi.fn(async () => ({ latitude: 51.92, longitude: 4.48 }));
+    const candidate = { venue: "Rotterdam Ahoy", latitude: null as number | null, longitude: null as number | null, evidence };
+    await createLocationResolver({ venue, city })(candidate);
+    expect(venue).toHaveBeenCalledWith("Ahoyweg 10\n3084BA Rotterdam, Rotterdam");
+    expect(city).not.toHaveBeenCalled();
+    expect(candidate).toMatchObject({ latitude: 51.882, longitude: 4.488 });
+    expect(evidence?.locationResolution?.method).toBe("venue");
     expect(verifyEventEvidence(venueFacts, sourceUrl, [page], now.toISOString(), { venue: "Rotterdam Ahoy", ownerType: "organizer" })?.venueAddress).toBeNull();
     expect(verifyEventEvidence(venueFacts, sourceUrl, [{ ...page, text: `${page.text}\nAndereweg 20 3084BA Rotterdam` }], now.toISOString(), { venue: "Rotterdam Ahoy", ownerType: "venue" })?.venueAddress).toBeNull();
   });

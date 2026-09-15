@@ -17,6 +17,37 @@ export async function geocodeCity(city: string, fetcher: typeof fetch = fetch) {
   } catch { return null; }
 }
 
+/**
+ * A quoted venue is usually a street, not a building: "Van Heekplein vormde het kloppend hart"
+ * or "Start: Boulevard 1945". The building search needs one exact address and a street returns
+ * every house number, so it rejected them all. A street centroid is precise enough to measure
+ * distance to a hotel, and only an unambiguous street in the named town is accepted.
+ */
+export async function geocodeStreet(query: string, fetcher: typeof fetch = fetch) {
+  const parts = query.split(",").map((part) => part.trim()).filter(Boolean);
+  if (!parts.length) return null;
+  const street = parts[0];
+  const town = parts.length > 1 ? parts[parts.length - 1] : null;
+  try {
+    const url = new URL("https://api.pdok.nl/bzk/locatieserver/search/v3_1/free");
+    url.search = new URLSearchParams({ q: query, fq: "type:weg", rows: "10", fl: "weergavenaam,centroide_ll" }).toString();
+    const response = await fetcher(url, { signal: AbortSignal.timeout(10_000) });
+    if (!response.ok) return null;
+    const data = await response.json() as { response: { docs: { weergavenaam: string; centroide_ll: string }[] } };
+    const candidates = data.response.docs.flatMap((doc) => {
+      const [name, ...rest] = doc.weergavenaam.split(",").map((part) => part.trim());
+      if (town && normalizeText(rest.join(" ")) !== normalizeText(town)) return [];
+      if (!` ${normalizeText(name)} `.includes(` ${normalizeText(street)} `)) return [];
+      return [{ name, point: /^POINT\(([-\d.]+) ([-\d.]+)\)$/.exec(doc.centroide_ll) }];
+    }).filter((item) => item.point);
+    // An exact street name wins; "Brouwersdam" must not be decided by "Strand Brouwersdam".
+    const exact = candidates.filter((item) => normalizeText(item.name) === normalizeText(street));
+    const chosen = exact.length === 1 ? exact[0] : candidates.length === 1 ? candidates[0] : null;
+    if (!chosen) return null;
+    return { latitude: Number(chosen.point![2]), longitude: Number(chosen.point![1]) };
+  } catch { return null; }
+}
+
 /** Venue first, then an explicitly evidenced host city. Coordinates are application data. */
 export function createLocationResolver(options: {
   venue: (query: string) => Promise<{ latitude: number; longitude: number } | null>;
@@ -31,7 +62,15 @@ export function createLocationResolver(options: {
     const city = evidence.hostCity;
     const citySupported = city && evidence.locationText
       && ` ${normalizeText(`${evidence.locationText} ${evidence.hostCityText ?? ""}`)} `.includes(` ${normalizeText(city)} `);
-    const venue = evidence.locationScope === "venue" && evidence.locationText && (evidence.venueAddress || event.venue);
+    // Enschede Marathon quoted "Van Heekplein" and named Enschede, but the AI graded the page's
+    // location "unclear" and that label alone switched the lookup off, so a 75-point event was
+    // discarded for having no map point. What matters is whether the page itself named the place:
+    // require the venue to appear in the quoted text, and ignore the grade.
+    const named = (evidence.venueAddress || event.venue)?.replace(/\s*\([^)]*\)/g, "").trim();
+    const quoted = named && ` ${normalizeText(`${evidence.locationText ?? ""} ${evidence.hostCityText ?? ""}`)} `.includes(` ${normalizeText(named)} `);
+    // verifyEventEvidence also accepts an address from the host venue's own page.
+    // That verified address need not be repeated in the selected location quote.
+    const venue = evidence.venueAddress || (quoted ? named : null);
     const queries: { query: string; method: "venue" | "city_centroid" }[] = [
       ...(venue ? [{ query: `${venue}${city ? `, ${city}` : ""}`, method: "venue" as const }] : []),
       ...(citySupported ? [{ query: city, method: "city_centroid" as const }] : []),

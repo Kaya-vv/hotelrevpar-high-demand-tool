@@ -4,7 +4,7 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import type { MessageCreateParamsNonStreaming } from "@anthropic-ai/sdk/resources/messages/messages";
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { geocodeCity, createLocationResolver } from "../research-location";
+import { geocodeCity, geocodeStreet, createLocationResolver } from "../research-location";
 import { estimatedCostUsd } from "../research-budget";
 import { fetchedDocumentText, eventFactsSchema, evidenceInstructions, verifyEventEvidence } from "@/features/events/evidence";
 
@@ -346,6 +346,12 @@ export async function geocodeVenue(query: string) {
   } catch {
     return null;
   }
+}
+
+/** Collectors resolve a quoted place: an exact building when the page gave one, otherwise the
+ *  street it named. The operator's address form keeps `geocodeVenue` and its single exact match. */
+export async function geocodeEventVenue(query: string) {
+  return (await geocodeVenue(query)) ?? (await geocodeStreet(query));
 }
 
 async function requestPhase<T>(phase: "search" | "agenda" | "triage" | "verification", request: () => Promise<T>) {
@@ -1378,7 +1384,7 @@ async function collectClaudeFresh(
       events.push(...parsed);
     }
   }
-  const geocode = input.geocode ?? geocodeVenue;
+  const geocode = input.geocode ?? geocodeEventVenue;
   const resolveLocation = createLocationResolver({ venue: geocode, city: input.geocodeCity });
   const candidates = await Promise.all(events.map(async (event) => {
     await resolveLocation(event);
