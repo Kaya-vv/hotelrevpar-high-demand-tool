@@ -145,3 +145,12 @@ describe("hotel refresh and shared research separation", () => {
     );
   });
 });
+
+it("does not research an archived initiating hotel", async () => {
+  const query = adminStub();
+  (query.maybeSingle as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ data: { id: "account" }, error: null }).mockResolvedValueOnce({ data: null, error: null });
+  vi.mocked(collectLongRange).mockClear();
+  await processMarketWork({ kind: "market-research", accountId: "account", areaId: "archived", runId: "run", requestedAt: "2026-09-16T12:00:00Z" });
+  expect(query.is).toHaveBeenCalledWith("hotels.archived_at", null);
+  expect(collectLongRange).not.toHaveBeenCalled();
+});

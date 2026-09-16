@@ -178,6 +178,7 @@ export function createCollectionRepository(): CollectionRepository {
       const hotelResult = await supabase.from("hotels").select("*").eq("id", area.hotel_id).eq("account_id", accountId).single();
       if (hotelResult.error) throw hotelResult.error;
       const hotel = hotelResult.data;
+      if (hotel.archived_at) throw new Error("Dit hotel is gearchiveerd.");
       const window = collectionWindow();
       const futureWindow = longRangeWindow(window);
       const { data: linkData, error: linkError } = await supabase

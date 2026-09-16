@@ -53,7 +53,7 @@ export async function GET(request: Request) {
       if (!accountIds.length) return [];
       const { data: areas, error: areaError } = await admin
         .from("collection_areas")
-        .select("id, account_id")
+        .select("id, account_id, hotels!inner(archived_at)").is("hotels.archived_at", null)
         .in("account_id", accountIds)
         .not("hotel_id", "is", null)
         .order("name");

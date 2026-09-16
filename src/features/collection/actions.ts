@@ -49,7 +49,7 @@ export async function refreshHotel(
   const hotelId = String(formData.get("hotelId") ?? "");
   const { data: area, error } = await (await createServerClient())
     .from("collection_areas")
-    .select("id")
+    .select("id, hotels!inner(archived_at)").is("hotels.archived_at", null)
     .eq("account_id", accountId)
     .eq("hotel_id", hotelId)
     .maybeSingle();
@@ -93,7 +93,7 @@ export async function refreshAllHotels(): Promise<RefreshState> {
   const { accountId, userId } = await requirePlatformAdmin();
   const { data: areas, error } = await (await createServerClient())
     .from("collection_areas")
-    .select("id")
+    .select("id, hotels!inner(archived_at)").is("hotels.archived_at", null)
     .eq("account_id", accountId)
     .not("hotel_id", "is", null);
   if (error) throw error;

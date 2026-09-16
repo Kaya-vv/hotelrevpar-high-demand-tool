@@ -482,6 +482,14 @@ export async function sendEventNotification(
     await cancelNotificationBatch(admin, batch.id, true);
     return;
   }
+  const { data: hotel, error: hotelError } = await admin.from("hotels")
+    .select("id").eq("account_id", batch.account_id).eq("id", batch.hotel_id)
+    .is("archived_at", null).maybeSingle();
+  if (hotelError) throw hotelError;
+  if (!hotel) {
+    await cancelNotificationBatch(admin, batch.id, true);
+    return;
+  }
   if (notificationRetryExpired(batch.first_attempt_at, now)) {
     const { error } = await admin
       .from("event_notification_batches")

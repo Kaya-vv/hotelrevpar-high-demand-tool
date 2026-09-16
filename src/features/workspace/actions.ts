@@ -23,7 +23,7 @@ export async function selectHotel(formData: FormData) {
     .from("hotels")
     .select("id")
     .eq("id", hotelId)
-    .eq("account_id", accountId)
+    .eq("account_id", accountId).is("archived_at", null)
     .maybeSingle();
   if (error) throw error;
   if (!data) throw new Error("Hotel niet gevonden in dit account.");

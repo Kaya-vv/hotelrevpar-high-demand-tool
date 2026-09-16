@@ -35,7 +35,7 @@ export async function loadExportEvents(accountId: string, range: ExportRange, se
   const { data: hotels, error: hotelError } = await supabase
     .from("hotels")
     .select("id, name, revcontrol_code, demand_radius_km")
-    .eq("account_id", accountId)
+    .eq("account_id", accountId).is("archived_at", null)
     .in("id", selectedHotelIds);
   if (hotelError) throw hotelError;
   if (hotels.length !== selectedHotelIds.length) throw new Error("Een geselecteerd hotel hoort niet bij dit account.");

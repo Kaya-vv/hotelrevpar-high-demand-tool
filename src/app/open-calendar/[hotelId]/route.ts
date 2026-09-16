@@ -13,7 +13,7 @@ export async function GET(
   const { data, error } = await (await createServerClient())
     .from("hotels")
     .select("id")
-    .eq("account_id", accountId)
+    .eq("account_id", accountId).is("archived_at", null)
     .eq("id", hotelId)
     .maybeSingle();
   if (error) throw error;

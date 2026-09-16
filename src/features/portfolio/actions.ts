@@ -17,6 +17,21 @@ export type FormState = {
   saved?: boolean;
 };
 
+export async function setHotelArchived(formData: FormData) {
+  const { accountId } = await requireAccount();
+  const id = String(formData.get("hotelId") ?? "");
+  const archived = formData.get("archived") === "true";
+  const supabase = await createServerClient();
+  const { data, error } = await supabase.from("hotels")
+    .update({ archived_at: archived ? new Date().toISOString() : null })
+    .eq("account_id", accountId).eq("id", id).select("id").single();
+  if (error) throw error;
+  if (!data) throw new Error("Hotel niet gevonden in dit account.");
+  const jar = await cookies();
+  if (archived && jar.get(SELECTED_HOTEL_COOKIE)?.value === id) jar.delete(SELECTED_HOTEL_COOKIE);
+  revalidatePath("/", "layout");
+}
+
 function errors(result: {
   error: { flatten: () => { fieldErrors: Record<string, string[]> } };
 }): FormState {
@@ -39,7 +54,7 @@ export async function saveHotel(
         .select(
           "id, pdok_address_id, demand_radius_km, holiday_region, enabled_sources"
         )
-        .eq("id", requestedId)
+        .eq("id", requestedId).is("archived_at", null)
         .eq("account_id", account.accountId)
         .maybeSingle()
     : { data: null, error: null };

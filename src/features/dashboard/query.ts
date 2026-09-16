@@ -14,7 +14,7 @@ export type DashboardHotel = {
 export async function getDashboardData(accountId: string): Promise<DashboardHotel[]> {
   const supabase = await createServerClient();
   const hotels = await fetchAllRows((from, to) => supabase.from("hotels").select("id, name")
-    .eq("account_id", accountId).order("name").order("id").range(from, to));
+    .eq("account_id", accountId).is("archived_at", null).order("name").order("id").range(from, to));
   if (!hotels.length) return [];
 
   const hotelIds = hotels.map((hotel) => hotel.id);

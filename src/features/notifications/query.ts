@@ -36,7 +36,7 @@ export async function loadVisibleNotificationEvents(
       admin
         .from("hotels")
         .select("id, name, demand_radius_km")
-        .eq("account_id", accountId)
+        .eq("account_id", accountId).is("archived_at", null)
         .eq("id", hotelId)
         .maybeSingle(),
       admin

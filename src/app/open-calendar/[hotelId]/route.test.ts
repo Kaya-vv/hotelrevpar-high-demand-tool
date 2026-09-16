@@ -11,10 +11,12 @@ function hotelQuery(data: unknown) {
   const query = {
     select: vi.fn(),
     eq: vi.fn(),
+    is: vi.fn(),
     maybeSingle: vi.fn().mockResolvedValue({ data, error: null }),
   };
   query.select.mockReturnValue(query);
   query.eq.mockReturnValue(query);
+  query.is.mockReturnValue(query);
   return query;
 }
 

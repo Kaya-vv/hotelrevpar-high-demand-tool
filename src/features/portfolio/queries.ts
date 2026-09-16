@@ -11,11 +11,13 @@ export type Hotel = {
   demand_radius_km: number;
   holiday_region: "north" | "middle" | "south" | null;
   enabled_sources: string[];
+  archived_at?: string | null;
 };
 
-export async function getPortfolio(accountId: string) {
+export async function getPortfolio(accountId: string, archived = false) {
   const supabase = await createServerClient();
-  const hotelsResult = await supabase.from("hotels").select("*").eq("account_id", accountId).order("name");
+  const query = supabase.from("hotels").select("*").eq("account_id", accountId).order("name");
+  const hotelsResult = await (archived ? query.not("archived_at", "is", null) : query.is("archived_at", null));
 
   if (hotelsResult.error) throw hotelsResult.error;
 

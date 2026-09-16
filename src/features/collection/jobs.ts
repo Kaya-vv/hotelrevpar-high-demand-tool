@@ -69,7 +69,7 @@ export async function enqueueCollectionAreas(
 
   const { data: areas, error: areaError } = await admin
     .from("collection_areas")
-    .select("id")
+    .select("id, hotels!inner(archived_at)").is("hotels.archived_at", null)
     .eq("account_id", input.accountId)
     .in("id", areaIds);
   if (areaError) throw areaError;
@@ -180,7 +180,7 @@ export async function processCollectionJob(
     admin.from("accounts").select("id").eq("id", job.account_id).eq("active", true).maybeSingle(),
     admin
       .from("collection_areas")
-      .select("id")
+      .select("id, hotels!inner(archived_at)").is("hotels.archived_at", null)
       .eq("id", job.collection_area_id)
       .eq("account_id", job.account_id)
       .maybeSingle(),
@@ -195,7 +195,7 @@ export async function processCollectionJob(
         attempts: deliveryCount,
         finished_at: new Date().toISOString(),
         pending_since: null,
-        error_summary: "Account of hotel bestaat niet meer.",
+        error_summary: "Account of hotel is niet beschikbaar of is gearchiveerd.",
       })
       .eq("id", job.id));
     return;

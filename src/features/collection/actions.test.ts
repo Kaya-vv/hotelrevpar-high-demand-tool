@@ -2,14 +2,14 @@ import { expect, it, vi } from "vitest";
 import { refreshHotel } from "./actions";
 import { enqueueCollectionAreas, publishCollectionJob } from "./jobs";
 
-const { query } = vi.hoisted(() => ({ query: { select: vi.fn(), eq: vi.fn(), order: vi.fn(), limit: vi.fn(), maybeSingle: vi.fn() } }));
+const { query } = vi.hoisted(() => ({ query: { select: vi.fn(), is: vi.fn(), eq: vi.fn(), order: vi.fn(), limit: vi.fn(), maybeSingle: vi.fn() } }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/auth/require-account", () => ({ requirePlatformAdmin: vi.fn(async () => ({ accountId: "account", userId: "admin" })) }));
 vi.mock("@/lib/supabase/server", () => ({ createServerClient: vi.fn(async () => ({ from: () => query })) }));
 vi.mock("./jobs", () => ({ enqueueCollectionAreas: vi.fn(), publishCollectionJob: vi.fn(async () => {}) }));
 
 it("retries only publication for a hotel scoped to the admin account", async () => {
-  for (const key of ["select", "eq", "order", "limit"] as const) query[key].mockReturnValue(query);
+  for (const key of ["select", "is", "eq", "order", "limit"] as const) query[key].mockReturnValue(query);
   query.maybeSingle.mockResolvedValueOnce({ data: { id: "area" } }).mockResolvedValueOnce({ data: { id: "run" } });
   const form = new FormData();
   form.set("hotelId", "hotel"); form.set("operation", "publication");

@@ -42,6 +42,11 @@ export async function processMarketWork(work: MarketWork) {
   const { data: account, error } = await admin.from("accounts").select("id").eq("id", work.accountId).eq("active", true).maybeSingle();
   if (error) throw error;
   if (!account) return;
+  const { data: activeArea, error: activeAreaError } = await admin.from("collection_areas")
+    .select("id, hotels!inner(archived_at)").eq("id", work.areaId).eq("account_id", work.accountId)
+    .is("hotels.archived_at", null).maybeSingle();
+  if (activeAreaError) throw activeAreaError;
+  if (!activeArea) return;
   const context = await repository.loadContext(work.accountId, work.areaId);
   if (!context.area.enabledSources.includes("claude")) return;
   const market = await resolveLongRangeMarket(context.area.searchLocation, context.area.radiusKm);
@@ -49,7 +54,7 @@ export async function processMarketWork(work: MarketWork) {
   // Called under the research or publication lease; partial publication never marks
   // the research complete, and waits for an overlapping hotel refresh.
   async function publishState(state: LongRangeState, notify = false) {
-    const { data: areas, error: areaError } = await admin.from("collection_areas").select("id, account_id, search_location, radius_km, accounts!inner(active)").eq("accounts.active", true).contains("enabled_sources", ["claude"]);
+    const { data: areas, error: areaError } = await admin.from("collection_areas").select("id, account_id, search_location, radius_km, accounts!inner(active), hotels!inner(archived_at)").is("hotels.archived_at", null).eq("accounts.active", true).contains("enabled_sources", ["claude"]);
     if (areaError) throw areaError;
     // Every hotel this research covers, not only the one whose radius happens to match it: the
     // editions are a superset and `publishLongRangeResult` filters each hotel by real distance.

@@ -3,7 +3,7 @@
 import { useActionState, useEffect, useRef } from "react";
 
 import { AddressCombobox } from "./address-combobox";
-import { saveHotel, type FormState } from "./actions";
+import { saveHotel, setHotelArchived, type FormState } from "./actions";
 import type { DashboardHotel } from "@/features/dashboard/query";
 import { selectHotel } from "@/features/workspace/actions";
 import type { Hotel } from "./queries";
@@ -269,6 +269,11 @@ export function PortfolioForm({
                     hotel={hotel}
                     isPlatformAdmin={isPlatformAdmin}
                   />
+                  <form action={setHotelArchived}>
+                    <input type="hidden" name="hotelId" value={hotel.id} />
+                    <input type="hidden" name="archived" value="true" />
+                    <button className="secondary" type="submit" title="Verberg dit hotel en stop zoekopdrachten en e-mails. De gegevens blijven bewaard.">Archiveren</button>
+                  </form>
                 </div>
               </article>
             );

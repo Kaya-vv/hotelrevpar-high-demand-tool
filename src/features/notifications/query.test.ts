@@ -15,6 +15,7 @@ const { tables, database } = vi.hoisted(() => {
           rows = rows.filter((row) => row[key] === value);
           return query;
         },
+        is: (key: string, value: unknown) => { rows = rows.filter(row => (row[key] ?? null) === value); return query; },
         in: (key: string, values: unknown[]) => {
           rows = rows.filter((row) => values.includes(row[key]));
           return query;
@@ -213,4 +214,10 @@ describe("notification calendar parity", () => {
       "Aangekondigd",
     ]);
   });
+});
+
+it("does not expose archived hotel events to notification staging", async () => {
+  tables.hotels = [{ id: "archived", account_id: "account", archived_at: "2026-09-16T12:00:00Z" }];
+  tables.collection_areas = [{ id: "area", hotel_id: "archived", account_id: "account", enabled_sources: ["claude"] }];
+  expect(await loadVisibleNotificationEvents(database as never, "account", "archived")).toBeNull();
 });

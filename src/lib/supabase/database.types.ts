@@ -1008,6 +1008,7 @@ export type Database = {
       };
       hotels: {
         Row: {
+          archived_at: string | null;
           account_id: string;
           address: string | null;
           created_at: string;
@@ -1023,6 +1024,7 @@ export type Database = {
           search_location: string;
         };
         Insert: {
+          archived_at?: string | null;
           account_id: string;
           address?: string | null;
           created_at?: string;
@@ -1038,6 +1040,7 @@ export type Database = {
           search_location?: string;
         };
         Update: {
+          archived_at?: string | null;
           account_id?: string;
           address?: string | null;
           created_at?: string;

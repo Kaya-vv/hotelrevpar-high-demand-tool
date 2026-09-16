@@ -21,11 +21,13 @@ function selectable(data: unknown) {
   const query = {
     select: vi.fn(),
     eq: vi.fn(),
+    is: vi.fn(),
     in: vi.fn(),
     maybeSingle: vi.fn().mockResolvedValue({ data, error: null }),
   };
   query.select.mockReturnValue(query);
   query.eq.mockReturnValue(query);
+  query.is.mockReturnValue(query);
   query.in.mockReturnValue(query);
   return query;
 }
@@ -279,5 +281,16 @@ it("ignores a duplicate delivery after terminal success", async () => {
   adminHolder.current = { from: () => selectable({ id: "job", status: "succeeded" }) };
   const run = vi.fn();
   await processCollectionJob({ jobId: "job" }, delivery(3), run);
+  expect(run).not.toHaveBeenCalled();
+});
+
+it("does not run queued work when its hotel is archived", async () => {
+  const jobQuery = selectable({ id: "job-archived", account_id: "account", collection_area_id: "area", status: "queued", attempts: 0 });
+  const update = vi.fn(() => ({ eq: async () => ({ error: null }) }));
+  const areaQuery = selectable(null);
+  adminHolder.current = { from: (table: string) => table === "collection_jobs" ? { ...jobQuery, update } : table === "collection_areas" ? areaQuery : selectable({ id: "account" }) };
+  const run = vi.fn();
+  await processCollectionJob({ jobId: "job-archived" }, delivery(1), run);
+  expect(areaQuery.is).toHaveBeenCalledWith("hotels.archived_at", null);
   expect(run).not.toHaveBeenCalled();
 });

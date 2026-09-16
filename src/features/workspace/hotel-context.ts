@@ -10,7 +10,7 @@ export const getHotelScope = cache(async function getHotelScope(accountId: strin
   const { data: hotels, error: hotelError } = await supabase
     .from("hotels")
     .select("id, name, demand_radius_km")
-    .eq("account_id", accountId)
+    .eq("account_id", accountId).is("archived_at", null)
     .order("name");
   if (hotelError) throw hotelError;
 

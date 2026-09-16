@@ -42,7 +42,7 @@ const admin = {
     return query;
   },
 };
-import { enqueuePendingEventNotifications, stageHotelEventNotifications } from "./service";
+import { enqueuePendingEventNotifications, stageHotelEventNotifications, sendEventNotification } from "./service";
 beforeEach(() => {
   vi.stubEnv("EVENT_NOTIFICATIONS_ENABLED", "enabled");
   vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://example.com");
@@ -69,4 +69,13 @@ it("does not revive suppressed events", async () => {
   await stageHotelEventNotifications("account", "area");
   expect(publish).not.toHaveBeenCalled();
   expect(state.tables.event_notification_batches).toHaveLength(0);
+});
+
+it("does not send a prepared email after its hotel is archived", async () => {
+  state.tables.hotels = [{ id: "hotel", account_id: "account", archived_at: "2026-09-16T12:00:00Z" }];
+  state.tables.event_notification_batches.push({ id: "batch", status: "pending", account_id: "account", hotel_id: "hotel", user_id: "user" });
+  const fetcher = vi.fn();
+  await sendEventNotification("batch", fetcher);
+  expect(fetcher).not.toHaveBeenCalled();
+  expect(state.tables.event_notification_batches[0].status).toBe("cancelled");
 });
