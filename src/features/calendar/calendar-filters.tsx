@@ -8,6 +8,7 @@ export function CalendarFilters({
   period,
   category,
   importance,
+  includeMedium,
   categories,
   levels,
 }: {
@@ -16,6 +17,7 @@ export function CalendarFilters({
   period: "3" | "12" | "all";
   category?: string;
   importance?: string;
+  includeMedium?: boolean;
   categories: string[];
   levels: Array<{ value: string; label: string }>;
 }) {
@@ -24,7 +26,7 @@ export function CalendarFilters({
 
   return (
     <form
-      key={`${month}|${view}|${period}|${category ?? ""}|${importance ?? ""}`}
+      key={`${month}|${view}|${period}|${category ?? ""}|${importance ?? ""}|${includeMedium ? "medium" : ""}`}
       ref={formRef}
       action="/calendar"
       className="filter-bar"
@@ -65,6 +67,16 @@ export function CalendarFilters({
             </option>
           ))}
         </select>
+      </label>
+      <label className="filter-toggle">
+        <input
+          type="checkbox"
+          name="medium"
+          value="1"
+          defaultChecked={includeMedium}
+          onChange={submit}
+        />
+        Ook Medium-events tonen
       </label>
       <button className="visually-hidden" type="submit">
         Filteren

@@ -5,7 +5,7 @@ export type DemandLevel = "Low" | "Medium" | "High" | "Peak";
 
 export const demandLabels: Record<DemandLevel, string> = {
   Low: "Laag",
-  Medium: "Verhoogd",
+  Medium: "Medium",
   High: "Hoog",
   Peak: "Piek",
 };
@@ -15,21 +15,30 @@ export const demandLevels = Object.keys(demandLabels) as DemandLevel[];
 export const publishableDemandLevels = ["High", "Peak"] as const;
 
 /**
+ * Levels the calendar shows when an operator asks to see Medium as well. Exports, notifications
+ * and the database export guard never widen: Medium stays out of what a hotel pays for.
+ */
+const calendarMediumLevels = ["Medium", "High", "Peak"] as const;
+
+/**
  * A grade earns publication whichever way it was reached: quoted demand evidence
  * (`demand_rule`) or an evidenced proxy such as an assessed audience, a measured attendance or a
  * marquee competition. `default` means nothing at all is known about the event's pull, so it
  * stays hidden. The scorer has already demoted anything a source argues against, which is why
  * the absence of a demand quote cannot hide an otherwise evidenced event here.
+ *
+ * `includeMedium` is the calendar's "ook Medium tonen" view only. Remote hotels can have no
+ * High or Peak event at all, which left them staring at an empty calendar.
  */
 export function isPublishableDemand(
   importance: DemandLevel,
   impactBasis: string,
+  includeMedium = false,
 ) {
-  return (
-    publishableDemandLevels.includes(
-      importance as (typeof publishableDemandLevels)[number],
-    ) && impactBasis !== "default"
-  );
+  const levels: readonly DemandLevel[] = includeMedium
+    ? calendarMediumLevels
+    : publishableDemandLevels;
+  return levels.includes(importance) && impactBasis !== "default";
 }
 
 /**
@@ -83,7 +92,7 @@ export function gradedDemand(score: {
  * one or two days. Three is the threshold rather than two because at two the rule admits
  * `Bachelor Open Day 2026`, `Master Open Day 2027` and `Liquicity Winterfestival`.
  *
- * A hand-set level outranks all of it. An operator who grades an announcement Low or Verhoogd has
+ * A hand-set level outranks all of it. An operator who grades an announcement Low or Medium has
  * judged the event not worth a room-rate decision, so announcing it anyway is the calendar
  * contradicting the person using it.
  */
@@ -96,9 +105,10 @@ export function isAnnouncedLongRange(input: {
   hasConfirmedDateAndLocation: boolean;
   scores: { importance: DemandLevel; impactBasis: string; distanceKm: number | null; assessment?: unknown;
     manualLevel?: DemandLevel | null }[];
+  includeMedium?: boolean;
 }) {
   if (input.startDate <= input.nearTermHorizon) return false;
-  if (input.scores.some((score) => isPublishableDemand(score.importance, score.impactBasis))) return false;
+  if (input.scores.some((score) => isPublishableDemand(score.importance, score.impactBasis, input.includeMedium))) return false;
   if (input.scores.some((score) => score.manualLevel)) return false;
   const withinRadius = input.scores.some((score) =>
     score.distanceKm !== null && input.demandRadiusKm !== null && score.distanceKm <= input.demandRadiusKm);
@@ -135,13 +145,15 @@ export function hotelCalendarVisibility(input: {
   category: string;
   hasConfirmedDateAndLocation: boolean;
   scores: HotelCalendarVisibilityScore[];
+  /** Calendar-only widening; see `isPublishableDemand`. */
+  includeMedium?: boolean;
 }) {
   if (!input.active || !input.confirmed || !input.supported) {
     return { visible: false, announced: false };
   }
   if (
     input.scores.some((score) =>
-      isPublishableDemand(score.importance, score.impactBasis)
+      isPublishableDemand(score.importance, score.impactBasis, input.includeMedium)
     )
   ) {
     return { visible: true, announced: false };

@@ -205,21 +205,28 @@ function EventOverview({
   hiddenEvents,
   rangeStart,
   monthHrefs,
+  includeMedium,
+  mediumHref,
   overrideImportanceAction,
 }: {
   events: CalendarEvent[];
   hiddenEvents?: CalendarEvent[];
   rangeStart?: string;
   monthHrefs?: Record<string, string>;
+  includeMedium?: boolean;
+  mediumHref?: string;
   overrideImportanceAction?: ManualLevelAction;
 }) {
+  const shownLevels: DemandLevel[] = includeMedium
+    ? ["Medium", ...publishableDemandLevels]
+    : [...publishableDemandLevels];
   const counts = Object.fromEntries(
-    publishableDemandLevels.map((level) => [
+    shownLevels.map((level) => [
       level,
       events.filter((event) => event.hotelScores[0]?.importance === level)
         .length,
     ])
-  ) as Record<(typeof publishableDemandLevels)[number], number>;
+  ) as Record<DemandLevel, number>;
   const rows = (items: CalendarEvent[]) =>
     items.map((event) => {
       const score = event.hotelScores[0];
@@ -276,7 +283,7 @@ function EventOverview({
           <strong>{events.length}</strong>
           <span>bevestigde vraagmomenten</span>
         </div>
-        {publishableDemandLevels.map((level) => (
+        {shownLevels.map((level) => (
           <div key={level}>
             <strong>{counts[level]}</strong>
             <span>{demandLabels[level]}</span>
@@ -292,6 +299,13 @@ function EventOverview({
       {!events.length && (
         <p className="empty-state">
           Geen bevestigde vraagmomenten voor deze filters.
+          {!includeMedium && mediumHref && (
+            <>
+              {" "}
+              Dit hotel staat misschien in een rustiger omgeving:{" "}
+              <Link href={mediumHref}>bekijk ook de Medium-events</Link>.
+            </>
+          )}
         </p>
       )}
       {[...new Set(events.map((event) => overviewMonth(event.startAt, rangeStart)))].sort().map((month) => {
@@ -307,8 +321,8 @@ function EventOverview({
             Handmatig uit de kalender gehaald ({hiddenEvents.length})
           </summary>
           <p className="muted">
-            Deze evenementen staan op Laag of Verhoogd. Zet ze op Hoog of Piek
-            om ze terug in de kalender te zetten.
+            Deze evenementen staan op Laag of Medium. Zet ze op Hoog of Piek om
+            ze terug in de kalender te zetten.
           </p>
           <div className="event-overview-list">{rows(hiddenEvents)}</div>
         </details>
@@ -325,6 +339,8 @@ export function CalendarView({
   hiddenEvents,
   latestRun,
   view = "list",
+  includeMedium,
+  mediumHref,
   overrideImportanceAction,
 }: {
   month: string;
@@ -334,6 +350,8 @@ export function CalendarView({
   hiddenEvents?: CalendarEvent[];
   latestRun?: LatestRun | null;
   view?: "list" | "calendar";
+  includeMedium?: boolean;
+  mediumHref?: string;
   overrideImportanceAction?: ManualLevelAction;
 }) {
   const [selectedId, setSelectedId] = useState(events[0]?.id ?? null);
@@ -353,6 +371,8 @@ export function CalendarView({
           monthHrefs={monthHrefs}
           events={events}
           hiddenEvents={hiddenEvents}
+          includeMedium={includeMedium}
+          mediumHref={mediumHref}
           overrideImportanceAction={overrideImportanceAction}
         />
       </>

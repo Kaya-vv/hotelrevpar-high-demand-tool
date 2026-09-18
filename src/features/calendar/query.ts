@@ -24,6 +24,8 @@ export type CalendarFilters = {
   period?: OverviewPeriod;
   category?: string;
   importance?: DemandLevel;
+  /** Show Medium events too; the export and notifications keep the High/Peak threshold. */
+  includeMedium?: boolean;
 };
 
 async function loadAccountEvents(
@@ -150,7 +152,7 @@ export async function getCalendarData(
       // The publish gate decides visibility. Requiring a graded demand assessment here hid every
       // event scored from an evidenced proxy, independently of `isPublishableDemand`.
       const hotelScores = eventScores.filter((score) =>
-        isPublishableDemand(score.importance, score.impactBasis)
+        isPublishableDemand(score.importance, score.impactBasis, filters.includeMedium)
       );
       // Kept even when the publish gate hides the grade: the calendar's manual override
       // updates this row.
@@ -170,6 +172,7 @@ export async function getCalendarData(
           return Boolean(evidence?.dateText && evidence.locationText);
         }),
         scores: eventScores,
+        includeMedium: filters.includeMedium,
       });
       return {
         id: event.id,

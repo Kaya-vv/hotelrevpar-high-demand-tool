@@ -15,11 +15,18 @@ describe("calendar page", () => {
 
   it("defaults to the full overview and keeps filters in the month calendar link", async () => {
     render(await CalendarPage({ searchParams: Promise.resolve({ month: "2027-05", category: "concert", importance: "High" }) }));
-    expect(getCalendarData).toHaveBeenCalledWith("account", { month: "2027-05", view: "list", period: "all", category: "concert", importance: "High" });
+    expect(getCalendarData).toHaveBeenCalledWith("account", { month: "2027-05", view: "list", period: "all", category: "concert", importance: "High", includeMedium: false });
     expect(screen.getByRole("link", { name: "Overzicht" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "Maandkalender" })).toHaveAttribute("href", "/calendar?month=2027-05&view=calendar&period=all&category=concert&importance=High");
     expect(screen.getByRole("heading", { name: "Selected hotel" })).toBeInTheDocument();
     expect(screen.getByLabelText("Periode")).toHaveValue("all");
+  });
+
+  it("passes the Medium toggle to the query and keeps it in the links", async () => {
+    render(await CalendarPage({ searchParams: Promise.resolve({ month: "2027-05", medium: "1", importance: "Medium" }) }));
+    expect(getCalendarData).toHaveBeenCalledWith("account", { month: "2027-05", view: "list", period: "all", category: undefined, importance: "Medium", includeMedium: true });
+    expect(screen.getByLabelText("Ook Medium-events tonen")).toBeChecked();
+    expect(screen.getByRole("link", { name: "Maandkalender" })).toHaveAttribute("href", "/calendar?month=2027-05&view=calendar&period=all&importance=Medium&medium=1");
   });
 
   it("retains the overview period when viewing a particular calendar month", async () => {

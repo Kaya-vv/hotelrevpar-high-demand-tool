@@ -91,7 +91,7 @@ describe("CalendarView", () => {
       screen.getByRole("link", { name: /bekijk evenement/i })
     ).toHaveAttribute("href", "https://example.com/ddw");
     expect(screen.queryByText("60 punten")).not.toBeInTheDocument();
-    expect(screen.queryByText("Verhoogd")).not.toBeInTheDocument();
+    expect(screen.queryByText("Medium")).not.toBeInTheDocument();
     expect(screen.queryByText("Laag")).not.toBeInTheDocument();
     expect(screen.queryByText("Handmatige inschatting")).not.toBeInTheDocument();
   });
@@ -139,7 +139,7 @@ describe("CalendarView", () => {
     expect(select).toHaveValue("Low");
     expect(screen.queryByRole("option", { name: /Automatisch/ })).not.toBeInTheDocument();
     expect(screen.getAllByRole("option").map((option) => option.textContent))
-      .toEqual(["Laag", "Verhoogd", "Hoog", "Piek"]);
+      .toEqual(["Laag", "Medium", "Hoog", "Piek"]);
   });
 
   it("confirms what a saved level did", async () => {
@@ -201,6 +201,35 @@ describe("CalendarView", () => {
     );
 
     expect(screen.queryByText(/Handmatig uit de kalender gehaald/)).not.toBeInTheDocument();
+  });
+
+  it("points an empty calendar at the Medium events and counts them once shown", () => {
+    const { rerender } = render(
+      <CalendarView month="2027-10" events={[]} mediumHref="/calendar?medium=1" />,
+    );
+    // A remote hotel can have no High or Peak event at all.
+    expect(screen.getByRole("link", { name: /Medium-events/ })).toHaveAttribute(
+      "href",
+      "/calendar?medium=1",
+    );
+
+    rerender(
+      <CalendarView
+        month="2027-10"
+        includeMedium
+        mediumHref="/calendar?medium=1"
+        events={[
+          {
+            ...events[0],
+            hotelScores: [{ ...events[0].hotelScores[1], importance: "Medium" }],
+          },
+        ]}
+      />,
+    );
+    const tiles = [...document.querySelectorAll(".event-overview-summary > div")]
+      .map((tile) => tile.textContent);
+    expect(tiles).toEqual(["1bevestigde vraagmomenten", "1Medium", "0Hoog", "0Piek"]);
+    expect(screen.queryByRole("link", { name: /Medium-events/ })).not.toBeInTheDocument();
   });
 
   it("keeps the month calendar as an alternate view with scores in the agenda", () => {

@@ -36,9 +36,10 @@ export function ManualLevelForm({
     <section className="manual-level">
       <h3>Inschatting aanpassen</h3>
       <p className="muted">
-        {announced
-          ? "Kies Hoog of Piek om dit evenement met dat niveau in de kalender en de export te zetten. Kies Laag of Verhoogd om het uit de kalender te halen."
-          : "Hoog en Piek staan in de kalender en gaan mee in de export. Laag en Verhoogd halen dit evenement uit de kalender."}
+        {announced ? "Dit evenement heeft nog geen niveau. " : ""}
+        Hoog en Piek staan in de kalender en gaan mee in de export. Laag en
+        Medium gaan niet mee; Medium-events zie je alleen als “Ook
+        Medium-events tonen” aan staat.
       </p>
       <form action={save}>
         <input type="hidden" name="eventId" value={eventId} />

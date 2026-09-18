@@ -539,6 +539,20 @@ a {
   font-size: 0.82rem;
 }
 
+.filter-bar label.filter-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  align-self: end;
+  padding-bottom: 9px;
+  font-size: 0.85rem;
+}
+
+.filter-bar label.filter-toggle input {
+  width: 16px;
+  height: 16px;
+}
+
 .event-toolbar {
   display: flex;
   align-items: center;

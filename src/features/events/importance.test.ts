@@ -35,6 +35,26 @@ describe("hotel calendar visibility", () => {
     expect(hotelCalendarVisibility(base)).toEqual({ visible: true, announced: true });
   });
 
+  it("shows Medium only for the calendar view that asks for it", () => {
+    const graded = gradedDemand({
+      suggested_importance: "Medium",
+      importance_override: null,
+      impact_basis: "ai_assessment",
+    });
+    const scores = [{ ...graded, distanceKm: 4 }];
+    // Default: the export, the notifications and the normal calendar keep High and Peak.
+    expect(hotelCalendarVisibility({ ...base, scores })).toEqual({ visible: true, announced: true });
+    expect(hotelCalendarVisibility({ ...base, scores, startDate: "2026-10-01", endDate: "2026-10-02" }))
+      .toEqual({ visible: false, announced: false });
+    // With the toggle on, the same near-term event shows with its Medium grade.
+    expect(hotelCalendarVisibility({ ...base, scores, includeMedium: true, startDate: "2026-10-01", endDate: "2026-10-02" }))
+      .toEqual({ visible: true, announced: false });
+    // An event the scorer knew nothing about stays out either way.
+    expect(hotelCalendarVisibility({ ...base, includeMedium: true, startDate: "2026-10-01", endDate: "2026-10-02",
+      scores: [{ importance: "Medium", impactBasis: "default", distanceKm: 4 }] }))
+      .toEqual({ visible: false, announced: false });
+  });
+
   it("lets a hand-set level decide a long-range announcement", () => {
     // The stored row the calendar's "Handmatige inschatting" writes, with nothing but a
     // model guess behind the automatic grade.

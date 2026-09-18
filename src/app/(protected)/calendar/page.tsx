@@ -47,18 +47,21 @@ export default async function CalendarPage({
       ? rawMonth
       : currentMonth();
   const rawImportance = value(params, "importance");
+  const includeMedium = value(params, "medium") === "1";
   const view = value(params, "view") === "calendar" ? "calendar" : "list";
   const rawPeriod = value(params, "period");
   const period = rawPeriod === "3" || rawPeriod === "12" ? rawPeriod : "all";
   const bounds = calendarBounds(month, view, period);
+  const selectableLevels = includeMedium
+    ? (["Medium", ...publishableDemandLevels] as const)
+    : publishableDemandLevels;
   const filters: CalendarQueryFilters = {
     month,
     view,
     period,
+    includeMedium,
     category: value(params, "category"),
-    importance: publishableDemandLevels.includes(
-      rawImportance as (typeof publishableDemandLevels)[number]
-    )
+    importance: (selectableLevels as readonly string[]).includes(rawImportance ?? "")
       ? (rawImportance as CalendarQueryFilters["importance"])
       : undefined,
   };
@@ -73,6 +76,7 @@ export default async function CalendarPage({
     next.set("period", period);
     if (filters.category) next.set("category", filters.category);
     if (filters.importance) next.set("importance", filters.importance);
+    if (includeMedium) next.set("medium", "1");
     Object.entries(changes).forEach(([key, item]) =>
       item ? next.set(key, item) : next.delete(key)
     );
@@ -117,8 +121,9 @@ export default async function CalendarPage({
         period={period}
         category={filters.category}
         importance={filters.importance}
+        includeMedium={includeMedium}
         categories={data.categories}
-        levels={publishableDemandLevels.map((level) => ({
+        levels={selectableLevels.map((level) => ({
           value: level,
           label: demandLabels[level],
         }))}
@@ -153,6 +158,8 @@ export default async function CalendarPage({
         hiddenEvents={data.hiddenEvents}
         latestRun={data.latestRun}
         view={view}
+        includeMedium={includeMedium}
+        mediumHref={href({ medium: "1" })}
         overrideImportanceAction={
           role === "platform_admin" ? overrideImportance : undefined
         }
