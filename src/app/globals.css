@@ -1015,11 +1015,29 @@ a {
   color: var(--muted);
 }
 
-.score-override {
+.manual-level {
+  display: grid;
+  gap: 7px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.manual-level h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.manual-level p {
+  margin: 0;
+  font-size: 0.82rem;
+}
+
+.manual-level form {
   display: grid;
   grid-template-columns: 1fr auto;
+  align-items: end;
   gap: 7px;
-  margin-top: 5px;
 }
 
 .source-links {
@@ -1403,9 +1421,15 @@ td {
   font-weight: 600;
 }
 
-.score-override label {
+.manual-level label {
   display: grid;
   gap: 5px;
+  font-size: 0.85rem;
+}
+
+.hidden-events > summary {
+  cursor: pointer;
+  font-weight: 600;
 }
 
 .review-comparison {

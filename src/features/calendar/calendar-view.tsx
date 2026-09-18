@@ -9,11 +9,11 @@ import { useState } from "react";
 
 import {
   demandLabels,
-  demandLevels,
   publishableDemandLevels,
   type DemandLevel,
 } from "@/features/events/importance";
 import { useRunStatusPoll } from "@/features/collection/use-run-status-poll";
+import { ManualLevelForm, type ManualLevelAction } from "./manual-level";
 
 export type CalendarSource = {
   id?: string;
@@ -28,6 +28,10 @@ export type CalendarHotelScore = {
   hotelName: string;
   total: number;
   importance: DemandLevel;
+  /** The level someone set by hand, null when the search results decide it. */
+  manualLevel: DemandLevel | null;
+  /** What the search results scored, whatever a hand-set level says. */
+  suggestedLevel: DemandLevel;
   impactBasis: string;
   impactPoints: number;
   distancePoints: number;
@@ -104,10 +108,10 @@ function EventDetails({
   overrideImportanceAction,
 }: {
   event: CalendarEvent;
-  overrideImportanceAction?: (formData: FormData) => void | Promise<void>;
+  overrideImportanceAction?: ManualLevelAction;
 }) {
   const score = event.hotelScores[0];
-  // Announced long-range events show an assessment without a publishable grade; the override
+  // Announced long-range events show an assessment without a publishable grade; the manual level
   // still targets their hidden score row.
   const overrideTarget = score ?? event.assessedScore;
   const primarySource = event.sources.find(
@@ -160,6 +164,16 @@ function EventDetails({
           Bekijk evenement
         </a>
       )}
+      {overrideImportanceAction && overrideTarget && (
+        <ManualLevelForm
+          eventId={event.id}
+          hotelId={overrideTarget.hotelId}
+          manualLevel={overrideTarget.manualLevel}
+          suggestedLevel={overrideTarget.suggestedLevel}
+          announced={event.announced}
+          action={overrideImportanceAction}
+        />
+      )}
       {event.demandAssessment && (
         <details className="score-explanation">
           <summary>Waarom deze inschatting?</summary>
@@ -180,25 +194,6 @@ function EventDetails({
                 </a>
               ))}
           </div>
-          {overrideImportanceAction && overrideTarget && (
-            <form action={overrideImportanceAction} className="score-override">
-              <input type="hidden" name="eventId" value={event.id} />
-              <input type="hidden" name="hotelId" value={overrideTarget.hotelId} />
-              <label>
-                Handmatige inschatting
-                <select name="importance" defaultValue={overrideTarget.importance}>
-                  {demandLevels.map((level) => (
-                    <option key={level} value={level}>
-                      {demandLabels[level]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button className="secondary" type="submit">
-                Opslaan
-              </button>
-            </form>
-          )}
         </details>
       )}
     </article>
@@ -207,14 +202,16 @@ function EventDetails({
 
 function EventOverview({
   events,
+  hiddenEvents,
   rangeStart,
   monthHrefs,
   overrideImportanceAction,
 }: {
   events: CalendarEvent[];
+  hiddenEvents?: CalendarEvent[];
   rangeStart?: string;
   monthHrefs?: Record<string, string>;
-  overrideImportanceAction?: (formData: FormData) => void | Promise<void>;
+  overrideImportanceAction?: ManualLevelAction;
 }) {
   const counts = Object.fromEntries(
     publishableDemandLevels.map((level) => [
@@ -304,6 +301,18 @@ function EventOverview({
           <div className="event-overview-list">{rows(items)}</div>
         </section>;
       })}
+      {overrideImportanceAction && hiddenEvents && hiddenEvents.length > 0 && (
+        <details className="event-month-group hidden-events">
+          <summary>
+            Handmatig uit de kalender gehaald ({hiddenEvents.length})
+          </summary>
+          <p className="muted">
+            Deze evenementen staan op Laag of Verhoogd. Zet ze op Hoog of Piek
+            om ze terug in de kalender te zetten.
+          </p>
+          <div className="event-overview-list">{rows(hiddenEvents)}</div>
+        </details>
+      )}
     </section>
   );
 }
@@ -313,6 +322,7 @@ export function CalendarView({
   rangeStart,
   monthHrefs,
   events,
+  hiddenEvents,
   latestRun,
   view = "list",
   overrideImportanceAction,
@@ -321,9 +331,10 @@ export function CalendarView({
   rangeStart?: string;
   monthHrefs?: Record<string, string>;
   events: CalendarEvent[];
+  hiddenEvents?: CalendarEvent[];
   latestRun?: LatestRun | null;
   view?: "list" | "calendar";
-  overrideImportanceAction?: (formData: FormData) => void | Promise<void>;
+  overrideImportanceAction?: ManualLevelAction;
 }) {
   const [selectedId, setSelectedId] = useState(events[0]?.id ?? null);
   const selectedEvent =
@@ -341,6 +352,7 @@ export function CalendarView({
           rangeStart={rangeStart}
           monthHrefs={monthHrefs}
           events={events}
+          hiddenEvents={hiddenEvents}
           overrideImportanceAction={overrideImportanceAction}
         />
       </>

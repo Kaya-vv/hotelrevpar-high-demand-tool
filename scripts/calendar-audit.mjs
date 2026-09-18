@@ -20,7 +20,7 @@ const batched = async (ids, build) => {
 };
 
 const server = await createServer({ configFile: false, logLevel: "error", resolve: { alias: { "@": resolve("src") } }, server: { middlewareMode: true, hmr: false } });
-const { isAnnouncedLongRange, isPublishableDemand } = await server.ssrLoadModule("/src/features/events/importance.ts");
+const { isAnnouncedLongRange, isPublishableDemand, gradedDemand } = await server.ssrLoadModule("/src/features/events/importance.ts");
 const { readDemandAssessment, hasHotelDemand } = await server.ssrLoadModule("/src/features/events/demand-assessment.ts");
 const { isEnabledPrimarySource } = await server.ssrLoadModule("/src/features/events/source-evidence.ts");
 // The calendar converts to LOCAL dates; slicing UTC inflates a CET-boundary event by a day.
@@ -52,8 +52,7 @@ for (const area of areas) {
       && isEnabledPrimarySource(source, area.enabled_sources));
     if (!eventSources.length) continue;
     const eventScores = scores.filter((score) => score.event_id === event.id).map((score) => ({
-      importance: score.importance_override ?? score.suggested_importance,
-      impactBasis: score.impact_basis, distanceKm: score.distance_km,
+      ...gradedDemand(score), distanceKm: score.distance_km,
       assessment: score.demand_assessment, total: score.total,
     }));
     const start = localDate(event.start_at);

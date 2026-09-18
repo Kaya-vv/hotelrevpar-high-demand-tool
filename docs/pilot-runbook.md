@@ -66,7 +66,7 @@ join events as event on event.id = link.event_id
 where decision.state = 'active'
   and coalesce(score.importance_override, score.suggested_importance)
     in ('High', 'Peak')
-  and score.impact_basis <> 'default'
+  and (score.importance_override is not null or score.impact_basis <> 'default')
   and source.provider = any(area.enabled_sources)
   and source.source_state = 'active'
   and source.primary_source_confirmed
@@ -103,7 +103,7 @@ where decision.state = 'active'
   and event.certainty = 'confirmed'
   and coalesce(score.importance_override, score.suggested_importance)
     in ('High', 'Peak')
-  and score.impact_basis <> 'default'
+  and (score.importance_override is not null or score.impact_basis <> 'default')
   and source.provider = any(area.enabled_sources)
   and source.source_state = 'active'
   and source.primary_source_confirmed

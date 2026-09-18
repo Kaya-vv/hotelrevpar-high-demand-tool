@@ -150,6 +150,7 @@ export default async function CalendarPage({
           return [target, href({ month: target, view: "calendar" })];
         }))}
         events={data.events}
+        hiddenEvents={data.hiddenEvents}
         latestRun={data.latestRun}
         view={view}
         overrideImportanceAction={

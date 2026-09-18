@@ -1,9 +1,9 @@
 import { readEventEvidence } from "@/features/events/evidence";
 import {
   demandLabels,
+  gradedDemand,
   hotelCalendarVisibility,
   isPublishableDemand,
-  type DemandLevel,
 } from "@/features/events/importance";
 import { eventLocalDate } from "@/features/events/normalize";
 import { isEnabledPrimarySource } from "@/features/events/source-evidence";
@@ -122,9 +122,7 @@ export async function loadVisibleNotificationEvents(
     const eventScores = scores
       .filter((score) => score.event_id === event.id)
       .map((score) => ({
-        importance: (score.importance_override ??
-          score.suggested_importance) as DemandLevel,
-        impactBasis: score.impact_basis,
+        ...gradedDemand(score),
         distanceKm: score.distance_km,
         assessment: score.demand_assessment,
       }));

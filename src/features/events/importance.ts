@@ -33,6 +33,33 @@ export function isPublishableDemand(
 }
 
 /**
+ * The basis recorded for a hand-set level. `impact_basis` says what the automatic scorer had to
+ * go on, and `default` means "nothing at all", which is why it blocks an automatic grade. Keeping
+ * that block in front of a manual level made "Handmatige inschatting" silently do nothing exactly
+ * on the events the scorer knew least about.
+ */
+export const manualDemandBasis = "manual_override";
+
+/**
+ * The one place that turns a stored score row into the level the calendar, the export and the
+ * notifications all work from. A manual level replaces the suggested one and carries its own
+ * basis, so every reader applies the same policy to an operator's decision.
+ */
+export function gradedDemand(score: {
+  suggested_importance: string;
+  importance_override: string | null;
+  impact_basis: string;
+}) {
+  const manualLevel = (score.importance_override as DemandLevel | null) ?? null;
+  return {
+    importance: (manualLevel ?? score.suggested_importance) as DemandLevel,
+    impactBasis: manualLevel ? manualDemandBasis : score.impact_basis,
+    manualLevel,
+    suggestedLevel: score.suggested_importance as DemandLevel,
+  };
+}
+
+/**
  * Beyond the near-term horizon a demand grade cannot be earned yet: a future edition has no
  * attendance of its own and organisers rarely publish audience information a year ahead. Two
  * kinds of edition are still worth announcing, without a level.
@@ -55,6 +82,10 @@ export function isPublishableDemand(
  * hidden: fixtures come from feeds and never carry verbatim organiser evidence, and open days run
  * one or two days. Three is the threshold rather than two because at two the rule admits
  * `Bachelor Open Day 2026`, `Master Open Day 2027` and `Liquicity Winterfestival`.
+ *
+ * A hand-set level outranks all of it. An operator who grades an announcement Low or Verhoogd has
+ * judged the event not worth a room-rate decision, so announcing it anyway is the calendar
+ * contradicting the person using it.
  */
 export function isAnnouncedLongRange(input: {
   startDate: string;
@@ -63,10 +94,12 @@ export function isAnnouncedLongRange(input: {
   demandRadiusKm: number | null;
   category: string;
   hasConfirmedDateAndLocation: boolean;
-  scores: { importance: DemandLevel; impactBasis: string; distanceKm: number | null; assessment?: unknown }[];
+  scores: { importance: DemandLevel; impactBasis: string; distanceKm: number | null; assessment?: unknown;
+    manualLevel?: DemandLevel | null }[];
 }) {
   if (input.startDate <= input.nearTermHorizon) return false;
   if (input.scores.some((score) => isPublishableDemand(score.importance, score.impactBasis))) return false;
+  if (input.scores.some((score) => score.manualLevel)) return false;
   const withinRadius = input.scores.some((score) =>
     score.distanceKm !== null && input.demandRadiusKm !== null && score.distanceKm <= input.demandRadiusKm);
   const assessed = withinRadius
@@ -86,6 +119,8 @@ export type HotelCalendarVisibilityScore = {
   impactBasis: string;
   distanceKm: number | null;
   assessment?: unknown;
+  /** Hand-set level from `hotel_event_scores.importance_override`, null when automatic. */
+  manualLevel?: DemandLevel | null;
 };
 
 /** One policy for the customer calendar, exports, and new-event notifications. */
@@ -132,14 +167,12 @@ export function publishableReviewEventIds(
   );
   return new Set(
     scores
-      .filter(
-        (score) =>
-          reviewIds.has(score.event_id) &&
-          (hasHotelDemand(readDemandAssessment(score.demand_assessment)) || isPublishableDemand(
-            (score.importance_override ?? score.suggested_importance) as DemandLevel,
-            score.impact_basis,
-          )),
-      )
+      .filter((score) => {
+        if (!reviewIds.has(score.event_id)) return false;
+        if (hasHotelDemand(readDemandAssessment(score.demand_assessment))) return true;
+        const graded = gradedDemand(score);
+        return isPublishableDemand(graded.importance, graded.impactBasis);
+      })
       .map((score) => score.event_id),
   );
 }

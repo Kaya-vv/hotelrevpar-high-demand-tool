@@ -5,6 +5,7 @@ import { readEventEvidence } from "@/features/events/evidence";
 import { eventLocalDate } from "@/features/events/normalize";
 import { createServerClient } from "@/lib/supabase/server";
 import {
+  gradedDemand,
   hotelCalendarVisibility,
   isPublishableDemand,
   publishableReviewEventIds,
@@ -115,7 +116,7 @@ export async function getCalendarData(
   const selectedRadiusKm =
     hotels.find((hotel) => hotel.id === selectedHotelId)?.demand_radius_km ?? null;
   const exportedDates = await calendarExportDates(accountId, selectedHotelId, eventIds);
-  const mapped: CalendarEvent[] = scopedEvents
+  const assessed: CalendarEvent[] = scopedEvents
     .filter((event) => event.certainty === "confirmed")
     .map((event) => {
       const decision = decisionsByEvent.get(event.id);
@@ -139,9 +140,7 @@ export async function getCalendarData(
           hotelId: score.hotel_id,
           hotelName: selectedHotelName,
           total: score.total,
-          importance: (score.importance_override ??
-            score.suggested_importance) as DemandLevel,
-          impactBasis: score.impact_basis,
+          ...gradedDemand(score),
           assessment: readDemandAssessment(score.demand_assessment),
           impactPoints: score.impact_points,
           distancePoints: score.distance_points,
@@ -192,8 +191,15 @@ export async function getCalendarData(
         demandAssessment: assessedScore?.assessment,
       };
     })
-    .filter((event) => event.visible)
     .filter((event) => eventLocalDate(event.startAt) <= bounds.end && eventLocalDate(event.endAt) >= bounds.start);
+  const byDate = (left: CalendarEvent, right: CalendarEvent) =>
+    left.startAt.localeCompare(right.startAt) || left.title.localeCompare(right.title, "nl");
+  const mapped = assessed.filter((event) => event.visible);
+  // A hand-set level below the publish threshold takes the event out of the calendar. It stays
+  // listed separately so the operator who did that can also undo it.
+  const hiddenEvents = assessed
+    .filter((event) => !event.visible && Boolean(event.assessedScore?.manualLevel))
+    .sort(byDate);
   const categories = [...new Set(mapped.map((event) => event.category))].sort();
   const filtered = mapped
     .filter((event) => !filters.category || event.category === filters.category)
@@ -204,11 +210,7 @@ export async function getCalendarData(
           (score) => score.importance === filters.importance
         )
     )
-    .sort(
-      (left, right) =>
-        left.startAt.localeCompare(right.startAt) ||
-        left.title.localeCompare(right.title, "nl")
-    );
+    .sort(byDate);
 
   let latestRun: LatestRun | null = null;
   if (runResult.data) {
@@ -232,6 +234,7 @@ export async function getCalendarData(
   }
   return {
     events: filtered,
+    hiddenEvents,
     latestRun,
     hotels,
     selectedHotelId,

@@ -1,6 +1,6 @@
 import { eventLocalDate } from "@/features/events/normalize";
 import { readEventEvidence } from "@/features/events/evidence";
-import { hotelCalendarVisibility, type DemandLevel } from "@/features/events/importance";
+import { gradedDemand, hotelCalendarVisibility, type DemandLevel } from "@/features/events/importance";
 import { createServerClient } from "@/lib/supabase/server";
 import { fetchAllRows, fetchInBatches, fetchPagedInBatches } from "@/lib/supabase/fetch-in-batches";
 import { isEnabledPrimarySource } from "@/features/events/source-evidence";
@@ -99,7 +99,7 @@ export async function loadExportEvents(accountId: string, range: ExportRange, se
       status: active ? "active" : event.source_state !== "active" ? event.source_state : decision?.state ?? "unavailable",
       hotels: scores.filter((score) => score.event_id === event.id).map((score) => {
         const hotel = hotels.find((hotel) => hotel.id === score.hotel_id)!;
-        const importance = (score.importance_override ?? score.suggested_importance) as DemandLevel;
+        const { importance, impactBasis, manualLevel } = gradedDemand(score);
         const visibility = hotelCalendarVisibility({
           active,
           confirmed: event.certainty === "confirmed",
@@ -113,10 +113,10 @@ export async function loadExportEvents(accountId: string, range: ExportRange, se
             const evidence = readEventEvidence(source.evidence);
             return Boolean(evidence?.dateText && evidence.locationText);
           }),
-          scores: [{ importance, impactBasis: score.impact_basis, distanceKm: score.distance_km, assessment: score.demand_assessment }],
+          scores: [{ importance, impactBasis, manualLevel, distanceKm: score.distance_km, assessment: score.demand_assessment }],
         });
         const claim = claims.find((claim) => claim.event_id === event.id && claim.hotel_id === hotel.id);
-        return { id: hotel.id, code: hotelCodes.get(hotel.id)!, importance, impactBasis: score.impact_basis,
+        return { id: hotel.id, code: hotelCodes.get(hotel.id)!, importance, impactBasis,
           available: visibility.visible, announced: visibility.announced,
           exportLevel: (choices.find((choice) => choice.event_id === event.id && choice.hotel_id === hotel.id)?.importance as DemandLevel | undefined) ?? null,
           exportedAt: batches.find((batch) => batch.id === claim?.latest_batch_id)?.created_at ?? null,

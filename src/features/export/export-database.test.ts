@@ -105,6 +105,17 @@ describe.skipIf(!enabled)("export transactions in isolated local Supabase", () =
     expect(snapshot).toMatchObject({ startDate: "2027-06-10", endDate: "2027-06-12" });
     await expect(createExport(request, deps(id))).resolves.toBeTruthy();
   });
+  it("exports a hand-set High level the automatic scorer had no basis for", async () => {
+    const id = await addEvent("Medium");
+    // What the calendar's "Handmatige inschatting" writes on an event the scorer knew nothing
+    // about. The database guard used to reject the whole batch for these.
+    check(await db.from("hotel_event_scores").update({ importance_override: "High", impact_basis: "default" }).eq("hotel_id", hotelId).eq("event_id", id));
+    const request = input(id);
+    const events = await deps(id).load(request);
+    expect(events[0].hotels.find((hotel) => hotel.id === hotelId)).toMatchObject({ importance: "High", available: true, announced: false });
+    await expect(createExport(request, deps(id))).resolves.toBeTruthy();
+    expect(check(await db.from("export_items").select("snapshot").eq("event_id", id)).data![0].snapshot).toMatchObject({ importance: "High", manual: false });
+  });
   it("rolls back the entire batch on a bad choice and denies foreign accounts and direct client commits", async () => {
     const id = await addEvent(); const request = input(id);
     const bytes = Buffer.from("test workbook");

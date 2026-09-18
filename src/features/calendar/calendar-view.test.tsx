@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { RunStatusContext } from "@/features/collection/use-run-status-poll";
@@ -30,6 +30,8 @@ const events: CalendarEvent[] = [
         hotelName: "MATCH",
         total: 78,
         importance: "High",
+        manualLevel: null,
+        suggestedLevel: "High",
         impactBasis: "attendance",
         impactPoints: 60,
         distancePoints: 12,
@@ -41,6 +43,8 @@ const events: CalendarEvent[] = [
         hotelName: "Parkzicht",
         total: 55,
         importance: "Medium",
+        manualLevel: null,
+        suggestedLevel: "Medium",
         impactBasis: "attendance",
         impactPoints: 45,
         distancePoints: 6,
@@ -102,9 +106,11 @@ describe("CalendarView", () => {
     );
 
     expect(screen.getAllByText("Handmatige inschatting").length).toBeGreaterThan(0);
+    // Nothing set by hand: the dropdown starts on the level the search results gave.
+    expect(screen.getAllByLabelText(/Handmatige inschatting/)[0]).toHaveValue("High");
   });
 
-  it("targets the hidden score row when an announced event has no publishable grade", () => {
+  it("offers the manual level on the event itself, not behind the explanation", () => {
     render(
       <CalendarView
         month="2027-10"
@@ -113,16 +119,88 @@ describe("CalendarView", () => {
             ...events[0],
             announced: true,
             hotelScores: [],
-            assessedScore: { ...events[0].hotelScores[0], importance: "Medium" },
+            assessedScore: {
+              ...events[0].hotelScores[0],
+              importance: "Low",
+              manualLevel: "Low",
+              suggestedLevel: "Medium",
+            },
           },
         ]}
         overrideImportanceAction={vi.fn()}
       />,
     );
 
-    expect(screen.getAllByText("Handmatige inschatting").length).toBeGreaterThan(0);
+    const select = screen.getAllByLabelText(/Handmatige inschatting/)[0];
+    // The complaint this fixes: the control was only reachable after opening "Waarom deze
+    // inschatting?", one click deeper than the event itself.
+    expect(select.closest("details.score-explanation")).toBeNull();
     expect(document.querySelector("input[name='hotelId']")).toHaveValue("hotel-1");
-    expect(screen.getAllByLabelText(/Handmatige inschatting/)[0]).toHaveValue("Medium");
+    expect(select).toHaveValue("Low");
+    expect(screen.queryByRole("option", { name: /Automatisch/ })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("option").map((option) => option.textContent))
+      .toEqual(["Laag", "Verhoogd", "Hoog", "Piek"]);
+  });
+
+  it("confirms what a saved level did", async () => {
+    const action = vi.fn().mockResolvedValue({
+      ok: true,
+      message: "Opgeslagen. Inschatting staat nu op Hoog.",
+    });
+    render(
+      <CalendarView month="2027-10" events={events} overrideImportanceAction={action} />,
+    );
+
+    fireEvent.change(screen.getAllByLabelText(/Handmatige inschatting/)[0], {
+      target: { value: "High" },
+    });
+    fireEvent.click(screen.getAllByRole("button", { name: "Opslaan" })[0]);
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Opgeslagen. Inschatting staat nu op Hoog.",
+    );
+    expect(action.mock.calls[0][1].get("importance")).toBe("High");
+    expect(action.mock.calls[0][1].get("eventId")).toBe("event-1");
+  });
+
+  it("keeps a hand-hidden event reachable so the level can be undone", () => {
+    const hidden: CalendarEvent = {
+      ...events[0],
+      id: "hidden-1",
+      title: "Handmatig verlaagd congres",
+      hotelScores: [],
+      visible: false,
+      assessedScore: {
+        ...events[0].hotelScores[0],
+        importance: "Low",
+        manualLevel: "Low",
+        suggestedLevel: "High",
+      },
+    };
+    render(
+      <CalendarView
+        month="2027-10"
+        events={events}
+        hiddenEvents={[hidden]}
+        overrideImportanceAction={vi.fn()}
+      />,
+    );
+
+    const group = screen.getByText(/Handmatig uit de kalender gehaald \(1\)/).closest("details")!;
+    expect(within(group).getAllByText("Handmatig verlaagd congres").length).toBeGreaterThan(0);
+    expect(within(group).getAllByRole("button", { name: "Opslaan" })).toHaveLength(1);
+  });
+
+  it("hides the undo group from operators, who cannot change a level", () => {
+    render(
+      <CalendarView
+        month="2027-10"
+        events={events}
+        hiddenEvents={[{ ...events[0], id: "hidden-1", hotelScores: [], visible: false }]}
+      />,
+    );
+
+    expect(screen.queryByText(/Handmatig uit de kalender gehaald/)).not.toBeInTheDocument();
   });
 
   it("keeps the month calendar as an alternate view with scores in the agenda", () => {

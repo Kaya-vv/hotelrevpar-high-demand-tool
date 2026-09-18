@@ -3,7 +3,7 @@ import { distanceKm } from "@/features/events/distance";
 import { normalizeCandidate, eventLocalDate } from "@/features/events/normalize";
 import { fetchInBatches } from "@/lib/supabase/fetch-in-batches";
 import { classifyMatch } from "@/features/events/match";
-import { isPublishableDemand, type DemandLevel } from "@/features/events/importance";
+import { gradedDemand, isPublishableDemand } from "@/features/events/importance";
 import {
   automatedExclusionReason,
   providerStatusReasons,
@@ -899,8 +899,9 @@ export function createCollectionRepository(): CollectionRepository {
         const scores = await fetchInBatches(activeIds, (ids) => supabase.from("hotel_event_scores").select("event_id, suggested_importance, importance_override, impact_basis, first_eligible_at").eq("hotel_id", hotel.id).in("event_id", ids));
         for (const score of scores) {
           const event = events.find((event) => event.id === score.event_id);
+          const graded = gradedDemand(score);
           if (event?.certainty === "confirmed" && event.start_at.slice(0, 10) > context.window.end && supportedIds.has(event.id)
-            && isPublishableDemand((score.importance_override ?? score.suggested_importance) as DemandLevel, score.impact_basis)) {
+            && isPublishableDemand(graded.importance, graded.impactBasis)) {
             published.add(`${hotel.id}:${event.id}`);
             const firstEligibleAt = score.first_eligible_at ?? new Date().toISOString();
             if (!score.first_eligible_at) {
