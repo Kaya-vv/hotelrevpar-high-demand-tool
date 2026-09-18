@@ -9,7 +9,8 @@ import { loadExportHistory } from "@/features/export/history";
 import { exportRange, loadExportEvents } from "@/features/export/query";
 import type { ExportSnapshot } from "@/features/export/types";
 import { getHotelScope } from "@/features/workspace/hotel-context";
-import { requireAccount } from "@/lib/auth/require-account";
+import { requireViewedAccount } from "@/features/workspace/viewed-account";
+import { OwnAccountOnly } from "@/features/workspace/viewing-notice";
 
 const statusLabels: Record<string, string> = { active: "Actief", cancelled: "Geannuleerd", postponed: "Uitgesteld", excluded: "Verborgen", ended: "Afgelopen", needs_review: "Controle nodig", unavailable: "Niet beschikbaar" };
 function snapshotLabel(snapshot: ExportSnapshot | null) {
@@ -17,7 +18,9 @@ function snapshotLabel(snapshot: ExportSnapshot | null) {
 }
 
 export default async function ExportPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  const { accountId } = await requireAccount();
+  const { accountId, viewedAccountName, viewingOtherAccount } = await requireViewedAccount();
+  if (viewingOtherAccount)
+    return <OwnAccountOnly accountName={viewedAccountName} page="Exporteren naar RevControl" />;
   const params = await searchParams;
   const scope = await getHotelScope(accountId);
   const range = exportRange(typeof params.from === "string" ? params.from : null, typeof params.to === "string" ? params.to : null);

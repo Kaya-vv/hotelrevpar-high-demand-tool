@@ -14,10 +14,15 @@ import {
 } from "@/features/review/location-actions";
 import { UnresolvedLocationsList } from "@/features/review/unresolved-locations-list";
 import { ReviewList } from "@/features/review/review-list";
+import { requireViewedAccount } from "@/features/workspace/viewed-account";
+import { OwnAccountOnly } from "@/features/workspace/viewing-notice";
 import { requirePlatformAdmin } from "@/lib/auth/require-account";
 
 export default async function ReviewPage() {
   const { accountId } = await requirePlatformAdmin();
+  const { viewedAccountName, viewingOtherAccount } = await requireViewedAccount();
+  if (viewingOtherAccount)
+    return <OwnAccountOnly accountName={viewedAccountName} page="Datakwaliteit" />;
   const [data, unresolvedLocations] = await Promise.all([
     getReviewData(accountId),
     unresolvedEventLocations(accountId),

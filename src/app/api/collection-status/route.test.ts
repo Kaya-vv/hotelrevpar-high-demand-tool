@@ -1,11 +1,11 @@
 import { beforeEach, expect, it, vi } from "vitest";
 const { identity, query, hotelScope } = vi.hoisted(() => ({
-  identity: { accountId: "owned-account", role: "operator" },
+  identity: { accountId: "owned-account", viewedAccountId: "owned-account", role: "operator" },
   query: vi.fn(),
   hotelScope: vi.fn(),
 }));
-vi.mock("@/lib/auth/require-account", () => ({
-  requireAccount: async () => identity,
+vi.mock("@/features/workspace/viewed-account", () => ({
+  requireViewedAccount: async () => identity,
 }));
 vi.mock("@/features/workspace/hotel-context", () => ({
   getHotelScope: hotelScope,
@@ -14,6 +14,7 @@ vi.mock("@/features/collection/status", () => ({ getCollectionStatus: query }));
 import { GET } from "./route";
 beforeEach(() => {
   identity.role = "operator";
+  identity.viewedAccountId = "owned-account";
   query
     .mockReset()
     .mockResolvedValue({
@@ -51,4 +52,14 @@ it("allows platform scope only for platform administrators", async () => {
     new Request("https://example.com/api/collection-status?scope=platform"),
   );
   expect(query).toHaveBeenCalledWith("owned-account", "owned-area", true);
+});
+it("follows the platform administrator into the subscriber account it is looking at", async () => {
+  identity.role = "platform_admin";
+  identity.viewedAccountId = "subscriber-account";
+  hotelScope.mockResolvedValue({ areaId: "subscriber-area" });
+
+  await GET(new Request("https://example.com/api/collection-status"));
+
+  expect(hotelScope).toHaveBeenCalledWith("subscriber-account");
+  expect(query).toHaveBeenCalledWith("subscriber-account", "subscriber-area", false);
 });

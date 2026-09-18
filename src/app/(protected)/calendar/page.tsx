@@ -13,7 +13,7 @@ import {
   publishableDemandLevels,
 } from "@/features/events/importance";
 import { overrideImportance } from "@/features/review/actions";
-import { requireAccount } from "@/lib/auth/require-account";
+import { requireViewedAccount } from "@/features/workspace/viewed-account";
 
 function currentMonth() {
   const parts = new Intl.DateTimeFormat("en", {
@@ -39,7 +39,8 @@ export default async function CalendarPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { accountId, role } = await requireAccount();
+  const { viewedAccountId, viewedAccountName, viewingOtherAccount, role } =
+    await requireViewedAccount();
   const params = await searchParams;
   const rawMonth = value(params, "month");
   const month =
@@ -65,7 +66,7 @@ export default async function CalendarPage({
       ? (rawImportance as CalendarQueryFilters["importance"])
       : undefined,
   };
-  const data = await getCalendarData(accountId, filters);
+  const data = await getCalendarData(viewedAccountId, filters);
   const selectedHotel = data.hotels.find(
     (hotel) => hotel.id === data.selectedHotelId
   );
@@ -94,6 +95,12 @@ export default async function CalendarPage({
           <p>Alle relevante momenten met hun verwachte hotelvraag en score.</p>
         </header>
       </div>
+      {viewingOtherAccount && (
+        <p role="status" className="notice warning">
+          Je kijkt mee in het account van {viewedAccountName}. Je ziet dezelfde
+          kalender als deze klant en kunt hier niets wijzigen.
+        </p>
+      )}
       <div className="event-toolbar">
         {view === "calendar" ? (
           <MonthNavigation key={month} month={month} todayMonth={currentMonth()} baseHref={href({})} />
@@ -161,7 +168,9 @@ export default async function CalendarPage({
         includeMedium={includeMedium}
         mediumHref={href({ medium: "1" })}
         overrideImportanceAction={
-          role === "platform_admin" ? overrideImportance : undefined
+          role === "platform_admin" && !viewingOtherAccount
+            ? overrideImportance
+            : undefined
         }
       />
     </div>

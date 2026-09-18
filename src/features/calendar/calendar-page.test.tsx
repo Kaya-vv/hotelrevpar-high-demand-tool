@@ -2,16 +2,28 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import CalendarPage from "@/app/(protected)/calendar/page";
 
-const { getCalendarData } = vi.hoisted(() => ({ getCalendarData: vi.fn(async () => ({
-  events: [], latestRun: null, hotels: [{ id: "hotel", name: "Selected hotel" }], selectedHotelId: "hotel", categories: ["concert"],
-})) }));
+const { getCalendarData, viewedAccount } = vi.hoisted(() => ({
+  getCalendarData: vi.fn(async () => ({
+    events: [], latestRun: null, hotels: [{ id: "hotel", name: "Selected hotel" }], selectedHotelId: "hotel", categories: ["concert"],
+  })),
+  viewedAccount: {
+    accountId: "account", accountName: "Robert", role: "operator" as "operator" | "platform_admin", userId: "user",
+    viewedAccountId: "account", viewedAccountName: "Robert", viewingOtherAccount: false,
+  },
+}));
 vi.mock("./query", () => ({ getCalendarData }));
-vi.mock("@/lib/auth/require-account", () => ({ requireAccount: async () => ({ accountId: "account", role: "member" }) }));
+vi.mock("@/features/workspace/viewed-account", () => ({ requireViewedAccount: async () => viewedAccount }));
 vi.mock("@/features/review/actions", () => ({ overrideImportance: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 describe("calendar page", () => {
-  afterEach(() => { cleanup(); vi.clearAllMocks(); });
+  afterEach(() => {
+    cleanup();
+    vi.clearAllMocks();
+    Object.assign(viewedAccount, {
+      role: "operator", viewedAccountId: "account", viewedAccountName: "Robert", viewingOtherAccount: false,
+    });
+  });
 
   it("defaults to the full overview and keeps filters in the month calendar link", async () => {
     render(await CalendarPage({ searchParams: Promise.resolve({ month: "2027-05", category: "concert", importance: "High" }) }));
@@ -35,5 +47,15 @@ describe("calendar page", () => {
     expect(screen.getByRole("link", { name: "Maandkalender" })).toHaveAttribute("aria-current", "page");
     expect(screen.queryByLabelText("Periode")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Maand 2027-05")).toBeInTheDocument();
+  });
+
+  it("says the administrator is only looking along in a subscriber account", async () => {
+    Object.assign(viewedAccount, {
+      role: "platform_admin", viewedAccountId: "subscriber", viewedAccountName: "Sandton Eindhoven", viewingOtherAccount: true,
+    });
+    render(await CalendarPage({ searchParams: Promise.resolve({}) }));
+
+    expect(getCalendarData).toHaveBeenCalledWith("subscriber", expect.anything());
+    expect(screen.getByRole("status")).toHaveTextContent("Je kijkt mee in het account van Sandton Eindhoven");
   });
 });

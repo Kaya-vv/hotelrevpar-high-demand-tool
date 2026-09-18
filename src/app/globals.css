@@ -164,6 +164,12 @@ a {
   gap: 2px;
 }
 
+.workspace-header .workspace-identity {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
 .hotel-switcher {
   display: grid;
   grid-template-columns: auto minmax(190px, 280px);

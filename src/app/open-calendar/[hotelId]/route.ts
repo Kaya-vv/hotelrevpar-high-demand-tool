@@ -8,14 +8,17 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ hotelId: string }> },
 ) {
-  const { accountId } = await requireAccount();
+  const account = await requireAccount();
   const { hotelId } = await params;
-  const { data, error } = await (await createServerClient())
+  const hotels = (await createServerClient())
     .from("hotels")
     .select("id")
-    .eq("account_id", accountId).is("archived_at", null)
-    .eq("id", hotelId)
-    .maybeSingle();
+    .is("archived_at", null)
+    .eq("id", hotelId);
+  // The platform administrator may also open a subscriber's hotel to look at its calendar.
+  const { data, error } = account.role === "platform_admin"
+    ? await hotels.maybeSingle()
+    : await hotels.eq("account_id", account.accountId).maybeSingle();
   if (error) throw error;
   if (!data) return new Response(null, { status: 404 });
 

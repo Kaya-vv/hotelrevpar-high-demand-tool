@@ -1,11 +1,15 @@
 import { getDashboardData } from "@/features/dashboard/query";
 import { PortfolioForm } from "@/features/portfolio/portfolio-form";
 import { getPortfolio } from "@/features/portfolio/queries";
-import { requireAccount } from "@/lib/auth/require-account";
+import { requireViewedAccount } from "@/features/workspace/viewed-account";
+import { OwnAccountOnly } from "@/features/workspace/viewing-notice";
 import { setHotelArchived } from "@/features/portfolio/actions";
 
 export default async function PortfolioPage() {
-  const { accountId, role } = await requireAccount();
+  const { accountId, role, viewedAccountName, viewingOtherAccount } =
+    await requireViewedAccount();
+  if (viewingOtherAccount)
+    return <OwnAccountOnly accountName={viewedAccountName} page="Hotels" />;
   const [portfolio, insights, archived] = await Promise.all([
     getPortfolio(accountId),
     getDashboardData(accountId),
