@@ -1,5 +1,5 @@
-export const CHECK_INTERVAL_DAYS = 14;
-export const BROAD_SEARCH_INTERVAL_DAYS = 28;
+export const CHECK_INTERVAL_DAYS = 30;
+export const BROAD_SEARCH_INTERVAL_DAYS = CHECK_INTERVAL_DAYS;
 
 /** Compare calendar days so a few minutes in the queue cannot add another day. */
 export function searchDue(lastStartedAt: string | null, now = new Date(), days = CHECK_INTERVAL_DAYS) {

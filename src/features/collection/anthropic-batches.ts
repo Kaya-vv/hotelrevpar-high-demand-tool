@@ -5,6 +5,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { Json } from "@/lib/supabase/database.types";
 
 import type { SourceResult } from "./types";
+import { batchCacheKey, legacyBatchCacheKeys } from "./batch-identity";
 
 // 5 restores the impactPoints hotel-demand classification the verification prompt had stopped
 // asking for. Versions 3 and 4 were collected while the prompt said `impactPoints is null`, so
@@ -152,12 +153,6 @@ export function createBatchStore(client?: Awaited<ReturnType<typeof adminClient>
   };
 }
 
-function cacheKey(requests: MessageCreateParamsNonStreaming[]) {
-  return createHash("sha256")
-    .update(JSON.stringify({ version: 1, requests }))
-    .digest("hex");
-}
-
 export type ClaudeMarketInput = {
   start: string;
   end: string;
@@ -290,20 +285,34 @@ export async function runAnthropicBatch(
     pollMilliseconds?: number;
     deadline?: number;
     usageHandledByCaller?: boolean;
+    /** Old saved work must be matched to its paid batch before it may continue. */
+    allowCreate?: boolean;
   } = {},
 ): Promise<BatchedMessageResult[]> {
   if (!requests.length) return [];
   const store = options.store ?? createBatchStore();
   const pause = options.wait ?? wait;
   const pollMilliseconds = options.pollMilliseconds ?? 5_000;
-  const key = cacheKey(requests);
+  let key = batchCacheKey(requests);
   const now = new Date();
   // Normalised, not optional: an unbounded poll burns the whole invocation and loses the run.
   const deadline = options.deadline ?? Date.now() + BATCH_CHECK_BUDGET_MS;
   await store.removeExpired(key, now.toISOString());
   let row = await store.get(key);
+  if (!row) {
+    for (const legacyKey of legacyBatchCacheKeys(requests)) {
+      const legacy = await store.get(legacyKey);
+      if (!legacy) continue;
+      if (!row || (legacy.status === "completed" && legacy.results) || (!row.batch_id && legacy.batch_id)) {
+        key = legacyKey;
+        row = legacy;
+      }
+      if (row.status === "completed" && row.results) break;
+    }
+  }
 
   if (!row) {
+    if (options.allowCreate === false) throw new Error("Saved batch needs reconciliation before another paid submission.");
     if (Date.now() >= deadline) throw new BatchPendingError();
     const ownerToken = randomUUID();
     // The lease must outlive the stuck-creation check below. With both at five minutes the

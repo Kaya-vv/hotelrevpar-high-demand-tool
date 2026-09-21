@@ -48,11 +48,11 @@ it("uses a rolling 90-day collection window", () => {
   });
 });
 
-it("runs Claude discovery again after twenty-eight calendar days", () => {
+it("runs Claude discovery again after thirty calendar days", () => {
   const now = new Date("2026-09-01T12:00:00Z");
   expect(claudeDiscoveryDue(null, now)).toBe(true);
-  expect(claudeDiscoveryDue("2026-08-05T00:00:00Z", now)).toBe(false);
-  expect(claudeDiscoveryDue("2026-08-04T23:59:59Z", now)).toBe(true);
+  expect(claudeDiscoveryDue("2026-08-03T00:00:00Z", now)).toBe(false);
+  expect(claudeDiscoveryDue("2026-08-02T23:59:59Z", now)).toBe(true);
 });
 
 it("selects the oldest unique Claude pages inside the active window", () => {
@@ -667,7 +667,7 @@ describe("runCollection", () => {
     expect(repo.persistCandidate).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ providerEventId: "phq-2", primarySourceConfirmed: true }));
   });
 
-  it("runs scheduled Claude discovery at most once every 28 days", async () => {
+  it("runs scheduled Claude discovery at most once every 30 days", async () => {
     const claude = vi.fn();
     const repo = repository({
       shouldRunClaudeDiscovery: vi.fn().mockResolvedValue(false),
@@ -687,7 +687,7 @@ describe("runCollection", () => {
     expect(result.sourceResults.claude).toEqual({
       state: "skipped",
       discoveryMode: "deferred",
-      reason: "Claude discovery runs at most once every 28 days per market.",
+      reason: "Claude discovery runs at most once every 30 days per market.",
     });
   });
 

@@ -521,7 +521,7 @@ export async function runCollection(
         sourceResults.claude = {
           state: "skipped",
           discoveryMode: claudeDiscoveryMode,
-          reason: "Claude discovery runs at most once every 28 days per market.",
+          reason: "Claude discovery runs at most once every 30 days per market.",
         };
       } else {
         sourcesToRun.push(source);

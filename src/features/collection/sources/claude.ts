@@ -390,6 +390,7 @@ export type MessageRequest = {
 export type Batching = {
   enabled: boolean;
   usageHandledByCaller?: boolean;
+  allowCreate?: boolean;
   deadline?: number;
   store?: BatchStore;
   wait?: (milliseconds: number) => Promise<void>;
@@ -421,6 +422,7 @@ export async function requestMessages(
     wait: batching.wait,
     deadline: batching.deadline,
     usageHandledByCaller: batching.usageHandledByCaller,
+    allowCreate: batching.allowCreate,
   });
   return results.map((result): PromiseSettledResult<Anthropic.Message> => {
     if (result.status === "rejected") return result;

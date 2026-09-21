@@ -68,7 +68,7 @@ describe("collection Cron", () => {
 
 it("the daily scheduler skips recent automatic and manual runs and includes first searches", async () => {
   vi.useFakeTimers();
-  vi.setSystemTime(new Date("2026-10-05T05:00:00Z"));
+  vi.setSystemTime(new Date("2026-10-21T05:00:00Z"));
   vi.stubEnv("CRON_SECRET", "secret");
   vi.mocked(enqueueCollectionAreas).mockClear();
   dbState.tables = {
@@ -76,7 +76,7 @@ it("the daily scheduler skips recent automatic and manual runs and includes firs
     collection_areas: ["due", "recent", "manual", "new"].map(id => ({ id, account_id: "account", hotel_id: id })),
     collection_runs: [
       { id: "r1", collection_area_id: "due", started_at: "2026-09-21T15:45:00Z" },
-      { id: "r2", collection_area_id: "recent", started_at: "2026-09-28T05:00:00Z" },
+      { id: "r2", collection_area_id: "recent", started_at: "2026-09-22T05:00:00Z" },
       { id: "r3", collection_area_id: "manual", started_at: "2026-10-03T16:00:00Z", trigger: "manual" },
     ],
   };

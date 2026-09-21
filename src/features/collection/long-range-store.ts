@@ -13,7 +13,7 @@ export type ResearchCycle = {
   startedAt: string; waves: number; leadKeys: string[]; finished?: boolean;
   retrieved?: Record<string, string[]>;
   queued: ResearchJob[];
-  pending?: { phase: "search" | "verification"; requests: MessageRequest[]; indices: number[]; reservations: string[]; total: number; jobs?: ResearchJob[]; preparationErrors?: Record<number, string> };
+  pending?: { batchIdentityVersion?: 2; phase: "search" | "verification"; requests: MessageRequest[]; indices: number[]; reservations: string[]; total: number; jobs?: ResearchJob[]; preparationErrors?: Record<number, string> };
 };
 
 export const LONG_RANGE_VERSION = 2;

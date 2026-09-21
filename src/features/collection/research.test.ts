@@ -161,8 +161,9 @@ describe("coordinated long-range research", () => {
     expect(test.state().leads[0].pendingStage).toBe("extraction");
     const calls = test.create.mock.calls.length;
     // Retry incomplete extraction once at the next due check.
-    test.state().announcementSearchAt = "2026-09-21T12:00:00Z";
-    await collectLongRange({ ...test.input, now: new Date("2026-09-21T12:00:00Z") });
+    test.state().discoveredAt = "2026-10-07T12:00:00Z";
+    test.state().announcementSearchAt = "2026-10-07T12:00:00Z";
+    await collectLongRange({ ...test.input, now: new Date("2026-10-07T12:00:00Z") });
     expect(test.create.mock.calls.length).toBeGreaterThan(calls);
   });
   it("keeps repaired evidence across stale duplicate leads, reload and newer cancellation", async () => {
@@ -234,7 +235,7 @@ describe("coordinated long-range research", () => {
     const test = setup();
     await collectLongRange(test.input);
     const lead = test.state().leads[0];
-    expect(lead.nextCheck).toBe("2026-09-21T12:00:00.000Z");
+    expect(lead.nextCheck).toBe("2026-10-07T12:00:00.000Z");
     delete lead.editions[0].evidence;
     lead.editions[0].assessmentVersion = 3;
     lead.editions[0].latitude = null;
@@ -438,13 +439,14 @@ describe("coordinated long-range research", () => {
     expect(result.total).toBeLessThan(70);
   });
 
-  it("checks a due discovered lead between monthly sweeps and reuses unchanged extraction", async () => {
+  it("checks a due discovered lead monthly and reuses unchanged extraction", async () => {
     const test = setup();
     await collectLongRange(test.input);
     expect(test.create).toHaveBeenCalledTimes(1);
     await collectLongRange(test.input);
     expect(test.pageFetcher).toHaveBeenCalledTimes(1);
-    const later = new Date("2026-09-21T12:00:00Z");
+    const later = new Date("2026-10-07T12:00:00Z");
+    test.state().discoveredAt = later.toISOString();
     test.state().announcementSearchAt = later.toISOString();
     await collectLongRange({ ...test.input, now: later });
     expect(test.pageFetcher).toHaveBeenCalledTimes(2);
@@ -520,11 +522,12 @@ describe("coordinated long-range research", () => {
     expect(test.state().leads[0].nextCheck).toBe(now.toISOString());
     complete = true;
     test.pageFetcher.mockRejectedValue(new Error("Official fetch returned HTTP 403"));
-    test.state().announcementSearchAt = "2026-09-21T12:00:00Z";
-    const next = await collectLongRange({ ...test.input, now: new Date("2026-09-21T12:00:00Z") });
+    test.state().discoveredAt = "2026-10-07T12:00:00Z";
+    test.state().announcementSearchAt = "2026-10-07T12:00:00Z";
+    const next = await collectLongRange({ ...test.input, now: new Date("2026-10-07T12:00:00Z") });
     expect(next.candidates.length).toBeGreaterThan(first.candidates.length);
     expect(test.state().pageCache?.[url].complete).toBe(true);
-    expect(next.candidates.at(-1)?.evidence?.checkedAt).toBe("2026-09-21T12:00:00.000Z");
+    expect(next.candidates.at(-1)?.evidence?.checkedAt).toBe("2026-10-07T12:00:00.000Z");
     expect(test.state().pageCache?.[url].checkedAt).toBe(now.toISOString());
     expect(next.usage.blockedSources).toBe(1);
   });
@@ -581,13 +584,14 @@ describe("coordinated long-range research", () => {
     await collectLongRange({ ...test.input, now: new Date("2026-09-21T12:00:00Z") });
     expect(test.create).toHaveBeenCalledTimes(2);
     test.state().discoveredAt = "2026-10-05T12:00:00Z";
-    test.state().announcementSearchAt = "2026-10-05T12:00:00Z";
-    await collectLongRange({ ...test.input, now: new Date("2026-10-05T12:00:00Z") });
+    test.state().discoveredAt = "2026-10-07T12:00:00Z";
+    test.state().announcementSearchAt = "2026-10-07T12:00:00Z";
+    await collectLongRange({ ...test.input, now: new Date("2026-10-07T12:00:00Z") });
     expect(test.create).toHaveBeenCalledTimes(3);
     expect(JSON.stringify(test.create.mock.calls.at(-1))).toContain("overnachten official visitors hotels");
   });
 
-  it("finds an announcement on the next fortnightly check within the 14-day target", async () => {
+  it("finds an announcement on the next monthly check within 30 days", async () => {
     const test = setup();
     const confirmed = test.create.getMockImplementation()!;
     test.create.mockImplementation(async (...args: unknown[]) => ({ id: "before-announcement", stop_reason: "end_turn", usage: { input_tokens: 100, output_tokens: 100 }, content: [{ type: "text", text: JSON.stringify((args[0] as { tools: unknown[] }).tools.length ? { url: null, reason: "No announcement" } : { events: [], reason: "Not announced", more: false }) }] }));
@@ -596,11 +600,12 @@ describe("coordinated long-range research", () => {
     expect(test.state().leads[0].editions).toEqual([]);
     test.create.mockImplementation(confirmed);
     test.pageFetcher.mockResolvedValue(parseOfficialPage(text, url));
-    const check = new Date("2026-09-21T12:00:00Z");
+    const check = new Date("2026-10-07T12:00:00Z");
+    test.state().discoveredAt = check.toISOString();
     test.state().announcementSearchAt = check.toISOString();
     const result = await collectLongRange({ ...test.input, now: check });
     expect(result.candidates).toHaveLength(1);
-    expect(Date.parse(result.candidates[0].evidence!.checkedAt) - Date.parse("2026-09-08T12:00:00Z")).toBeLessThanOrEqual(14 * 86400000);
+    expect(Date.parse(result.candidates[0].evidence!.checkedAt) - Date.parse("2026-09-08T12:00:00Z")).toBeLessThanOrEqual(30 * 86400000);
   });
 
   it("keeps confirmed editions available across the near-term boundary", async () => {
@@ -799,24 +804,24 @@ it("limits repeated paid follow-ups while continuing cheap checks of the known p
   });
   await collectLongRange(test.input);
   expect(test.create).toHaveBeenCalledTimes(2); // One extraction and one follow-up.
-  for (const [date, calls] of [["2026-09-21", 2], ["2026-10-05", 3], ["2026-10-19", 3], ["2026-11-02", 3]] as const) {
+  for (const [date, calls] of [["2026-09-21", 2], ["2026-10-07", 3], ["2026-11-06", 3], ["2026-12-06", 3]] as const) {
     const check = new Date(`${date}T12:00:00Z`);
     test.state().discoveredAt = check.toISOString();
     test.state().announcementSearchAt = check.toISOString();
     await collectLongRange({ ...test.input, now: check });
     expect(test.create).toHaveBeenCalledTimes(calls);
   }
-  expect(test.pageFetcher).toHaveBeenCalledTimes(5);
+  expect(test.pageFetcher).toHaveBeenCalledTimes(4);
   expect(test.state().leads[0].editions).toHaveLength(1);
   // New official information is still processed after the follow-up allowance ran out.
   test.pageFetcher.mockResolvedValue(parseOfficialPage(`${text} New official announcement.`, url));
-  test.state().discoveredAt = "2026-11-16T12:00:00Z";
-  test.state().announcementSearchAt = "2026-11-16T12:00:00Z";
-  await collectLongRange({ ...test.input, now: new Date("2026-11-16T12:00:00Z") });
+  test.state().discoveredAt = "2027-01-05T12:00:00Z";
+  test.state().announcementSearchAt = "2027-01-05T12:00:00Z";
+  await collectLongRange({ ...test.input, now: new Date("2027-01-05T12:00:00Z") });
   expect(test.create.mock.calls.length).toBeGreaterThan(3);
 });
 
-it("runs full discovery immediately, announcement checks after two weeks, then full discovery again", async () => {
+it("runs full discovery immediately, reuses it at two weeks, then searches fully after 30 days", async () => {
   const test = setup();
   test.state().discoveredAt = null;
   test.state().announcementSearchAt = undefined;
@@ -831,7 +836,7 @@ it("runs full discovery immediately, announcement checks after two weeks, then f
   await collectLongRange({ ...test.input, now: new Date("2026-09-14T12:00:00Z"), requestedAt: "2026-09-14T12:00:00Z" });
   expect(queries).toHaveLength(14);
   await collectLongRange({ ...test.input, now: new Date("2026-09-21T12:00:00Z"), requestedAt: "2026-09-21T12:00:00Z" });
-  expect(queries).toHaveLength(21);
-  await collectLongRange({ ...test.input, now: new Date("2026-10-05T12:00:00Z"), requestedAt: "2026-10-05T12:00:00Z" });
-  expect(queries).toHaveLength(35);
+  expect(queries).toHaveLength(14);
+  await collectLongRange({ ...test.input, now: new Date("2026-10-07T12:00:00Z"), requestedAt: "2026-10-07T12:00:00Z" });
+  expect(queries).toHaveLength(28);
 });

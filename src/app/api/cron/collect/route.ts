@@ -60,7 +60,7 @@ export async function GET(request: Request) {
         .not("hotel_id", "is", null)
         .order("name");
       if (areaError) throw areaError;
-      // The daily clock only queues hotels due for their fortnightly update. Manual
+      // The daily clock only queues hotels due for their monthly update. Manual
       // refreshes also count, so onboarding never buys another search the next morning.
       const cutoff = new Date();
       cutoff.setUTCDate(cutoff.getUTCDate() - CHECK_INTERVAL_DAYS + 1);

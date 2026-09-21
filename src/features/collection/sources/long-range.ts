@@ -54,11 +54,11 @@ function targetWasRejected(message: Anthropic.Message, target: string | null) {
       && call.name === "web_fetch" && (call.input as { url?: string } | null)?.url === target));
 }
 
-const FETCH_SLOTS = 18;    // fortnightly lead checks
+const FETCH_SLOTS = 18;    // monthly lead checks
 const CALENDAR_SLOTS = 6;  // reserved inside FETCH_SLOTS for calendar hubs
-const SWEEP_DAYS = 28;
+const SWEEP_DAYS = BROAD_SEARCH_INTERVAL_DAYS;
 const MONITORING_VERSION = 3;
-// A cycle drains its backlog across weekly invocations; 18 left confirmed-but-unassessed leads
+// A cycle drains its backlog across resumable invocations; 18 left confirmed-but-unassessed leads
 // queued behind fresh discovery for months (pendingDemand 60 against demandAccepted 6).
 const CYCLE_LEAD_LIMIT = 60;
 // Discovery, URL resolution, extraction, demand lookup and evidence extraction
@@ -154,10 +154,9 @@ export type LongRangeInput = CollectionWindow & {
   pageFetcher?: PageFetcher | false;
 };
 
-/** Confirmed sources stay fortnightly; unresolved leads wait for the broad run. */
-export function nextCheckAt(lead: Lead, now: Date): string {
-  return later(now, fetchTarget(lead) && ["confirmed", "unannounced"].includes(lead.outcome)
-    ? CHECK_INTERVAL_DAYS : BROAD_SEARCH_INTERVAL_DAYS);
+/** All automatic source checks use the same monthly interval. */
+export function nextCheckAt(_lead: Lead, now: Date): string {
+  return later(now, CHECK_INTERVAL_DAYS);
 }
 
 /** All due official pages, ordered in fair windows. Paid requests remain budget bounded. */
@@ -398,13 +397,15 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
         if (reservation) { indices.push(index); reservations.push(reservation); }
       });
       if (!indices.length) return results;
-      manifest = { phase, requests: JSON.parse(JSON.stringify(tasks)) as MessageRequest[], indices, reservations, total: tasks.length, jobs, preparationErrors };
+      manifest = { batchIdentityVersion: 2, phase, requests: JSON.parse(JSON.stringify(tasks)) as MessageRequest[], indices, reservations, total: tasks.length, jobs, preparationErrors };
       workCycle.pending = manifest;
       workCycle.waves++;
       await store.save(key, state);
     }
     if (manifest.phase !== phase) throw new Error("Pending research phase must be resumed before new work");
-    const responses = await requestMessages(client, phase, manifest.indices.map((index) => manifest!.requests[index]), batching);
+    const responses = await requestMessages(client, phase, manifest.indices.map((index) => manifest!.requests[index]), {
+      ...batching, allowCreate: manifest.batchIdentityVersion === 2,
+    });
     for (const [offset, index] of manifest.indices.entries()) {
       const result = responses[offset];
       results[index] = result;
@@ -535,7 +536,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
   if (!repairFirst || workCycle.pending?.phase === "search") await discover();
   const verificationWaveLimit = repairFirst && (discoveryDue || announcementsDue || state.searchCycle) ? CYCLE_WAVE_LIMIT - 1 : CYCLE_WAVE_LIMIT;
 
-  // Broad discovery runs every second fortnightly check.
+  // Broad discovery and source checks share the monthly interval.
   const bootstrap = !state.lastSweepAt;
   const sweepDue = discoveryDue || bootstrap
     || now.getTime() - Date.parse(state.lastSweepAt!) >= SWEEP_DAYS * day;
