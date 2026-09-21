@@ -14,5 +14,5 @@
       ]
     }
   },
-  "crons": [{ "path": "/api/cron/collect", "schedule": "0 5 * * 1" }]
+  "crons": [{ "path": "/api/cron/collect", "schedule": "0 5 * * *" }]
 }

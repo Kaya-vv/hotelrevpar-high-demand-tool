@@ -400,3 +400,13 @@ describe("event domain", () => {
 
 
 });
+
+
+it("recognizes the two KNZB swimming titles without merging a different championship", () => {
+  const old = { ...normalizeCandidate({ ...candidate, provider: "claude", providerEventId: "old", title: "NK lange baan (Open Nederlandse Kampioenschappen lange baan / European Swimming Trials)", category: "swimming championship", startAt: "2027-06-02T22:00:00Z", endAt: "2027-06-06T21:59:59Z", latitude: 51.4453, longitude: 5.4623 }), id: "existing" };
+  const incoming = { ...candidate, provider: "claude" as const, providerEventId: "new", title: "NK Zwemmen Lange Baan", category: "Sport - Swimming Competition", startAt: old.startAt, endAt: old.endAt, latitude: 51.45016, longitude: 5.45853 };
+  expect(classifyMatch(normalizeCandidate(incoming), [old])).toEqual({ kind: "exact", eventId: "existing" });
+  expect(classifyMatch(normalizeCandidate({ ...incoming, title: "NK Masters Zwemmen Lange Baan" }), [old]).kind).not.toBe("exact");
+  expect(classifyMatch(normalizeCandidate({ ...incoming, category: "skating" }), [old]).kind).not.toBe("exact");
+  expect(classifyMatch(normalizeCandidate({ ...incoming, startAt: "2028-06-02T22:00:00Z" }), [old]).kind).not.toBe("exact");
+});

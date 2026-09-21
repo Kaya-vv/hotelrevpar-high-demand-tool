@@ -7,7 +7,7 @@ import type { OfficialPage } from "./official-pages";
 
 /** `demandScope` records which editions a deep search is buying hotel evidence for, so the
  *  allowance is charged once the request really ran, and survives a resumed batch. */
-export type ResearchJob = { leadKey: string; windowStart?: string; kind: "fetch" | "deep" | "resolve" | "evidence"; target?: string; providerFallback?: boolean; checkedAt?: string; pages?: OfficialPage[]; cached?: boolean; demandScope?: string; chunks?: { url: string; hash: string; index: number; total: number }[] };
+export type ResearchJob = { leadKey: string; windowStart?: string; kind: "fetch" | "deep" | "resolve" | "evidence"; target?: string; providerFallback?: boolean; checkedAt?: string; pages?: OfficialPage[]; cached?: boolean; demandScope?: string; followupScope?: string; chunks?: { url: string; hash: string; index: number; total: number }[] };
 export type ResearchCycle = {
   monitoringVersion?: number;
   startedAt: string; waves: number; leadKeys: string[]; finished?: boolean;
@@ -44,6 +44,8 @@ export type Lead = {
    *  A new edition is a new question, so it starts with the full allowance; an unchanged week
    *  reuses the same scope and cannot buy another search. */
   demandSearches?: { scope: string; attempts: number };
+  /** URL/location/announcement fallbacks share two paid tries until the evidence changes. */
+  followupSearches?: { scope: string; attempts: number; lastAttemptAt?: string };
   key: string;
   title: string;
   url: string | null;

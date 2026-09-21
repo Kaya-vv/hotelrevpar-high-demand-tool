@@ -231,6 +231,21 @@ async function reserveForMember(
   const unclaimed = existing.some((item) => !item.batch_id && !item.suppressed);
   if (!fresh.length && !unclaimed) return null;
   if (fresh.length) {
+    // The launch/member baseline may have omitted hidden or manually graded
+    // events. An old hotel link is still known history, not a new discovery.
+    const { data: baseline, error: baselineError } = await admin
+      .from("event_notification_items").select("created_at")
+      .eq("user_id", userId).eq("hotel_id", hotelId)
+      .order("created_at").limit(1).maybeSingle();
+    if (baselineError) throw baselineError;
+    const { data: area, error: areaError } = await admin.from("collection_areas")
+      .select("id").eq("account_id", accountId).eq("hotel_id", hotelId).maybeSingle();
+    if (areaError) throw areaError;
+    const oldLinks = baseline && area ? await fetchInBatches(fresh, (ids) => admin
+      .from("account_event_areas").select("event_id")
+      .eq("account_id", accountId).eq("collection_area_id", area.id)
+      .lt("created_at", baseline.created_at).in("event_id", ids)) : [];
+    const alreadyKnown = new Set(oldLinks.map((link) => link.event_id));
     const { error: insertError } = await admin
       .from("event_notification_items")
       .upsert(
@@ -239,7 +254,7 @@ async function reserveForMember(
           hotel_id: hotelId,
           event_id: eventId,
           user_id: userId,
-          suppressed: !enabled,
+          suppressed: !enabled || alreadyKnown.has(eventId),
           created_at: now.toISOString(),
         })),
         { onConflict: "user_id,hotel_id,event_id", ignoreDuplicates: true },
@@ -296,6 +311,12 @@ export async function stageHotelEventNotifications(
   const admin = createAdminClient();
   const hotelId = await hotelForArea(admin, accountId, areaId);
   if (!hotelId) return { queued: 0 };
+  // A shared city's results may finish before this hotel's queued feed refresh.
+  // Its own completion will stage the full calendar, once, after both are ready.
+  const { data: active, error: activeError } = await admin.from("collection_jobs")
+    .select("id").eq("collection_area_id", areaId).in("status", ["queued", "running"]).limit(1);
+  if (activeError) throw activeError;
+  if (active.length) return { queued: 0 };
   const hotel = await loadVisibleNotificationEvents(admin, accountId, hotelId, now);
   if (!hotel?.events.length) return { queued: 0 };
   const { data: members, error: memberError } = await admin

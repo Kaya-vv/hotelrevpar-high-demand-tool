@@ -22,6 +22,22 @@ Record the evidence for each gate before calling the data-quality demo ready. De
 
 ## Email notification rollout
 
+### Two-week search release (prepared 21 September 2026)
+
+These changes take effect after deployment and application of the duplicate repair migration.
+
+- Onboarding starts a full first search immediately. Fresh research covering the same city and radius is reused; a new area still gets its own full search.
+- The daily 05:00 UTC scheduler only queues hotels whose previous search started at least 14 calendar days ago. Manual searches also move that next automatic date. The daily scheduler itself makes no paid provider requests.
+- Broad discovery is due every 28 calendar days, so normal automatic runs alternate between an announcement/source check and a broad search. Dates are measured from the start of successful discovery, not the time a delayed provider response finishes.
+- Official pages with confirmed or unannounced editions are checked every two weeks. Fully extracted, unchanged pages reuse their evidence. Failed/URL-less leads wait four weeks.
+- URL, location, announcement and retrieval fallbacks share at most two paid attempts per lead/edition scope. A changed official page or new edition can reopen that allowance. An unresolved follow-up waits four weeks between runs; incomplete submitted batches resume without buying replacement requests.
+- The existing per-market research budget remains unchanged. No app-wide monthly spending limit was added. Record shared market costs once, not once per receiving hotel; do not claim a fixed saving before measuring provider usage.
+- Prepare new-event mail only after both hotel feeds and shared research finish. Progress updates do not send mail. A hotel still waiting in the queue receives its mail after its own refresh finishes.
+- Events linked before the recipient's notification baseline are known history, even if a visibility or manual-priority change makes them appear later. They must not be called new discoveries.
+- Apply the narrowly scoped swimming-duplicate repair migration with the release. It retains both records and their history, and hides the duplicate where the original is already linked to that hotel.
+
+### First-time email setup
+
 Keep `EVENT_NOTIFICATIONS_ENABLED=disabled` until steps 1 through 4 are complete.
 
 1. Apply the database migration and deploy the code with sending disabled.

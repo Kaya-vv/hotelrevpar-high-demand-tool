@@ -1,5 +1,5 @@
 import { assessHotelDemand, hasHotelDemand } from "../../events/demand-assessment";
-import { scheduleEvidenceRepair, repairPending, researchDueAt, needsDemandResearch } from "../research-repair";
+import { scheduleEvidenceRepair, repairPending, researchDueAt, researchDue, needsDemandResearch } from "../research-repair";
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
@@ -11,6 +11,7 @@ import { researchBudget, estimatedCostUsd } from "../research-budget";
 import { geocodeCity, createLocationResolver } from "../research-location";
 import { pageChunks, pageHash } from "../official-pages";
 import { normalizeText } from "@/features/events/normalize";
+import { searchDue, CHECK_INTERVAL_DAYS, BROAD_SEARCH_INTERVAL_DAYS } from "../schedule";
 import type { CollectionWindow, SourceResult } from "../types";
 import { BatchPendingError, CLAUDE_ASSESSMENT_VERSION } from "../anthropic-batches";
 import { projectEditions, projectionInstructions, rememberEdition } from "../series-projections";
@@ -53,7 +54,7 @@ function targetWasRejected(message: Anthropic.Message, target: string | null) {
       && call.name === "web_fetch" && (call.input as { url?: string } | null)?.url === target));
 }
 
-const FETCH_SLOTS = 18;    // weekly lead checks
+const FETCH_SLOTS = 18;    // fortnightly lead checks
 const CALENDAR_SLOTS = 6;  // reserved inside FETCH_SLOTS for calendar hubs
 const SWEEP_DAYS = 28;
 const MONITORING_VERSION = 3;
@@ -153,16 +154,16 @@ export type LongRangeInput = CollectionWindow & {
   pageFetcher?: PageFetcher | false;
 };
 
-/** Every active official source remains eligible weekly, including unannounced series. */
+/** Confirmed sources stay fortnightly; unresolved leads wait for the broad run. */
 export function nextCheckAt(lead: Lead, now: Date): string {
-  void lead;
-  return later(now, 7);
+  return later(now, fetchTarget(lead) && ["confirmed", "unannounced"].includes(lead.outcome)
+    ? CHECK_INTERVAL_DAYS : BROAD_SEARCH_INTERVAL_DAYS);
 }
 
 /** All due official pages, ordered in fair windows. Paid requests remain budget bounded. */
 export function selectDueLeads(leads: Lead[], now: Date, bootstrap: boolean) {
   void bootstrap;
-  let remaining = leads.filter((lead) => fetchTarget(lead) && Date.parse(researchDueAt(lead)) <= now.getTime());
+  let remaining = leads.filter((lead) => fetchTarget(lead) && researchDue(lead, now));
   const selected: Lead[] = [];
   // These are fairness windows, not a pass limit. Persisted spend bounds paid work.
   while (remaining.length) {
@@ -180,7 +181,7 @@ export function selectDueLeads(leads: Lead[], now: Date, bootstrap: boolean) {
 /** URL work has its own queue, interleaved with fetched leads before budget reservations. */
 export function selectResolveLeads(leads: Lead[], now: Date, bootstrap: boolean) {
   void bootstrap;
-  return fairQueue(leads.filter((lead) => !fetchTarget(lead) && Date.parse(researchDueAt(lead)) <= now.getTime()));
+  return fairQueue(leads.filter((lead) => !fetchTarget(lead) && researchDue(lead, now)));
 }
 
 // Equally due category groups take turns; one large university calendar cannot occupy all first checks.
@@ -277,6 +278,16 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
   const version = LONG_RANGE_VERSION * 1000 + CLAUDE_ASSESSMENT_VERSION;
   const stored = await store.load(key);
   const state = stored ?? { version, discoveredAt: null, leads: [] };
+  // Multiple hotels share this market. A later hotel or a redelivery must not
+  // reopen finished research and buy the same work again between checks.
+  if (state.research?.completedAt && !state.cycle?.pending && state.version === version
+    && !searchDue(state.research.requestedAt, now)) {
+    return { source: "claude", requests: 0, usage: { researchReused: 1 },
+      candidates: uniqueEvidenceEditions(state.leads.filter((lead) => lead.outcome !== "conflict")
+        .flatMap((lead) => lead.editions).filter((event) => validEventRange(event)
+          && eventLocalDate(event.endAt) >= now.toISOString().slice(0, 10)
+          && eventLocalDate(event.startAt) <= input.end)) };
+  }
   const firstSearch = !stored || (stored.version === 0 && !stored.research && !stored.cycle && !stored.discoveredAt && !stored.leads.length);
   if (input.requestedAt && (!state.research || state.research.completedAt)) state.research = { requestedAt: input.requestedAt };
   // Persist the first-search mode under the market lease. Existing searches, including
@@ -298,7 +309,6 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
     delete lead.pageCache;
     lead.firstSeenAt ??= lead.checkedAt ?? lead.nextCheck;
     lead.officialPages ??= [...new Set([lead.officialPage, lead.url].filter((url): url is string => Boolean(url)))];
-    if (lead.checkedAt && lead.nextCheck > later(new Date(lead.checkedAt), 7)) lead.nextCheck = later(new Date(lead.checkedAt), 7);
     // Resolve the demand allowance before anything is queued, so an exhausted lead neither buys
     // another search nor keeps outranking leads that have never been checked once.
     if (lead.pendingStage === "demand" && !demandStage(lead, lead.editions)) delete lead.pendingStage;
@@ -331,7 +341,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
   // A scoring/evidence upgrade must reopen exhausted old work without resetting
   // the monthly spend ledger or replacing an already submitted batch manifest.
   if (!state.cycle?.pending) state.version = version;
-  if (!state.cycle || (state.cycle.finished && now.getTime() - Date.parse(state.cycle.startedAt) >= 7 * day)) {
+  if (!state.cycle || (state.cycle.finished && searchDue(state.cycle.startedAt, now))) {
     state.cycle = { monitoringVersion: MONITORING_VERSION, startedAt: now.toISOString(), waves: 0, leadKeys: [], queued: state.cycle?.queued ?? [] };
   }
   const workCycle = state.cycle;
@@ -448,9 +458,9 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
     lead.projections = projectEditions(lead, input.start, input.end);
   }
 
-  const discoveryDue = (!state.discoveredAt || now.getTime() - Date.parse(state.discoveredAt) >= 30 * day)
-    && (!state.discoveryAttemptAt || now.getTime() - Date.parse(state.discoveryAttemptAt) >= 7 * day);
-  const announcementsDue = !state.announcementSearchAt || now.getTime() - Date.parse(state.announcementSearchAt) >= 7 * day;
+  const discoveryDue = searchDue(state.discoveredAt, now, BROAD_SEARCH_INTERVAL_DAYS)
+    && searchDue(state.discoveryAttemptAt ?? null, now);
+  const announcementsDue = searchDue(state.announcementSearchAt ?? null, now);
   async function discover() {
   if (workCycle.pending?.phase === "search" || (!workCycle.pending && !workCycle.finished && (discoveryDue || announcementsDue || state.searchCycle))) {
     state.searchCycle ??= { dueAt: now.toISOString(), broad: discoveryDue, completed: [] };
@@ -510,7 +520,12 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
         drops.push({ title: tasks[index].query, stage: "discovery", reason });
       }
     }
-    if (usage.completedSearches === tasks.length) { state.announcementSearchAt = now.toISOString(); if (cycle.broad) state.discoveredAt = now.toISOString(); delete state.searchCycle; }
+    if (usage.completedSearches === tasks.length) {
+      const startedAt = state.research?.requestedAt ?? cycle.dueAt;
+      state.announcementSearchAt = startedAt;
+      if (cycle.broad) state.discoveredAt = startedAt;
+      delete state.searchCycle;
+    }
     delete workCycle.pending;
     await store.save(key, state);
   }
@@ -520,11 +535,11 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
   if (!repairFirst || workCycle.pending?.phase === "search") await discover();
   const verificationWaveLimit = repairFirst && (discoveryDue || announcementsDue || state.searchCycle) ? CYCLE_WAVE_LIMIT - 1 : CYCLE_WAVE_LIMIT;
 
-  // Monthly breadth is separate from weekly lead eligibility.
+  // Broad discovery runs every second fortnightly check.
   const bootstrap = !state.lastSweepAt;
   const sweepDue = discoveryDue || bootstrap
     || now.getTime() - Date.parse(state.lastSweepAt!) >= SWEEP_DAYS * day;
-  const eligible = state.leads.filter((lead) => Date.parse(researchDueAt(lead)) <= now.getTime());
+  const eligible = state.leads.filter((lead) => researchDue(lead, now));
   const firstChecks = fairQueue(eligible.filter((lead) => !lead.checkedAt && !(lead.attempts ?? 0))).slice(0, 5);
   const available = [...firstChecks, ...fairQueue(eligible.filter((lead) => !firstChecks.includes(lead)))];
   if (workCycle.finished && workCycle.waves < CYCLE_WAVE_LIMIT && workCycle.leadKeys.length < CYCLE_LEAD_LIMIT && available.some((lead) => !workCycle.leadKeys.includes(lead.key))) workCycle.finished = false;
@@ -552,6 +567,19 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
   const verificationWindow = () => ({ ...input, start: now.toISOString().slice(0, 10) });
   const makeRequest = async (job: Job) => {
     const { lead, kind, target } = job;
+    const followupScope = JSON.stringify([input.end.slice(0, 4), lead.editions.map((event) =>
+      [eventLocalDate(event.startAt), eventLocalDate(event.endAt)]).sort()]);
+    const allowFollowup = () => {
+      const spent = lead.followupSearches?.scope === followupScope ? lead.followupSearches.attempts : 0;
+      const lastAttempt = lead.followupSearches?.scope === followupScope ? lead.followupSearches.lastAttemptAt : undefined;
+      if (spent >= 2 || (lastAttempt && lastAttempt < workCycle.startedAt
+        && !searchDue(lastAttempt, now, BROAD_SEARCH_INTERVAL_DAYS))) {
+        job.cached = true; return false;
+      }
+      job.followupScope = followupScope;
+      return true;
+    };
+    if ((kind === "resolve" || kind === "deep") && !allowFollowup()) return null;
     job.windowStart ??= verificationWindow().start;
     const request = {
     options: { timeout: 180_000, maxRetries: 0 },
@@ -618,6 +646,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
         }
       }
       if (!retrieved.pages.length) {
+        if (!allowFollowup()) return null;
         request.params.tools = [{ ...fetchTool, max_uses: 1 }];
         lead.pendingStage = "retrieval";
         // The live provider rejects this extraction grammar when combined with web_fetch.
@@ -633,12 +662,17 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
       // extraction version. `unannounced` is a real answer and is never re-read.
       const recoverable = !lead.editions.length && lead.extractedVersion !== extractionVersion
         && (lead.outcome === "failed" || lead.pendingStage === "retrieval");
-      const incompleteExtraction = repairPending(lead) || lead.pendingStage === "extraction" || recoverable;
-      if (recoverable) lead.extractedVersion = extractionVersion;
+      const incompleteExtraction = repairPending(lead)
+        || ((lead.pendingStage === "extraction" || recoverable) && lead.extractedVersion !== extractionVersion);
+      if (incompleteExtraction) lead.extractedVersion = extractionVersion;
       const unprocessed = retrieved.pages.filter((page) => {
         const entry = state.pageCache![page.url];
         return (incompleteExtraction && !pageOwners.has(page.url)) || !entry || entry.hash !== pageHash(page) || entry.version !== extractionVersion || !entry.complete;
       });
+      // A changed official page earns another bounded follow-up. Merely fetching
+      // the same text again does not reset the paid allowance.
+      if (retrieved.pages.some((page) => state.pageCache![page.url]
+        && state.pageCache![page.url].hash !== pageHash(page))) delete lead.followupSearches;
       const pendingPages = unprocessed.filter((page) => !pageOwners.has(page.url) || pageOwners.get(page.url) === lead.key);
       if (unprocessed.length && !pendingPages.length) throw new ResearchDeferredError("Shared page extraction already scheduled; lead remains due");
       if (!pendingPages.length) { job.cached = true; return null; }
@@ -801,6 +835,11 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
           job.lead.demandSearches = { scope: job.demandScope, attempts: spent + 1 };
           delete job.demandScope;
         }
+        if (job.followupScope) {
+          const spent = job.lead.followupSearches?.scope === job.followupScope ? job.lead.followupSearches.attempts : 0;
+          job.lead.followupSearches = { scope: job.followupScope, attempts: spent + 1, lastAttemptAt: now.toISOString() };
+          delete job.followupScope;
+        }
       }
     });
     const next: Job[] = [];
@@ -808,7 +847,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
       const job = pending[index];
       const lead = job.lead;
       if (job.cached) {
-        if (job.kind === "fetch" && (["demand", "location"].includes(lead.pendingStage ?? "") || Boolean(lead.projections?.length))) deepCandidates.push({ lead, kind: "deep" });
+        if (job.kind === "fetch" && (["demand", "location"].includes(lead.pendingStage ?? "") || (discoveryDue && Boolean(lead.projections?.length)))) deepCandidates.push({ lead, kind: "deep" });
         else finalize(lead);
         continue;
       }
@@ -945,7 +984,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
     let series = state.leads.find((lead) => lead.kind === "event" && (lead.editions.some((edition) => edition.providerEventId === candidate.providerEventId) || ((labelKey(lead.title) === labelKey(candidate.title) || candidate.evidence?.aliases?.some((alias) => labelKey(alias) === labelKey(lead.title))) && (!lead.url || !candidate.sourceUrl || new URL(lead.url).hostname === new URL(candidate.sourceUrl).hostname))));
     if (!series && candidate.sourceUrl) {
       series = { key, title: candidate.title, url: candidate.sourceUrl, kind: "event", group: 0,
-        outcome: "confirmed", editions: [candidate], notes: [], nextCheck: later(now, 7), checkedAt: now.toISOString() };
+        outcome: "confirmed", editions: [candidate], notes: [], nextCheck: later(now, CHECK_INTERVAL_DAYS), checkedAt: now.toISOString() };
       state.leads.push(series);
     }
     if (series && candidate.sourceUrl && series.outcome !== "conflict") {
@@ -957,7 +996,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
   workCycle.finished = true;
   state.publicationPending = true;
   await store.save(key, state);
-  const deferred = state.leads.filter((lead) => Date.parse(researchDueAt(lead)) <= now.getTime()).length;
+  const deferred = state.leads.filter((lead) => researchDue(lead, now)).length;
   usage.discovered = discovered;
   usage.newEditions = candidates.filter((event) => !originalIds.has(event.providerEventId)).length;
   usage.nearTermEditions = candidates.filter((event) => eventLocalDate(event.startAt) < input.start).length;

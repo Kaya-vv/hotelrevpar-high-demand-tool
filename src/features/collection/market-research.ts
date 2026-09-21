@@ -1,10 +1,12 @@
 import { eventLocalDate, validEventRange } from "../events/normalize";
 import { uniqueEvidenceEditions } from "../events/evidence";
-import { createLongRangeStore, marketLocation, resolveLongRangeMarket, LongRangeLeaseError, type LongRangeState } from "./long-range-store";
+import { createLongRangeStore, marketLocation, resolveLongRangeMarket, LongRangeLeaseError, LONG_RANGE_VERSION, type LongRangeState } from "./long-range-store";
+import { CLAUDE_ASSESSMENT_VERSION } from "./anthropic-batches";
 import { collectionWindow, publishLongRangeResult, type CollectionContext } from "./run";
 import { longRangeWindow, marketWindow } from "./sources/claude";
 import { collectLongRange } from "./sources/long-range";
 import type { SourceResult } from "./types";
+import { searchDue } from "./schedule";
 
 export type MarketWork = {
   kind: "market-research" | "market-publication";
@@ -30,6 +32,11 @@ export async function readAndEnqueueResearch(context: CollectionContext, runId: 
   const { publishCollectionJob } = await import("./jobs");
   const market = await resolveLongRangeMarket(context.area.searchLocation, context.area.radiusKm);
   const state = await createLongRangeStore().load(market.key);
+  if (state?.research?.completedAt && !state.publicationPending && !state.cycle?.pending
+    && state.version === LONG_RANGE_VERSION * 1000 + CLAUDE_ASSESSMENT_VERSION
+    && !searchDue(state.research.requestedAt)) {
+    return { ...storedLongRangeResult(state), researchPending: false };
+  }
   await publishCollectionJob({ kind: "market-research", accountId: context.area.accountId, areaId: context.area.id, runId, requestedAt: new Date().toISOString() });
   return { ...storedLongRangeResult(state), researchPending: true };
 }
@@ -53,7 +60,7 @@ export async function processMarketWork(work: MarketWork) {
   const key = market.key;
   // Called under the research or publication lease; partial publication never marks
   // the research complete, and waits for an overlapping hotel refresh.
-  async function publishState(state: LongRangeState, notify = false) {
+  async function publishState(state: LongRangeState) {
     const { data: areas, error: areaError } = await admin.from("collection_areas").select("id, account_id, search_location, radius_km, accounts!inner(active), hotels!inner(archived_at)").is("hotels.archived_at", null).eq("accounts.active", true).contains("enabled_sources", ["claude"]);
     if (areaError) throw areaError;
     // Every hotel this research covers, not only the one whose radius happens to match it: the
@@ -70,20 +77,9 @@ export async function processMarketWork(work: MarketWork) {
     for (const area of matching) {
       const counts = await publishLongRangeResult(repository, await repository.loadContext(area.account_id, area.id), result);
       for (const [name, count] of Object.entries(counts ?? {})) publication[name] = (publication[name] ?? 0) + count;
-      if (notify) {
-        try {
-          const { stageHotelEventNotifications } = await import("@/features/notifications/service");
-          await stageHotelEventNotifications(area.account_id, area.id);
-        } catch (notificationError) {
-          console.error("Event notifications could not be prepared", {
-            areaId: area.id,
-            error: notificationError instanceof Error ? notificationError.name : "unknown",
-          });
-        }
-      }
     }
     if (state.research) state.research.usage = { ...state.research.usage, ...result.usage, ...publication };
-    return true;
+    return matching;
   }
   if (work.kind === "market-research") {
     // Research runs at the market's radius, not this hotel's: a wider host already covers it, and
@@ -92,7 +88,7 @@ export async function processMarketWork(work: MarketWork) {
       ...longRangeWindow(marketWindow(collectionWindow())), location: market.location, radiusKm: market.radiusKm,
       seeds: context.longRangeSeeds, batching: { enabled: process.env.ANTHROPIC_BATCHES !== "disabled" },
       requestedAt: work.requestedAt, fastFirstSearch: true,
-      onProgress: publishState,
+      onProgress: async (state) => Boolean(await publishState(state)),
       onUsage: (usage) => repository.recordUsage(work.runId, "claude", usage),
     });
     const { publishCollectionJob } = await import("./jobs");
@@ -105,11 +101,17 @@ export async function processMarketWork(work: MarketWork) {
   if (!await store.acquire(key, market)) throw new LongRangeLeaseError();
   try {
     const state = await store.load(key);
-    if (!state?.publicationPending) return;
-    if (!await publishState(state, true)) throw new Error("Publication waits for the active hotel refresh to finish before applying newer evidence");
+    if (!state) return;
+    if (!state.research?.completedAt || state.cycle?.pending) throw new Error("Publication waits for research to finish");
+    const matching = await publishState(state);
+    if (!matching) throw new Error("Publication waits for the active hotel refresh to finish before applying newer evidence");
     state.publicationPending = false;
     state.publishedAt = new Date().toISOString();
     await store.save(key, state);
+    // Only final publication prepares mail. If staging fails, this publication
+    // message retries without buying research or losing the unsent notification.
+    const { stageHotelEventNotifications } = await import("@/features/notifications/service");
+    for (const area of matching) await stageHotelEventNotifications(area.account_id, area.id);
   } finally {
     await store.release(key);
   }

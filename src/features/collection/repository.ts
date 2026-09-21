@@ -416,7 +416,7 @@ export function createCollectionRepository(): CollectionRepository {
       const lastSweep = async (areaIds: string[]) => {
         const { data, error } = await supabase
           .from("collection_runs")
-          .select("finished_at")
+          .select("started_at")
           .in("collection_area_id", areaIds)
           .not("finished_at", "is", null)
           // A failed distant source must not erase a successful near-term discovery. Legacy runs
@@ -426,7 +426,7 @@ export function createCollectionRepository(): CollectionRepository {
           .order("finished_at", { ascending: false })
           .limit(1);
         if (error) throw error;
-        return data[0]?.finished_at ?? null;
+        return data[0]?.started_at ?? null;
       };
       const own = await lastSweep([context.area.id]);
       if (trigger === "manual" && own) return true;
@@ -640,7 +640,10 @@ export function createCollectionRepository(): CollectionRepository {
           if (!currentIsCanonical) {
             eventId = match.eventId;
             duplicate = true;
-            preserveCanonical = !shouldRefreshCanonical(candidate);
+            // An existing duplicate still owns its unique normalized identity.
+            // Move its source onto the older event without copying that identity
+            // (or its less precise location) over the canonical record.
+            preserveCanonical = Boolean(existingSource) || !shouldRefreshCanonical(candidate);
             if (match.extend && target) {
               // Day two of the same programme must widen the stored range, never replace it.
               const mergedEnd = target.end_at ?? target.start_at;

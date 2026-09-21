@@ -31,3 +31,9 @@ export function repairPending(lead: Lead) {
 export function researchDueAt(lead: Lead) {
   return repairPending(lead) ? lead.repair!.dueAt : lead.nextCheck;
 }
+
+export function researchDue(lead: Lead, now: Date) {
+  // Runs start in the morning; a previous afternoon response must not postpone
+  // the whole lead until the following fortnight.
+  return researchDueAt(lead).slice(0, 10) <= now.toISOString().slice(0, 10);
+}

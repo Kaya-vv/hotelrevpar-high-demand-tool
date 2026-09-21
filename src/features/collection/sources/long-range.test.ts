@@ -288,7 +288,7 @@ describe("long-range source leads", () => {
     const result = await collectLongRange({ ...input, store: memory.store, client: client(create) });
     expect(create).toHaveBeenCalledTimes(2);
     expect(result.usage).toMatchObject({ datesConfirmed: 0, demandAccepted: 0 });
-    expect(memory.state().leads[0].nextCheck).toBe("2026-09-12T12:00:00.000Z");
+    expect(memory.state().leads[0].nextCheck).toBe("2026-09-19T12:00:00.000Z");
     const warm = await collectLongRange({ ...input, location: " eindhoven ", store: memory.store, client: client(create) });
     expect(warm.requests).toBe(0);
     expect(warm.usage.inputTokens).toBe(0);
@@ -423,13 +423,11 @@ describe("long-range source leads", () => {
     expect(changed.error).toContain("Conflicting dates");
   });
 
-  it("checks a lead weekly regardless of edition outcome or announcement window", () => {
-    const anchored = (days: number) => nextCheckAt(lead({ anchor: new Date(now.getTime() - days * 86_400_000).toISOString().slice(0, 10) }), now);
-    expect(anchored(30)).toBe("2026-09-12T12:00:00.000Z");
-    expect(anchored(200)).toBe("2026-09-12T12:00:00.000Z");
-    expect(anchored(-10)).toBe("2026-09-12T12:00:00.000Z");
-    expect(nextCheckAt(lead({ outcome: "confirmed", anchor: "2026-08-06" }), now)).toBe("2026-09-12T12:00:00.000Z");
-    expect(nextCheckAt(lead({ kind: "calendar", anchor: "2026-08-06" }), now)).toBe("2026-09-12T12:00:00.000Z");
+  it("checks official pages fortnightly but unresolved failures every four weeks", () => {
+    expect(nextCheckAt(lead({ outcome: "confirmed" }), now)).toBe("2026-09-19T12:00:00.000Z");
+    expect(nextCheckAt(lead({ outcome: "unannounced" }), now)).toBe("2026-09-19T12:00:00.000Z");
+    expect(nextCheckAt(lead({ outcome: "failed" }), now)).toBe("2026-10-03T12:00:00.000Z");
+    expect(nextCheckAt(lead({ url: null }), now)).toBe("2026-10-03T12:00:00.000Z");
   });
 
   it("reserves resolve slots so a URL-less lead is never starved by repeatedly fetched ones", () => {

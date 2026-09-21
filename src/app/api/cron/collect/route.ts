@@ -1,4 +1,6 @@
 import { enqueueCollectionAreas, type EnqueueResult } from "@/features/collection/jobs";
+import { CHECK_INTERVAL_DAYS } from "@/features/collection/schedule";
+import { fetchAllRows } from "@/lib/supabase/fetch-in-batches";
 
 export const maxDuration = 300;
 
@@ -58,7 +60,17 @@ export async function GET(request: Request) {
         .not("hotel_id", "is", null)
         .order("name");
       if (areaError) throw areaError;
-      return areas.map((area) => ({ id: area.id, accountId: area.account_id }));
+      // The daily clock only queues hotels due for their fortnightly update. Manual
+      // refreshes also count, so onboarding never buys another search the next morning.
+      const cutoff = new Date();
+      cutoff.setUTCDate(cutoff.getUTCDate() - CHECK_INTERVAL_DAYS + 1);
+      const recent = await fetchAllRows((from, to) => admin.from("collection_runs")
+        .select("id, collection_area_id")
+        .gte("started_at", `${cutoff.toISOString().slice(0, 10)}T00:00:00Z`)
+        .order("id").range(from, to));
+      const refreshed = new Set(recent.map((run) => run.collection_area_id));
+      return areas.filter((area) => !refreshed.has(area.id))
+        .map((area) => ({ id: area.id, accountId: area.account_id }));
     },
   })(request);
 }

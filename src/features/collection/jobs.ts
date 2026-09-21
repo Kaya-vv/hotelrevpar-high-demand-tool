@@ -239,7 +239,8 @@ export async function processCollectionJob(
       .eq("id", job.id));
     try {
       const { stageHotelEventNotifications } = await import("@/features/notifications/service");
-      await stageHotelEventNotifications(job.account_id, job.collection_area_id);
+      const claude = result.sourceResults?.claude as { researchPending?: boolean } | undefined;
+      if (!claude?.researchPending) await stageHotelEventNotifications(job.account_id, job.collection_area_id);
     } catch (error) {
       console.error("Event notifications could not be prepared", {
         jobId: job.id,

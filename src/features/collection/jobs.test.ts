@@ -128,9 +128,10 @@ describe("collection jobs", () => {
   });
 
   it.each([
-    ["completed", "succeeded"],
-    ["partial", "partial"],
-  ] as const)("prepares mail after a %s hotel update", async (runStatus, jobStatus) => {
+    ["completed", "succeeded", false],
+    ["partial", "partial", false],
+    ["completed", "succeeded", true],
+  ] as const)("finishes a %s hotel update (%s, research pending: %s)", async (runStatus, jobStatus, researchPending) => {
     vi.mocked(stageHotelEventNotifications).mockClear();
     const jobUpdates: Array<Record<string, unknown>> = [];
     const jobQuery = selectable({
@@ -165,7 +166,7 @@ describe("collection jobs", () => {
             ? accountQuery
             : areaQuery),
     };
-    const run = vi.fn().mockResolvedValue({ runId: "run-2", status: runStatus });
+    const run = vi.fn().mockResolvedValue({ runId: "run-2", status: runStatus, sourceResults: { claude: { researchPending } } });
 
     await processCollectionJob({ jobId: "job-1" }, delivery(2), run);
 
@@ -182,10 +183,8 @@ describe("collection jobs", () => {
       expect.objectContaining({ status: "running", attempts: 2 }),
       expect.objectContaining({ status: jobStatus, collection_run_id: "run-2" }),
     ]);
-    expect(stageHotelEventNotifications).toHaveBeenCalledWith(
-      "account-1",
-      "area-1",
-    );
+    if (researchPending) expect(stageHotelEventNotifications).not.toHaveBeenCalled();
+    else expect(stageHotelEventNotifications).toHaveBeenCalledWith("account-1", "area-1");
   });
 
   it("records a failed attempt and rethrows so Vercel can retry it", async () => {

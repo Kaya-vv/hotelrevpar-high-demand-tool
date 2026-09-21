@@ -8,6 +8,8 @@ import { coveringMarket, createLongRangeStore, type MarketRow } from "./long-ran
 import type { CollectionContext } from "./run";
 import fixture from "../../../tests/fixtures/the-match-repair.json";
 import { stageHotelEventNotifications } from "@/features/notifications/service";
+import { CLAUDE_ASSESSMENT_VERSION } from "./anthropic-batches";
+import { LONG_RANGE_VERSION } from "./long-range-store";
 
 vi.mock("./jobs", () => ({ publishCollectionJob: vi.fn(async () => {}) }));
 vi.mock("./sources/long-range", () => ({ collectLongRange: vi.fn() }));
@@ -119,7 +121,7 @@ describe("hotel refresh and shared research separation", () => {
       acquire: vi.fn(async () => true),
       release: vi.fn(async () => {}),
       save: vi.fn(async () => {}),
-      load: vi.fn(async () => ({ version: 2003, discoveredAt: null, leads: [], publicationPending: true })),
+      load: vi.fn(async () => ({ version: 2003, discoveredAt: null, leads: [], publicationPending: true, research: { requestedAt: "2026-09-11T12:00:00Z", completedAt: "2026-09-11T13:00:00Z" } })),
     } as unknown as ReturnType<typeof createLongRangeStore>);
     vi.mocked(createCollectionRepository).mockReturnValue({
       loadContext: async (_account: string, areaId: string) => {
@@ -130,7 +132,7 @@ describe("hotel refresh and shared research separation", () => {
     } as unknown as ReturnType<typeof createCollectionRepository>);
 
     if (kind === "market-research") vi.mocked(collectLongRange).mockImplementationOnce(async input => {
-      const state: NonNullable<Parameters<typeof storedLongRangeResult>[0]> = { version: 2003, discoveredAt: null, leads: [], publicationPending: true };
+      const state: NonNullable<Parameters<typeof storedLongRangeResult>[0]> = { version: 2003, discoveredAt: null, leads: [], publicationPending: true, research: { requestedAt: "2026-09-11T12:00:00Z", completedAt: "2026-09-11T13:00:00Z" } };
       expect(input.fastFirstSearch).toBe(true);
       expect(await input.onProgress!(state)).toBe(true);
       expect(state.publishedAt).toBeUndefined();
@@ -153,4 +155,17 @@ it("does not research an archived initiating hotel", async () => {
   await processMarketWork({ kind: "market-research", accountId: "account", areaId: "archived", runId: "run", requestedAt: "2026-09-16T12:00:00Z" });
   expect(query.is).toHaveBeenCalledWith("hotels.archived_at", null);
   expect(collectLongRange).not.toHaveBeenCalled();
+});
+
+
+it("reuses finished shared research for a new hotel without starting another paid search", async () => {
+  adminStub();
+  vi.mocked(publishCollectionJob).mockClear();
+  const state = { version: LONG_RANGE_VERSION * 1000 + CLAUDE_ASSESSMENT_VERSION, discoveredAt: new Date().toISOString(), leads: [fixture.lead], publicationPending: false,
+    research: { requestedAt: new Date().toISOString(), completedAt: new Date().toISOString() } } as NonNullable<Parameters<typeof storedLongRangeResult>[0]>;
+  vi.mocked(createLongRangeStore).mockReturnValue({ load: async () => state } as unknown as ReturnType<typeof createLongRangeStore>);
+  const result = await readAndEnqueueResearch({ area: { id: "new-hotel", accountId: "account", searchLocation: "Eindhoven", radiusKm: 25 } } as CollectionContext, "first-run");
+  expect(result.candidates).toHaveLength(1);
+  expect(result.researchPending).toBe(false);
+  expect(publishCollectionJob).not.toHaveBeenCalled();
 });

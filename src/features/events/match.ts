@@ -45,6 +45,18 @@ function samePlaceEdition(left: string, right: string) {
   return leftTokens.every((token, index) => rightTokens[index] === token);
 }
 
+// KNZB labels the same edition both "NK lange baan (Open Nederlandse ... /
+// European Swimming Trials)" and "NK Zwemmen Lange Baan". Only use this alias
+// within swimming, with identical dates and a nearby location.
+function sameSwimmingEdition(left: NormalizedCandidate, right: NormalizedCandidate) {
+  if (!/swim|zwem/i.test(left.category) || !/swim|zwem/i.test(right.category)
+    || left.localEndDate !== right.localEndDate) return false;
+  const title = (value: string) => normalizeText(value.replace(/\([^)]*\)/g, ""))
+    .replace(/\b(?:zwemmen|swimming|20\d{2})\b/g, "").replace(/\s+/g, " ").trim();
+  const key = title(left.title);
+  return key === "nk lange baan" && key === title(right.title);
+}
+
 function nextDay(value: string) {
   const date = new Date(`${value}T00:00:00Z`);
   date.setUTCDate(date.getUTCDate() + 1);
@@ -111,6 +123,7 @@ export function classifyMatch(
         (samePlace(event, candidate) &&
           (similarity(event.normalizedTitle, candidate.normalizedTitle) >= 0.8
             || samePlaceEdition(event.normalizedTitle, candidate.normalizedTitle)
+            || sameSwimmingEdition(event, candidate)
             || candidate.evidence?.aliases?.some((alias) => normalizeText(alias) === event.normalizedTitle))))
   );
   if (strong) return { kind: "exact", eventId: strong.id };
