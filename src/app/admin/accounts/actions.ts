@@ -1,11 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { provisionSubscriber } from "@/features/accounts/provision-subscriber";
 import { baselineMemberNotifications } from "@/features/notifications/service";
+import { SELECTED_HOTEL_COOKIE } from "@/features/workspace/hotel-context";
 import { requirePlatformAdmin } from "@/lib/auth/require-account";
 import { createAdminClient, type AdminClient } from "@/lib/supabase/admin";
 
@@ -146,5 +148,26 @@ export async function deleteSubscriberUser(formData: FormData) {
     // The database removes membership with the auth user. Account data stays.
     const { error } = await admin.auth.admin.deleteUser(member.user_id);
     if (error) throw error;
+  });
+}
+
+export async function setSubscriberHotelArchived(formData: FormData) {
+  await requirePlatformAdmin();
+  const archived = formData.get("archived");
+  return runAccountAction(archived === "true" ? "hotel-archived" : "hotel-restored", async () => {
+    const hotelId = String(formData.get("hotelId") ?? "");
+    const accountId = String(formData.get("accountId") ?? "");
+    if (!hotelId || !accountId || !["true", "false"].includes(String(archived))) throw new AccountActionError("hotel-input");
+    const admin = createAdminClient();
+    // Use the existing archive operation, including cancellation of queued work.
+    // No membership is required: retained hotels still need managing after login deletion.
+    const { data, error } = await admin.from("hotels")
+      .update({ archived_at: archived === "true" ? new Date().toISOString() : null })
+      .eq("account_id", accountId).eq("id", hotelId).select("id").maybeSingle();
+    if (error) throw error;
+    if (!data) throw new AccountActionError("hotel-missing");
+    const jar = await cookies();
+    if (archived === "true" && jar.get(SELECTED_HOTEL_COOKIE)?.value === hotelId) jar.delete(SELECTED_HOTEL_COOKIE);
+    revalidatePath("/", "layout");
   });
 }

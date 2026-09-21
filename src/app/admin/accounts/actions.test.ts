@@ -2,12 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({ redirect: vi.fn((url: string) => { throw new Error(url); }) }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+const selection = vi.hoisted(() => ({ get: vi.fn(), delete: vi.fn() }));
+vi.mock("next/headers", () => ({ cookies: async () => selection }));
 vi.mock("@/lib/auth/require-account", () => ({ requirePlatformAdmin: vi.fn() }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: vi.fn() }));
 vi.mock("@/features/notifications/service", () => ({ baselineMemberNotifications: vi.fn().mockResolvedValue(0) }));
 import { requirePlatformAdmin } from "@/lib/auth/require-account";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createSubscriberAccount, deleteSubscriberUser, resendSubscriberLink } from "./actions";
+import { createSubscriberAccount, deleteSubscriberUser, resendSubscriberLink, setSubscriberHotelArchived } from "./actions";
+import { revalidatePath } from "next/cache";
 
 const auth = {
   admin: { createUser: vi.fn(), inviteUserByEmail: vi.fn(), deleteUser: vi.fn(), getUserById: vi.fn() },
@@ -112,5 +115,39 @@ describe("subscriber actions", () => {
     auth.admin.deleteUser.mockResolvedValue({ error: { code: "unexpected_failure" } });
     await expect(deleteSubscriberUser(form())).rejects.toThrow("notice=failed");
     expect(from.mock.calls).toEqual([["account_members"]]);
+  });
+});
+
+describe("administrator hotel archiving", () => {
+  it.each(["true", "false"])("sets archived=%s for the selected account's hotel without requiring a login or starting searches", async archived => {
+    const hotel = query({ id: "hotel-1" });
+    from.mockReturnValue(hotel);
+    selection.get.mockReturnValue({ value: "hotel-1" });
+    await expect(setSubscriberHotelArchived(form({ hotelId: "hotel-1", archived })))
+      .rejects.toThrow(archived === "true" ? "notice=hotel-archived" : "notice=hotel-restored");
+    expect(from.mock.calls).toEqual([["hotels"]]);
+    expect(hotel.eq.mock.calls).toEqual([["account_id", "account-1"], ["id", "hotel-1"]]);
+    expect(hotel.update).toHaveBeenCalledWith({ archived_at: archived === "true" ? expect.any(String) : null });
+    expect(hotel.delete).not.toHaveBeenCalled();
+    expect(selection.delete).toHaveBeenCalledTimes(archived === "true" ? 1 : 0);
+    expect(revalidatePath).toHaveBeenCalledWith("/", "layout");
+  });
+
+  it("rejects non-administrators before accessing another account's hotel", async () => {
+    vi.mocked(requirePlatformAdmin).mockRejectedValue(new Error("/calendar"));
+    await expect(setSubscriberHotelArchived(form({ hotelId: "hotel-1", archived: "true" }))).rejects.toThrow("/calendar");
+    expect(createAdminClient).not.toHaveBeenCalled();
+  });
+
+  it("rejects a missing or mismatched hotel without reporting success", async () => {
+    from.mockReturnValue(query(null));
+    await expect(setSubscriberHotelArchived(form({ hotelId: "hotel-1", archived: "true" }))).rejects.toThrow("notice=hotel-missing");
+    expect(selection.delete).not.toHaveBeenCalled();
+    expect(revalidatePath).not.toHaveBeenCalledWith("/", "layout");
+  });
+
+  it.each([{ hotelId: "", archived: "true" }, { hotelId: "hotel-1", archived: "" }])("rejects incomplete input: %j", async values => {
+    await expect(setSubscriberHotelArchived(form(values))).rejects.toThrow("notice=hotel-input");
+    expect(createAdminClient).not.toHaveBeenCalled();
   });
 });

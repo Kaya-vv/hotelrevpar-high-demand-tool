@@ -20,6 +20,14 @@ Record the evidence for each gate before calling the data-quality demo ready. De
 | 14 | Deferred: import the generated workbook into RevControl without repairing headers or dates. |  |  |  |  |
 | 15 | If PredictHQ grants written permission, run a separate paired comparison over the same window. |  |  |  |  |
 
+## Stop searches for an inactive hotel
+
+Open **Abonnees**, expand **Hotels beheren** beside the account, and choose **Archiveren** for the hotel. Administrators can manage every account, including accounts whose last login was removed. Removing a login alone does not stop its hotels' searches.
+
+Archiving stops future searches, cancels queued hotel work and unsent notifications, and preserves hotel/event/export history. Work already submitted to a paid provider can still incur charges. Shared area research may continue for other active hotels.
+
+Choose **Herstellen** to make the hotel available again. Restoring does not immediately start a paid search; normal scheduling applies while its account is active.
+
 ## Email notification rollout
 
 ### Monthly searches and duplicate batch repair (21 September 2026)

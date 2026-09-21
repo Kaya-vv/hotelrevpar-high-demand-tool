@@ -1,7 +1,8 @@
 import { requirePlatformAdmin } from "@/lib/auth/require-account";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { fetchAllRows } from "@/lib/supabase/fetch-in-batches";
 
-import { createSubscriberAccount, deleteSubscriberUser, resendSubscriberLink } from "./actions";
+import { createSubscriberAccount, deleteSubscriberUser, resendSubscriberLink, setSubscriberHotelArchived } from "./actions";
 import { accountMessages } from "./messages";
 import { SubmitButton } from "./submit-button";
 
@@ -22,6 +23,8 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
     if (userError) throw userError;
     return { ...member, email: data.user.email ?? "Geen e-mailadres" };
   }));
+  const hotels = await fetchAllRows((from, to) => admin.from("hotels")
+    .select("id, account_id, name, archived_at").order("name").order("id").range(from, to));
 
   return (
     <main className="admin-page">
@@ -46,16 +49,19 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
       </section>
       <section className="panel">
         <h2>Bestaande accounts</h2>
+        <p>Archiveer hotels die niet meer nodig zijn om nieuwe zoekopdrachten en e-mails te stoppen. Hun geschiedenis blijft bewaard en je kunt ze later herstellen.</p>
+        <p>Een verwijderde login stopt de hotelzoekopdrachten niet. Werk dat al bij de zoekdienst is gestart, kan nog kosten geven.</p>
         <div className="table-wrap">
           <table>
-            <thead><tr><th>Naam</th><th>Status</th><th>E-mailadres</th></tr></thead>
+            <thead><tr><th>Naam</th><th>Status</th><th>E-mailadres</th><th>Hotels</th></tr></thead>
             <tbody>
-              {accounts?.filter((account) => members.some((member) => member.account_id === account.id)).map((account) => (
+              {accounts?.map((account) => (
                 <tr key={account.id}>
                   <td>{account.name}</td>
                   <td>{account.active ? "Actief" : "Uitgeschakeld"}</td>
                   <td>
                     <div className="form-stack">
+                      {!members.some((member) => member.account_id === account.id) && <span>Geen login</span>}
                       {members.filter((member) => member.account_id === account.id).map((member) => (
                         <div key={member.user_id} className="subscriber-login">
                           <span>{member.email}</span>
@@ -78,6 +84,24 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
                         </div>
                       ))}
                     </div>
+                  </td>
+                  <td>
+                    {hotels.some((hotel) => hotel.account_id === account.id) ? (
+                      <details>
+                        <summary>Hotels beheren ({hotels.filter((hotel) => hotel.account_id === account.id).length})</summary>
+                        <div className="form-stack">
+                          {hotels.filter((hotel) => hotel.account_id === account.id).map((hotel) => (
+                            <form key={hotel.id} action={setSubscriberHotelArchived} className="subscriber-login">
+                              <span><strong>{hotel.name}</strong><br />{hotel.archived_at ? "Gearchiveerd" : account.active ? "Zoeken aan" : "Account uitgeschakeld"}</span>
+                              <input type="hidden" name="accountId" value={account.id} />
+                              <input type="hidden" name="hotelId" value={hotel.id} />
+                              <input type="hidden" name="archived" value={String(!hotel.archived_at)} />
+                              <SubmitButton>{hotel.archived_at ? "Herstellen" : "Archiveren"}</SubmitButton>
+                            </form>
+                          ))}
+                        </div>
+                      </details>
+                    ) : "Geen hotels"}
                   </td>
                 </tr>
               ))}
