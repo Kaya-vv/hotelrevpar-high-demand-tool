@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { assessHotelDemand, hasHotelDemand } from "./demand-assessment";
 import { scoreHotelEvent } from "./score";
-import { isAnnouncedLongRange, isPublishableDemand } from "./importance";
+import { isAnnouncedDemand, isPublishableDemand } from "./importance";
 import { verifyEventEvidence, type EventEvidence } from "./evidence";
 import type { EventCandidate } from "./types";
 
@@ -50,26 +50,27 @@ describe("hotel demand evidence upgrades and contradicts the proxy score", () =>
   it.each(["cancelled", "postponed", "removed"] as const)("preserves %s exclusion despite strong demand", sourceState => {
     expect(hasHotelDemand(assessHotelDemand({ ...base, sourceState, evidence: evidence("hotel_stay") }, hotel))).toBe(false);
   });
-  it("announces an assessed edition beyond the horizon and grades it inside the horizon", () => {
+  it("announces an assessed edition in every period unless its grade already publishes it", () => {
     const assessment = assessHotelDemand({ ...base, evidence: evidence("hotel_stay") }, hotel);
-    const band = (startDate: string) => isAnnouncedLongRange({ startDate, endDate: startDate, nearTermHorizon: "2026-12-08",
-      demandRadiusKm: 25, category: "conference", hasConfirmedDateAndLocation: true,
-      scores: [{ importance: "Low", impactBasis: "default", distanceKm: 1, assessment }] });
-    // Beyond the horizon a grade cannot be earned yet, so supported demand is announced without one.
+    const band = (startDate: string, importance: "Low" | "High" = "Low") => isAnnouncedDemand({ startDate, endDate: startDate,
+      nearTermHorizon: "2026-12-08", demandRadiusKm: 25, category: "conference", hasConfirmedDateAndLocation: true,
+      scores: [{ importance, impactBasis: importance === "High" ? "demand_rule" : "default", distanceKm: 1, assessment }] });
     expect(band("2026-12-09")).toBe(true);
     expect(band("2027-12-01")).toBe(true);
-    // Inside the horizon the grade decides. The band must not duplicate a gradeable event.
-    expect(band("2026-09-10")).toBe(false);
-    expect(band("2026-12-08")).toBe(false);
+    // Inside the horizon too: the ASML Marathon had quoted demand but was graded Medium and hidden.
+    expect(band("2026-09-10")).toBe(true);
+    expect(band("2026-12-08")).toBe(true);
+    // A publishable grade shows the event with that grade, never also as an announcement.
+    expect(band("2026-09-10", "High")).toBe(false);
   });
   it("never announces a long-range event on a proxy grade alone", () => {
     // The regression this replaces: any `ai_assessment` basis was announced regardless of score,
     // so a one-night tribute act the model itself graded 35 appeared unlevelled a year out while
     // the identical event inside 90 days stayed hidden. 45 such events across eight hotels.
-    const band = (input: Partial<Parameters<typeof isAnnouncedLongRange>[0]> & { days?: number }) => {
+    const band = (input: Partial<Parameters<typeof isAnnouncedDemand>[0]> & { days?: number }) => {
       const startDate = "2027-06-01";
       const endDate = `2027-06-0${input.days ?? 1}`;
-      return isAnnouncedLongRange({ startDate, endDate, nearTermHorizon: "2026-12-08",
+      return isAnnouncedDemand({ startDate, endDate, nearTermHorizon: "2026-12-08",
         demandRadiusKm: 25, category: "conference", hasConfirmedDateAndLocation: true,
         scores: [{ importance: "Medium", impactBasis: "ai_assessment", distanceKm: 1 }], ...input });
     };

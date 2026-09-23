@@ -55,6 +55,18 @@ describe("hotel calendar visibility", () => {
       .toEqual({ visible: false, announced: false });
   });
 
+  it("announces a confirmed multi-day event inside 90 days only up to 14 days long", () => {
+    const near = (endDate: string) => hotelCalendarVisibility({ ...base, startDate: "2026-11-06", endDate });
+    // GLOW: nine days, graded Medium, previously hidden without a hand-set level.
+    expect(near("2026-11-14")).toEqual({ visible: true, announced: true });
+    expect(near("2026-11-19")).toEqual({ visible: true, announced: true });
+    // A months-long exhibition is not a stay.
+    expect(near("2026-11-20")).toEqual({ visible: false, announced: false });
+    // Beyond the horizon the same span is still announced; the cap is near-term only.
+    expect(hotelCalendarVisibility({ ...base, startDate: "2027-10-10", endDate: "2028-02-14" }))
+      .toEqual({ visible: true, announced: true });
+  });
+
   it("lets a hand-set level decide a long-range announcement", () => {
     // The stored row the calendar's "Handmatige inschatting" writes, with nothing but a
     // model guess behind the automatic grade.

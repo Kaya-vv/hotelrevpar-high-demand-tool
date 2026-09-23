@@ -56,7 +56,7 @@ export type CalendarEvent = {
    * `hotelScores`. A manual override targets this row.
    */
   assessedScore?: CalendarHotelScore;
-  /** Confirmed beyond the near-term horizon, demand assessed but not yet gradeable. */
+  /** "Hotelvraag": likely hotel demand without a High or Peak grade; see `isAnnouncedDemand`. */
   announced?: boolean;
   /** Internal result of the shared calendar publication rule. */
   visible?: boolean;
@@ -111,7 +111,7 @@ function EventDetails({
   overrideImportanceAction?: ManualLevelAction;
 }) {
   const score = event.hotelScores[0];
-  // Announced long-range events show an assessment without a publishable grade; the manual level
+  // Announced events show an assessment without a publishable grade; the manual level
   // still targets their hidden score row.
   const overrideTarget = score ?? event.assessedScore;
   const primarySource = event.sources.find(

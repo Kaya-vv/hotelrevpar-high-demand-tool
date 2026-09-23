@@ -69,9 +69,23 @@ export function gradedDemand(score: {
 }
 
 /**
+ * Longest continuous run the destination rule accepts inside the near-term horizon. Near-term
+ * listings include exhibitions and seasons that run for months (`Museum as Sundial`, 128 days);
+ * those are not a stay. GLOW (9 days) and a five-day conference fit.
+ */
+export const nearTermDestinationMaxDays = 14;
+
+/**
+ * "Hotelvraag": an event worth showing without a High or Peak grade. Two kinds qualify.
+ *
  * Beyond the near-term horizon a demand grade cannot be earned yet: a future edition has no
- * attendance of its own and organisers rarely publish audience information a year ahead. Two
- * kinds of edition are still worth announcing, without a level.
+ * attendance of its own and organisers rarely publish audience information a year ahead. Inside
+ * the horizon the grade can be earned but often is not: GLOW and the ASML Marathon were graded
+ * Medium, so the normal calendar hid them unless an operator set a level by hand. Both periods
+ * use the same two rules; inside the horizon the destination rule is capped at
+ * `nearTermDestinationMaxDays`.
+ *
+ * An event whose grade already publishes it is shown with that grade instead, never twice.
  *
  * The first is an edition carrying real hotel-demand evidence — a quoted room block, package or
  * travelling audience — whose scale is not yet gradeable. The second is a multi-day edition whose
@@ -96,7 +110,7 @@ export function gradedDemand(score: {
  * judged the event not worth a room-rate decision, so announcing it anyway is the calendar
  * contradicting the person using it.
  */
-export function isAnnouncedLongRange(input: {
+export function isAnnouncedDemand(input: {
   startDate: string;
   endDate: string;
   nearTermHorizon: string;
@@ -107,7 +121,6 @@ export function isAnnouncedLongRange(input: {
     manualLevel?: DemandLevel | null }[];
   includeMedium?: boolean;
 }) {
-  if (input.startDate <= input.nearTermHorizon) return false;
   if (input.scores.some((score) => isPublishableDemand(score.importance, score.impactBasis, input.includeMedium))) return false;
   if (input.scores.some((score) => score.manualLevel)) return false;
   const withinRadius = input.scores.some((score) =>
@@ -120,7 +133,8 @@ export function isAnnouncedLongRange(input: {
   // January" is extracted as one six-day event, which made four single Festival Oude Muziek
   // concerts look like destination events in Utrecht while the festival itself was graded High.
   const destination = durationDays >= 3 && !perPerformanceCategory(input.category)
-    && input.hasConfirmedDateAndLocation && withinRadius;
+    && input.hasConfirmedDateAndLocation && withinRadius
+    && (input.startDate > input.nearTermHorizon || durationDays <= nearTermDestinationMaxDays);
   return assessed || destination;
 }
 
@@ -158,7 +172,7 @@ export function hotelCalendarVisibility(input: {
   ) {
     return { visible: true, announced: false };
   }
-  const announced = isAnnouncedLongRange(input);
+  const announced = isAnnouncedDemand(input);
   return { visible: announced, announced };
 }
 

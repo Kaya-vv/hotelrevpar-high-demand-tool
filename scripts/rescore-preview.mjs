@@ -21,7 +21,7 @@ const batched = async (ids, build) => {
 const server = await createServer({ configFile: false, logLevel: "error", resolve: { alias: { "@": resolve("src") } }, server: { middlewareMode: true, hmr: false } });
 const { scoreHotelEvent } = await server.ssrLoadModule("/src/features/events/score.ts");
 const { readEventEvidence } = await server.ssrLoadModule("/src/features/events/evidence.ts");
-const { isPublishableDemand, isAnnouncedLongRange } = await server.ssrLoadModule("/src/features/events/importance.ts");
+const { isPublishableDemand, isAnnouncedDemand } = await server.ssrLoadModule("/src/features/events/importance.ts");
 const { selectScoreEvidence } = await server.ssrLoadModule("/src/features/events/source-evidence.ts");
 
 const hotelId = process.argv[2] ?? "c22bedf2-178a-4932-9874-6c4d2913722e";
@@ -81,7 +81,7 @@ for (const row of drift.sort((a, b) => b.after - a.after))
 console.log(`\ntotal publishable: before ${rows.filter((r) => r.wasVisible).length} -> after ${rows.filter((r) => r.nowVisible).length}`);
 const far = rows.filter((row) => row.beyondHorizon);
 console.log(`beyond horizon: ${far.length} events | visible before ${far.filter((r) => r.wasVisible).length} -> after ${far.filter((r) => r.nowVisible).length}`);
-const band = far.filter((row) => isAnnouncedLongRange({
+const band = far.filter((row) => isAnnouncedDemand({
   startDate: row.start, endDate: row.end, nearTermHorizon: horizon, demandRadiusKm: scope.demandRadiusKm,
   hasConfirmedDateAndLocation: row.confirmed,
   scores: [{ importance: row.afterImp, impactBasis: row.afterBasis, distanceKm: row.distanceKm, assessment: row.assessment }],
