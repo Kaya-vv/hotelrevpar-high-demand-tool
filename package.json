@@ -14,6 +14,11 @@
     "notifications:baseline": "node scripts/baseline-event-notifications.mjs",
     "notifications:test": "node scripts/send-test-event-notification.mjs",
     "test:replay": "vitest run src/features/collection/sources/long-range.replay.test.ts",
+    "compare:prepare": "node scripts/compare-research-models.mjs prepare",
+    "compare:test": "node scripts/compare-research-models.mjs test",
+    "compare:run": "node scripts/compare-research-models.mjs run",
+    "compare:verify-live": "node scripts/compare-research-models.mjs verify-live",
+    "compare:report": "node scripts/compare-research-models.mjs report",
     "test:watch": "vitest"
   },
   "dependencies": {
