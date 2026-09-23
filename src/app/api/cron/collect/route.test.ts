@@ -66,21 +66,48 @@ describe("collection Cron", () => {
 });
 
 
-it("the daily scheduler skips recent automatic and manual runs and includes first searches", async () => {
+const cronRequest = () => GET(new Request("http://localhost/api/cron/collect", { headers: { authorization: "Bearer secret" } }));
+
+it("the daily scheduler skips recent automatic and manual runs, waits for a hotel's weekday and includes first searches", async () => {
   vi.useFakeTimers();
-  vi.setSystemTime(new Date("2026-10-21T05:00:00Z"));
+  vi.setSystemTime(new Date("2026-10-21T05:00:00Z")); // Wednesday
   vi.stubEnv("CRON_SECRET", "secret");
   vi.mocked(enqueueCollectionAreas).mockClear();
   dbState.tables = {
     accounts: [{ id: "account", active: true }],
-    collection_areas: ["due", "recent", "manual", "new"].map(id => ({ id, account_id: "account", hotel_id: id })),
+    collection_areas: ["due", "later", "recent", "manual", "new"].map(id => ({ id, account_id: "account", hotel_id: id })),
     collection_runs: [
       { id: "r1", collection_area_id: "due", started_at: "2026-09-21T15:45:00Z" },
       { id: "r2", collection_area_id: "recent", started_at: "2026-09-22T05:00:00Z" },
       { id: "r3", collection_area_id: "manual", started_at: "2026-10-03T16:00:00Z", trigger: "manual" },
+      { id: "r4", collection_area_id: "later", started_at: "2026-09-01T05:00:00Z" },
     ],
   };
-  const response = await GET(new Request("http://localhost/api/cron/collect", { headers: { authorization: "Bearer secret" } }));
+  const response = await cronRequest();
   expect(response.status).toBe(200);
-  expect(enqueueCollectionAreas).toHaveBeenCalledExactlyOnceWith({ accountId: "account", areaIds: ["due", "new"], trigger: "cron" });
+  // "due" is overdue but its weekday is Monday; "later" is Wednesday's hotel; "new" never ran.
+  expect(enqueueCollectionAreas).toHaveBeenCalledExactlyOnceWith({ accountId: "account", areaIds: ["later", "new"], trigger: "cron" });
+});
+
+it("spreads ten due hotels over the working week and queues none of them at the weekend", async () => {
+  vi.useFakeTimers();
+  vi.stubEnv("CRON_SECRET", "secret");
+  const ids = Array.from({ length: 10 }, (_, index) => `area-${index + 1}`);
+  const queuedOn: Record<string, string[]> = {};
+  // Monday 19 October 2026 through Sunday 25 October.
+  for (const day of ["19", "20", "21", "22", "23", "24", "25"]) {
+    vi.setSystemTime(new Date(`2026-10-${day}T05:00:00Z`));
+    vi.mocked(enqueueCollectionAreas).mockClear();
+    dbState.tables = {
+      accounts: [{ id: "account", active: true }],
+      collection_areas: ids.map(id => ({ id, account_id: "account", hotel_id: id })),
+      collection_runs: ids.map(id => ({ id: `run-${id}`, collection_area_id: id, started_at: "2026-08-01T05:00:00Z" })),
+    };
+    await cronRequest();
+    queuedOn[day] = vi.mocked(enqueueCollectionAreas).mock.calls.flatMap(([input]) => input.areaIds);
+  }
+  expect(queuedOn["24"]).toEqual([]);
+  expect(queuedOn["25"]).toEqual([]);
+  expect(Object.values(queuedOn).flat().sort()).toEqual([...ids].sort());
+  expect(Object.values(queuedOn).filter(areas => areas.length).length).toBeGreaterThanOrEqual(4);
 });

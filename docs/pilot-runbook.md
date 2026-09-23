@@ -28,6 +28,21 @@ Archiving stops future searches, cancels queued hotel work and unsent notificati
 
 Choose **Herstellen** to make the hotel available again. Restoring does not immediately start a paid search; normal scheduling applies while its account is active.
 
+## Research model: switch to Luna
+
+Research runs on OpenAI `gpt-6-luna` once `RESEARCH_PROVIDER=luna` is live. The quality gate passed on 23 September 2026 (`out/luna-pipeline/comparison.md`): Eindhoven 11 of 15 upcoming benchmark events, Utrecht 7 of 8, no failed requests, $1.55 and $1.80 per location for one near-term plus one long-range run.
+
+Order matters. The new code defaults to Luna and stops research with "OpenAI credentials are missing" if the key is absent.
+
+1. In Vercel production, add `OPENAI_API_KEY` and `RESEARCH_PROVIDER=luna`.
+2. Deploy the code.
+3. After the first run per location, open `/admin/source-health` and confirm model `gpt-6-luna`, billing mode `standard`, no failed requests and under $2.50 per location.
+4. Record the switch date here: ____. Sonnet code is deleted 30 days later if `RESEARCH_PROVIDER` never went back to `sonnet`.
+
+Rollback: set `RESEARCH_PROVIDER=sonnet` in Vercel and redeploy the same code (Vercel only applies changed variables to new deployments). `ANTHROPIC_API_KEY` and `ANTHROPIC_MODEL` must still be set for that.
+
+Hotels now start their automatic search on a fixed weekday (Monday to Friday, spread by hotel), so ten hotels do not all hit OpenAI's per-minute limit on the same morning. A hotel that was never searched starts immediately. If OpenAI rate limits still show up, lower the Luna client's parallel requests from 4 to 2 before changing any schedule.
+
 ## Email notification rollout
 
 ### Monthly searches and duplicate batch repair (21 September 2026)

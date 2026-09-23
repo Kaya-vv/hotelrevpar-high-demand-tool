@@ -1,8 +1,14 @@
+import { createHash } from "node:crypto";
 import { enqueueCollectionAreas, type EnqueueResult } from "@/features/collection/jobs";
 import { CHECK_INTERVAL_DAYS } from "@/features/collection/schedule";
-import { fetchAllRows } from "@/lib/supabase/fetch-in-batches";
+import { fetchAllRows, fetchPagedInBatches } from "@/lib/supabase/fetch-in-batches";
 
 export const maxDuration = 300;
+
+// Each hotel gets a fixed weekday (0..4 = Monday..Friday), so ten hotels do not all start on the
+// same morning and collide with OpenAI's per-minute token limit.
+const weekdaySlot = (areaId: string) =>
+  Number.parseInt(createHash("sha256").update(areaId).digest("hex").slice(0, 8), 16) % 5;
 
 type CronDependencies = {
   secret: string | undefined;
@@ -69,7 +75,14 @@ export async function GET(request: Request) {
         .gte("started_at", `${cutoff.toISOString().slice(0, 10)}T00:00:00Z`)
         .order("id").range(from, to));
       const refreshed = new Set(recent.map((run) => run.collection_area_id));
-      return areas.filter((area) => !refreshed.has(area.id))
+      const due = areas.filter((area) => !refreshed.has(area.id));
+      // A hotel that was never searched starts at once, so onboarding never waits for its weekday.
+      const searched = new Set((await fetchPagedInBatches(due.map((area) => area.id), (ids, from, to) => admin.from("collection_runs")
+        .select("id, collection_area_id").in("collection_area_id", ids).order("id").range(from, to)))
+        .map((run) => run.collection_area_id));
+      // Saturday (5) and Sunday (-1) match no slot.
+      const today = new Date().getUTCDay() - 1;
+      return due.filter((area) => !searched.has(area.id) || weekdaySlot(area.id) === today)
         .map((area) => ({ id: area.id, accountId: area.account_id }));
     },
   })(request);

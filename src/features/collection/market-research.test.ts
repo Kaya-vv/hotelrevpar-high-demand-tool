@@ -35,13 +35,19 @@ function adminStub(markets: MarketRow[] = []) {
 }
 
 describe("hotel refresh and shared research separation", () => {
-  it.each(["disabled", "enabled"])("applies the %s batch setting to background research too", async setting => {
+  it.each([
+    ["sonnet", "disabled", false],
+    ["sonnet", "enabled", true],
+    // OpenAI's Batch API rejects web search, so Luna never batches whatever the old setting says.
+    ["", "enabled", false],
+  ])("applies the batch setting for provider %j with ANTHROPIC_BATCHES=%s to background research too", async (provider, setting, enabled) => {
+    vi.stubEnv("RESEARCH_PROVIDER", provider);
     vi.stubEnv("ANTHROPIC_BATCHES", setting);
     adminStub();
     vi.mocked(createCollectionRepository).mockReturnValue({ loadContext: async () => ({ area: { searchLocation: "Eindhoven", radiusKm: 25, enabledSources: ["claude"] } }) } as unknown as ReturnType<typeof createCollectionRepository>);
     try {
       await processMarketWork({ kind: "market-research", accountId: "account", areaId: "area", runId: "run", requestedAt: "2026-09-09T12:00:00Z" });
-      expect(collectLongRange).toHaveBeenLastCalledWith(expect.objectContaining({ batching: { enabled: setting !== "disabled" } }));
+      expect(collectLongRange).toHaveBeenLastCalledWith(expect.objectContaining({ batching: { enabled } }));
     } finally { vi.unstubAllEnvs(); vi.mocked(collectLongRange).mockClear(); }
   });
   it("returns stored editions after durable enqueue without waiting for research", async () => {

@@ -7,6 +7,7 @@ import { longRangeWindow, marketWindow } from "./sources/claude";
 import { collectLongRange } from "./sources/long-range";
 import type { SourceResult } from "./types";
 import { searchDue } from "./schedule";
+import { researchBatchingEnabled } from "./research-client";
 
 export type MarketWork = {
   kind: "market-research" | "market-publication";
@@ -86,7 +87,7 @@ export async function processMarketWork(work: MarketWork) {
     // narrowing the search would strand every hotel that is riding the same market.
     await collectLongRange({
       ...longRangeWindow(marketWindow(collectionWindow())), location: market.location, radiusKm: market.radiusKm,
-      seeds: context.longRangeSeeds, batching: { enabled: process.env.ANTHROPIC_BATCHES !== "disabled" },
+      seeds: context.longRangeSeeds, batching: { enabled: researchBatchingEnabled() },
       requestedAt: work.requestedAt, fastFirstSearch: true,
       onProgress: async (state) => Boolean(await publishState(state)),
       onUsage: (usage) => repository.recordUsage(work.runId, "claude", usage),

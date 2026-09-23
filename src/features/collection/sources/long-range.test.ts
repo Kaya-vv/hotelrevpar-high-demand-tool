@@ -171,7 +171,8 @@ describe("long-range source leads", () => {
     expect(memory.state().leads[0]).toMatchObject({ officialPage: about, url: about, outcome: "confirmed" });
   });
 
-  it.each(["", "  \n"])("falls back from blank optional model settings (%j)", async (blank) => {
+  it.each(["", "  \n"])("falls back from blank optional Sonnet model settings (%j)", async (blank) => {
+    vi.stubEnv("RESEARCH_PROVIDER", "sonnet");
     vi.stubEnv("ANTHROPIC_DISCOVERY_MODEL", blank);
     vi.stubEnv("ANTHROPIC_TRIAGE_MODEL", blank);
     const create = vi.fn().mockResolvedValue({
@@ -189,7 +190,8 @@ describe("long-range source leads", () => {
     expect(create.mock.calls[1][0].model).toBe(input.model);
   });
 
-  it("rejects a blank main model before sending requests", async () => {
+  it("rejects a blank main Sonnet model before sending requests", async () => {
+    vi.stubEnv("RESEARCH_PROVIDER", "sonnet");
     vi.stubEnv("ANTHROPIC_MODEL", "  ");
     const create = vi.fn();
     await expect(collectLongRange({ ...input, model: "", store: memoryStore(null).store, client: client(create) })).rejects.toThrow("ANTHROPIC_MODEL is required");

@@ -4,6 +4,9 @@ import type { ClaudeUsageEvent } from "./sources/claude";
 import type { LongRangeState } from "./long-range-store";
 
 export function modelRates(model: string): [number, number] | null {
+  // Both Luna roles bill the same model; cache writes (1.25x) and reads (0.1x) below then match
+  // its published $0.125 and $0.01 per million exactly.
+  if (model.startsWith("gpt-6-luna")) return [0.1, 0.5];
   if (model.startsWith("claude-sonnet-5")) return [2, 10];
   if (model.startsWith("claude-haiku-4-5")) return [1, 5];
   if (model.startsWith("claude-sonnet-4")) return [3, 15];

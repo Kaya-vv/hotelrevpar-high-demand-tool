@@ -1310,9 +1310,10 @@ describe("source adapters", () => {
     expect(result.candidates).toHaveLength(1);
   });
 
-  it("falls back to a real triage model when the env var is set but blank", async () => {
+  it("falls back to a real Sonnet-era triage model when the env var is set but blank", async () => {
     // Vercel passes a variable that exists with no value through as "", which `??` accepts and
     // the API then rejects for every request in the phase.
+    vi.stubEnv("RESEARCH_PROVIDER", "sonnet");
     vi.stubEnv("ANTHROPIC_TRIAGE_MODEL", "");
     const official = "https://organizer.example/event";
     const create = vi.fn();

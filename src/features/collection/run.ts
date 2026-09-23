@@ -28,6 +28,7 @@ import type { CollectionWindow, SourceResult } from "./types";
 import { LongRangeLeaseError, type LongRangeSeed } from "./long-range-store";
 import { BatchPendingError } from "./anthropic-batches";
 import { searchDue, BROAD_SEARCH_INTERVAL_DAYS } from "./schedule";
+import { researchProvider } from "./research-client";
 
 export type CollectionAreaContext = {
   id: string;
@@ -320,6 +321,12 @@ function configured(value: string | undefined, source: string) {
   return value;
 }
 
+function researchConfigured() {
+  return researchProvider() === "luna"
+    ? configured(process.env.OPENAI_API_KEY, "OpenAI")
+    : configured(process.env.ANTHROPIC_API_KEY, "Anthropic");
+}
+
 function defaultCollectors(
   onUsage: (source: SourceName, usage: ClaudeUsageEvent) => Promise<void>,
   runId: string,
@@ -349,7 +356,7 @@ function defaultCollectors(
         ),
       }),
     claude: (context) => {
-      configured(process.env.ANTHROPIC_API_KEY, "Anthropic");
+      researchConfigured();
       // A first run has no calendar to show yet, so it buys latency with the batch discount: the
       // near-term horizon answers in minutes instead of waiting out the batch queue. Long-range
       // is unaffected - `collectFuture` below enqueues it as its own job, which keeps both the
@@ -387,7 +394,7 @@ function defaultDemandTriageReviewer(
   onUsage: (source: SourceName, usage: ClaudeUsageEvent) => Promise<void>
 ): DemandTriageReviewer {
   return (input) => {
-    configured(process.env.ANTHROPIC_API_KEY, "Anthropic");
+    researchConfigured();
     return triagePredictHqCandidates({
       ...input,
       onUsage: (usage) => onUsage("predicthq", usage),
@@ -399,7 +406,7 @@ function defaultEvidenceReviewer(
   onUsage: (source: SourceName, usage: ClaudeUsageEvent) => Promise<void>
 ): EvidenceReviewer {
   return (input) => {
-    configured(process.env.ANTHROPIC_API_KEY, "Anthropic");
+    researchConfigured();
     return verifyPredictHqCandidates({
       ...input,
       onUsage: (usage) => onUsage("predicthq", usage),

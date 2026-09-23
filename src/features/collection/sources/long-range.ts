@@ -1,6 +1,8 @@
 import { assessHotelDemand, hasHotelDemand } from "../../events/demand-assessment";
 import { scheduleEvidenceRepair, repairPending, researchDueAt, researchDue, needsDemandResearch } from "../research-repair";
-import Anthropic from "@anthropic-ai/sdk";
+import type Anthropic from "@anthropic-ai/sdk";
+import type { ResearchClient } from "../luna-client";
+import { researchBatchingEnabled, researchClient, researchModels } from "../research-client";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { createHash } from "node:crypto";
@@ -17,7 +19,7 @@ import { BatchPendingError, CLAUDE_ASSESSMENT_VERSION } from "../anthropic-batch
 import { projectEditions, projectionInstructions, rememberEdition } from "../series-projections";
 import { fetchOfficialPage, retrieveOfficialPages, type PageFetcher, type OfficialPage } from "../official-pages";
 import { createLongRangeStore, LONG_RANGE_VERSION, LongRangeLeaseError, longRangeMarketKey, type Lead, type LongRangeSeed, type LongRangeStore, type ResearchJob } from "../long-range-store";
-import { claudeProviderEventId, DEFAULT_TRIAGE_MODEL, eventWireSchema, fetchedUrls, geocodeEventVenue, normalizeEventResponse, observedUrl, outputSchema, requestMessages, sourceUrls, usageEvent, type Batching, type MessageRequest, type ClaudeUsageEvent } from "./claude";
+import { claudeProviderEventId, eventWireSchema, fetchedUrls, geocodeEventVenue, normalizeEventResponse, observedUrl, outputSchema, requestMessages, sourceUrls, usageEvent, type Batching, type MessageRequest, type ClaudeUsageEvent } from "./claude";
 
 const groups = [
   { topic: "universiteit introductie open dagen", futureTopic: "university conference open day introduction", focus: "physical university open days, introductions and scientific congresses; exclude online events" },
@@ -143,7 +145,7 @@ export type LongRangeInput = CollectionWindow & {
   discoveryModel?: string;
   resolutionModel?: string;
   seeds?: LongRangeSeed[];
-  client?: Anthropic;
+  client?: ResearchClient;
   batching?: Batching;
   store?: LongRangeStore;
   onUsage?: (event: ClaudeUsageEvent) => void | Promise<void>;
@@ -313,14 +315,15 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
     if (lead.pendingStage === "demand" && !demandStage(lead, lead.editions)) delete lead.pendingStage;
   }
   for (const lead of state.leads) scheduleEvidenceRepair(lead, now.toISOString(), input.end);
-  const model = input.model?.trim() || process.env.ANTHROPIC_MODEL?.trim();
+  const models = researchModels();
+  const model = input.model?.trim() || models.primary;
   if (!model) throw new Error("ANTHROPIC_MODEL is required");
-  const discoveryModel = input.discoveryModel?.trim() || process.env.ANTHROPIC_DISCOVERY_MODEL?.trim() || model;
+  const discoveryModel = input.discoveryModel?.trim() || models.discovery || model;
   // Picking the official domain out of search results is the same job the near-term collector
-  // already gives Haiku; date extraction stays on the main model.
-  const resolutionModel = input.resolutionModel?.trim() || process.env.ANTHROPIC_TRIAGE_MODEL?.trim() || DEFAULT_TRIAGE_MODEL;
-  const client = input.client ?? new Anthropic();
-  const batching = { ...(input.batching ?? { enabled: !input.client && process.env.ANTHROPIC_BATCHES !== "disabled" }), usageHandledByCaller: true };
+  // already gives its fast model; date extraction stays on the main model.
+  const resolutionModel = input.resolutionModel?.trim() || models.triage;
+  const client = input.client ?? researchClient();
+  const batching = { ...(input.batching ?? { enabled: !input.client && researchBatchingEnabled() }), usageHandledByCaller: true };
   if (state.research?.billingMode === "standard") batching.enabled = false;
   const usage: Record<string, number> = { inputTokens: 0, outputTokens: 0, webSearchRequests: 0, webFetchRequests: 0, estimatedCostUsd: 0 };
   const budget = researchBudget(state, now, input.budgetEur);

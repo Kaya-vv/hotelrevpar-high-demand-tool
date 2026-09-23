@@ -7,6 +7,8 @@ import { z } from "zod";
 import { geocodeCity, geocodeStreet, createLocationResolver } from "../research-location";
 import { estimatedCostUsd } from "../research-budget";
 import { fetchedDocumentText, eventFactsSchema, evidenceInstructions, verifyEventEvidence } from "@/features/events/evidence";
+import type { ResearchClient } from "../luna-client";
+import { researchBatchingEnabled, researchClient, researchModels } from "../research-client";
 
 import type { DemandTriage, EvidenceReview } from "@/features/events/hotel-demand";
 import { meaningfulTokens, normalizeText, localParts, performanceTime } from "@/features/events/normalize";
@@ -29,7 +31,6 @@ const ownerTypes = ["organizer", "venue", "club", "federation", "ticket_provider
 const searchRequestOptions = { timeout: 180_000, maxRetries: 1 } as const;
 const verificationRequestOptions = { timeout: 180_000, maxRetries: 0 } as const;
 const triageRequestOptions = { timeout: 90_000, maxRetries: 0 } as const;
-export const DEFAULT_TRIAGE_MODEL = "claude-haiku-4-5-20251001";
 // 40 verification slots with 20 of them reachable by name-search left 34 of 74 candidates
 // unlooked-at in run 80c59a07, and two thirds of the 90-day window unresolved. A run bills
 // roughly $0.30, so the ceiling was never the constraint the numbers implied.
@@ -397,7 +398,7 @@ export type Batching = {
 };
 
 export async function requestMessages(
-  client: Anthropic,
+  client: ResearchClient,
   phase: "search" | "agenda" | "triage" | "verification",
   requests: MessageRequest[],
   batching: Batching,
@@ -417,7 +418,7 @@ export async function requestMessages(
     }));
     return settled;
   }
-  const results = await runAnthropicBatch(client, requests.map((request) => request.params), {
+  const results = await runAnthropicBatch(batchClient(client), requests.map((request) => request.params), {
     store: batching.store,
     wait: batching.wait,
     deadline: batching.deadline,
@@ -429,6 +430,12 @@ export async function requestMessages(
     if (!result.value.billable) unbilledMessages.add(result.value.message);
     return { status: "fulfilled", value: result.value.message };
   });
+}
+
+function batchClient(client: ResearchClient): Anthropic {
+  // Only the Anthropic client can batch; Luna never enables batching (research-client.ts).
+  if (!("batches" in client.messages)) throw new Error("Batch processing needs the Anthropic client.");
+  return client as Anthropic;
 }
 
 // Each group carries its own query. A shared example query collapses all four into the same
@@ -499,13 +506,11 @@ async function triageDiscoveries(input: {
   candidates: DiscoveredCandidate[];
   location: string;
   radiusKm: number;
-  client: Anthropic;
+  client: ResearchClient;
   batching: Batching;
   onUsage?: UsageObserver;
 }) {
-  // `||`, not `??`: Vercel hands an env var that exists but is blank through as "", and the
-  // batch API rejects `model: ""` for every request in the phase.
-  const model = process.env.ANTHROPIC_TRIAGE_MODEL || DEFAULT_TRIAGE_MODEL;
+  const model = researchModels().triage;
   const excluded = new Map<number, string>();
   const messages: Anthropic.Message[] = [];
   const errors: { label: string; reason: string }[] = [];
@@ -608,7 +613,7 @@ type CollectClaudeInput = CollectionWindow & {
   radiusKm: number;
   model?: string;
   discoveryModel?: string;
-  client?: Anthropic;
+  client?: ResearchClient;
   onUsage?: UsageObserver;
   geocodeCity?: typeof geocodeCity;
   geocode?: (query: string) => Promise<{ latitude: number; longitude: number } | null>;
@@ -724,12 +729,13 @@ export async function collectClaudeCalendar(
 }
 
 export async function collectClaude(input: CollectClaudeInput): Promise<SourceResult> {
-  const model = input.model ?? process.env.ANTHROPIC_MODEL;
+  const models = researchModels();
+  const model = input.model ?? models.primary;
   if (!model) throw new Error("ANTHROPIC_MODEL is required for the Claude source.");
-  const discoveryModel = input.discoveryModel ?? (process.env.ANTHROPIC_DISCOVERY_MODEL || model);
-  const client = input.client ?? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const discoveryModel = input.discoveryModel ?? models.discovery ?? model;
+  const client = input.client ?? researchClient();
   const batching: Batching = input.batching
-    ?? { enabled: !input.client && process.env.ANTHROPIC_BATCHES !== "disabled" };
+    ?? { enabled: !input.client && researchBatchingEnabled() };
   const marketCache = input.marketCache
     ?? { load: loadClaudeMarketResult, save: saveClaudeMarketResult };
   const market = {
@@ -742,7 +748,9 @@ export async function collectClaude(input: CollectClaudeInput): Promise<SourceRe
     knownUrls: input.knownUrls ?? [],
     discoveryMode: input.discoveryMode,
   };
-  const shareMarketResult = input.shareMarketResult ?? batching.enabled;
+  // Production (no injected client) always has the durable city store, batched or not; Luna
+  // never batches, and must still reuse a sweep another hotel in the same city already bought.
+  const shareMarketResult = input.shareMarketResult ?? (batching.enabled || !input.client);
   if (shareMarketResult) {
     const cached = await marketCache.load(market);
     if (cached) return cached;
@@ -770,7 +778,7 @@ async function collectClaudeFresh(
   input: CollectClaudeInput,
   model: string,
   discoveryModel: string,
-  client: Anthropic,
+  client: ResearchClient,
   batching: Batching,
 ): Promise<SourceResult> {
   const userLocation = {
@@ -1458,11 +1466,11 @@ export async function triagePredictHqCandidates(input: {
   radiusKm: number;
   distancesKm?: Record<string, number>;
   model?: string;
-  client?: Anthropic;
+  client?: ResearchClient;
   onUsage?: UsageObserver;
 }): Promise<{ reviews: DemandTriage[]; requests: number; usage: Record<string, number> }> {
-  const model = input.model || process.env.ANTHROPIC_TRIAGE_MODEL || DEFAULT_TRIAGE_MODEL;
-  const client = input.client ?? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const model = input.model || researchModels().triage;
+  const client = input.client ?? researchClient();
   const batches: EventCandidate[][] = [];
   for (let index = 0; index < input.candidates.length; index += 40) batches.push(input.candidates.slice(index, index + 40));
 
@@ -1535,12 +1543,12 @@ export async function verifyPredictHqCandidates(input: {
   location: string;
   radiusKm: number;
   model?: string;
-  client?: Anthropic;
+  client?: ResearchClient;
   onUsage?: UsageObserver;
 }): Promise<{ reviews: EvidenceReview[]; requests: number; usage: Record<string, number> }> {
-  const model = input.model ?? process.env.ANTHROPIC_MODEL;
+  const model = input.model ?? researchModels().primary;
   if (!model) throw new Error("ANTHROPIC_MODEL is required for Claude demand verification.");
-  const client = input.client ?? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const client = input.client ?? researchClient();
   const candidates = input.candidates.slice(0, 10);
   const messages: Anthropic.Message[] = [];
 
