@@ -39,7 +39,7 @@ export default async function CalendarPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { viewedAccountId, viewedAccountName, viewingOtherAccount, role } =
+  const { viewedAccountId, viewedAccountName, viewingOtherAccount } =
     await requireViewedAccount();
   const params = await searchParams;
   const rawMonth = value(params, "month");
@@ -168,7 +168,7 @@ export default async function CalendarPage({
         includeMedium={includeMedium}
         mediumHref={href({ medium: "1" })}
         overrideImportanceAction={
-          role === "platform_admin" && !viewingOtherAccount
+          !viewingOtherAccount
             ? overrideImportance
             : undefined
         }

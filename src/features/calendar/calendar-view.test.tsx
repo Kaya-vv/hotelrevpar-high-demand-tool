@@ -96,7 +96,7 @@ describe("CalendarView", () => {
     expect(screen.queryByText("Handmatige inschatting")).not.toBeInTheDocument();
   });
 
-  it("shows score overrides only when the platform-admin action is supplied", () => {
+  it("shows score overrides when the own-account action is supplied", () => {
     render(
       <CalendarView
         month="2027-10"
