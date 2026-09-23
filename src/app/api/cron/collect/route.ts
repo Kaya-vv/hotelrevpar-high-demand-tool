@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { enqueueCollectionAreas, type EnqueueResult } from "@/features/collection/jobs";
-import { CHECK_INTERVAL_DAYS } from "@/features/collection/schedule";
+import { ANNOUNCEMENT_SEARCH_DAYS } from "@/features/collection/schedule";
 import { fetchAllRows, fetchPagedInBatches } from "@/lib/supabase/fetch-in-batches";
 
 export const maxDuration = 300;
@@ -66,10 +66,10 @@ export async function GET(request: Request) {
         .not("hotel_id", "is", null)
         .order("name");
       if (areaError) throw areaError;
-      // The daily clock only queues hotels due for their monthly update. Manual
-      // refreshes also count, so onboarding never buys another search the next morning.
+      // The daily clock queues each hotel once a week; the run itself decides which searches are
+      // due. Manual refreshes also count, so onboarding never buys another search the next morning.
       const cutoff = new Date();
-      cutoff.setUTCDate(cutoff.getUTCDate() - CHECK_INTERVAL_DAYS + 1);
+      cutoff.setUTCDate(cutoff.getUTCDate() - ANNOUNCEMENT_SEARCH_DAYS + 1);
       const recent = await fetchAllRows((from, to) => admin.from("collection_runs")
         .select("id, collection_area_id")
         .gte("started_at", `${cutoff.toISOString().slice(0, 10)}T00:00:00Z`)

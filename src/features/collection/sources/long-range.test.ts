@@ -414,9 +414,9 @@ describe("long-range source leads", () => {
     const create = vi.fn().mockResolvedValueOnce(response([event()])).mockResolvedValueOnce(response([event({ startAt: "2027-05-22" })]));
     const memory = memoryStore(warmState());
     await collectLongRange({ ...input, store: memory.store, client: client(create) });
-    // A confirmed lead waits 90 days, so the refresh has to happen after that and outside the
-    // monthly discovery window to isolate the scheduled source refresh.
-    memory.state().discoveredAt = "2026-12-01T12:00:00Z";
+    // The refresh has to fall after the lead's own check date and outside the weekly discovery
+    // window to isolate the scheduled source refresh.
+    memory.state().discoveredAt = "2026-12-10T12:00:00Z";
     memory.state().announcementSearchAt = "2026-12-10T12:00:00Z";
     const changed = await collectLongRange({ ...input, now: new Date("2026-12-10T12:00:00Z"), store: memory.store, client: client(create) });
     expect(memory.state().leads[0].outcome).toBe("conflict");
@@ -425,11 +425,13 @@ describe("long-range source leads", () => {
     expect(changed.error).toContain("Conflicting dates");
   });
 
-  it("checks official pages and unresolved sources every 30 days", () => {
-    expect(nextCheckAt(lead({ outcome: "confirmed" }), now)).toBe("2026-10-05T12:00:00.000Z");
+  it("re-reads listed venue agendas weekly, settled confirmed leads quarterly and unfinished work monthly", () => {
+    expect(nextCheckAt(lead({ kind: "calendar", origin: "venue_list", outcome: "confirmed" }), now)).toBe("2026-09-12T12:00:00.000Z");
+    expect(nextCheckAt(lead({ outcome: "confirmed" }), now)).toBe("2026-12-04T12:00:00.000Z");
+    expect(nextCheckAt(lead({ outcome: "confirmed", pendingStage: "demand" }), now)).toBe("2026-10-05T12:00:00.000Z");
+    expect(nextCheckAt(lead({ outcome: "pending" }), now)).toBe("2026-10-05T12:00:00.000Z");
     expect(nextCheckAt(lead({ outcome: "unannounced" }), now)).toBe("2026-10-05T12:00:00.000Z");
     expect(nextCheckAt(lead({ outcome: "failed" }), now)).toBe("2026-10-05T12:00:00.000Z");
-    expect(nextCheckAt(lead({ url: null }), now)).toBe("2026-10-05T12:00:00.000Z");
   });
 
   it("reserves resolve slots so a URL-less lead is never starved by repeatedly fetched ones", () => {
@@ -454,6 +456,31 @@ describe("long-range source leads", () => {
     expect(selectResolveLeads(leads, now, true)).toEqual(resolving);
     expect(longRangeMarketKey(" Eindhoven ", 25)).toBe(longRangeMarketKey("eindhoven", 25));
     expect(longRangeMarketKey("Eindhoven", 30)).not.toBe(longRangeMarketKey("Eindhoven", 25));
+  });
+
+  it("reads the owner's venue agendas before discovered agenda pages that have waited longer", () => {
+    const discovered = Array.from({ length: 8 }, (_, i) => lead({ key: `found-${i}`, kind: "calendar", checkedAt: "2026-08-01T00:00:00Z",
+      nextCheck: new Date(now.getTime() - (i + 1) * 86_400_000).toISOString() }));
+    const listed = lead({ key: "listed", kind: "calendar", origin: "venue_list", checkedAt: "2026-08-29T12:00:00Z" });
+    const calendars = selectDueLeads([...discovered, listed], now, false).filter((item) => item.kind === "calendar");
+    expect(calendars[0].key).toBe("listed");
+  });
+
+  it("adds the owner's venue agendas as weekly leads and returns them to the normal rhythm when removed", async () => {
+    const hub = lead({ key: "hub", title: "Ahoy agenda", kind: "calendar", url: "https://ahoy.nl/agenda/", outcome: "confirmed", checkedAt: "2026-09-01T12:00:00Z", nextCheck: "2026-11-30T12:00:00Z" });
+    const memory = memoryStore(warmState([hub]));
+    const create = vi.fn().mockResolvedValue(response());
+    const calendars = [{ title: "Rotterdam Ahoy", url: "https://www.ahoy.nl/agenda" }, { title: "Klokgebouw", url: "https://www.klokgebouw.nl/agenda" }];
+    await collectLongRange({ ...input, calendars, store: memory.store, client: client(create) });
+    const leads = memory.state().leads;
+    // The same page under another spelling becomes the listed lead instead of a duplicate.
+    expect(leads).toHaveLength(2);
+    expect(leads.find((item) => item.key === "hub")).toMatchObject({ origin: "venue_list", nextCheck: "2026-09-12T12:00:00.000Z" });
+    expect(leads.find((item) => item.url === "https://www.klokgebouw.nl/agenda")).toMatchObject({ kind: "calendar", origin: "venue_list", nextCheck: "2026-09-12T12:00:00.000Z" });
+
+    await collectLongRange({ ...input, calendars: [calendars[1]], store: memory.store, client: client(create) });
+    expect(memory.state().leads.find((item) => item.key === "hub")?.origin).toBeUndefined();
+    expect(memory.state().leads.find((item) => item.key === "hub")?.editions).toEqual(hub.editions);
   });
 
   it("drops a URL the fetcher cannot read so the resolver can replace it", async () => {

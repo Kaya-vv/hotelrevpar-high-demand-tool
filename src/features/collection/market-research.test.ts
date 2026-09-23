@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { readAndEnqueueResearch, storedLongRangeResult, processMarketWork } from "./market-research";
+import { readAndEnqueueResearch, storedLongRangeResult, processMarketWork, venueCalendarLeads } from "./market-research";
 import { createAdminClient, type AdminClient } from "@/lib/supabase/admin";
 import { createCollectionRepository } from "./repository";
 import { publishCollectionJob } from "./jobs";
@@ -174,4 +174,27 @@ it("reuses finished shared research for a new hotel without starting another pai
   expect(result.candidates).toHaveLength(1);
   expect(result.researchPending).toBe(false);
   expect(publishCollectionJob).not.toHaveBeenCalled();
+});
+
+it("gives a market the national venue agendas and the active ones inside its radius", async () => {
+  const rows = [
+    { id: "mojo", name: "Mojo Concerts", url: "https://www.mojo.nl/agenda", city: "Amsterdam", latitude: null, longitude: null, national: true, active: true },
+    { id: "klokgebouw", name: "Klokgebouw", url: "https://www.klokgebouw.nl/agenda", city: "Eindhoven", latitude: null, longitude: null, national: false, active: true },
+    // Arnhem is about 55 km from Eindhoven.
+    { id: "gelredome", name: "GelreDome", url: "https://www.gelredome.nl/agenda", city: "Arnhem", latitude: 51.98, longitude: 5.91, national: false, active: true },
+    { id: "switched-off", name: "Muziekgebouw Eindhoven", url: "https://mge.nl/agenda/", city: "Eindhoven", latitude: 51.44, longitude: 5.48, national: false, active: false },
+  ];
+  const updates: { id: unknown; values: unknown }[] = [];
+  const admin = { from: () => ({
+    select: () => ({ eq: (column: string, value: unknown) => ({ order: async () => ({ data: rows.filter((row) => row[column as keyof typeof row] === value), error: null }) }) }),
+    update: (values: unknown) => ({ eq: async (_column: string, id: unknown) => { updates.push({ id, values }); return { error: null }; } }),
+  }) } as unknown as AdminClient;
+  const places: Record<string, { latitude: number; longitude: number }> = { eindhoven: { latitude: 51.44, longitude: 5.48 }, Eindhoven: { latitude: 51.44, longitude: 5.48 } };
+  const calendars = await venueCalendarLeads({ location: "eindhoven", radiusKm: 25 }, admin, async (city) => places[city] ?? null);
+  expect(calendars).toEqual([
+    { title: "Mojo Concerts", url: "https://www.mojo.nl/agenda" },
+    { title: "Klokgebouw", url: "https://www.klokgebouw.nl/agenda" },
+  ]);
+  // Coordinates found once are stored, so the next run skips the lookup.
+  expect(updates).toEqual([{ id: "klokgebouw", values: expect.objectContaining({ latitude: 51.44, longitude: 5.48 }) }]);
 });

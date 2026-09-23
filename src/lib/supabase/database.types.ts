@@ -68,6 +68,12 @@ export type Database = {
         Update: { market_key?: string; state?: Json; updated_at?: string; lease_owner?: string | null; lease_until?: string | null; search_location?: string | null; radius_km?: number | null };
         Relationships: [];
       };
+      venue_calendars: {
+        Row: { id: string; name: string; url: string; city: string; latitude: number | null; longitude: number | null; national: boolean; active: boolean; created_at: string; updated_at: string };
+        Insert: { id?: string; name: string; url: string; city: string; latitude?: number | null; longitude?: number | null; national?: boolean; active?: boolean; created_at?: string; updated_at?: string };
+        Update: { id?: string; name?: string; url?: string; city?: string; latitude?: number | null; longitude?: number | null; national?: boolean; active?: boolean; created_at?: string; updated_at?: string };
+        Relationships: [];
+      };
       anthropic_batch_cache: {
         Row: {
           batch_id: string | null;

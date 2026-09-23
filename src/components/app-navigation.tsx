@@ -13,6 +13,7 @@ const mainLinks = [
 const adminLinks = [
   ["/admin/accounts", "Abonnees"],
   ["/admin/source-health", "Bronstatus"],
+  ["/admin/venue-calendars", "Zaalagenda’s"],
   ["/review", "Datakwaliteit"],
 ] as const;
 

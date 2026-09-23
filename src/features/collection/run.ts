@@ -27,7 +27,7 @@ import { collectTicketmaster } from "./sources/ticketmaster";
 import type { CollectionWindow, SourceResult } from "./types";
 import { LongRangeLeaseError, type LongRangeSeed } from "./long-range-store";
 import { BatchPendingError } from "./anthropic-batches";
-import { searchDue, BROAD_SEARCH_INTERVAL_DAYS } from "./schedule";
+import { searchDue, NEAR_TERM_SEARCH_DAYS } from "./schedule";
 import { researchProvider } from "./research-client";
 
 export type CollectionAreaContext = {
@@ -87,7 +87,7 @@ export function claudeDiscoveryDue(
   lastFinishedAt: string | null,
   now = new Date(),
 ) {
-  return searchDue(lastFinishedAt, now, BROAD_SEARCH_INTERVAL_DAYS);
+  return searchDue(lastFinishedAt, now, NEAR_TERM_SEARCH_DAYS);
 }
 
 /**
@@ -528,7 +528,7 @@ export async function runCollection(
         sourceResults.claude = {
           state: "skipped",
           discoveryMode: claudeDiscoveryMode,
-          reason: "Claude discovery runs at most once every 30 days per market.",
+          reason: `Claude discovery runs at most once every ${NEAR_TERM_SEARCH_DAYS} days per market.`,
         };
       } else {
         sourcesToRun.push(source);

@@ -58,8 +58,9 @@ export type Lead = {
   projections?: ProjectedEdition[];
   kind: "event" | "calendar";
   group: number;
-  /** Set only for leads seeded from an edition this account owns; they outrank discovery leads. */
-  origin?: "portfolio";
+  /** `portfolio`: seeded from an edition this account owns; outranks discovery leads.
+   *  `venue_list`: an agenda page on the admin-maintained venue list; re-read weekly. */
+  origin?: "portfolio" | "venue_list";
   /** Public historical assessment, used for research priority only, never future demand scoring. */
   historicalDemandPoints?: number;
   /** End date of the most recent known edition. Drives the anniversary check window. */

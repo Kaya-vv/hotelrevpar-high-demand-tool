@@ -235,7 +235,7 @@ describe("coordinated long-range research", () => {
     const test = setup();
     await collectLongRange(test.input);
     const lead = test.state().leads[0];
-    expect(lead.nextCheck).toBe("2026-10-07T12:00:00.000Z");
+    expect(lead.nextCheck).toBe("2026-12-06T12:00:00.000Z");
     delete lead.editions[0].evidence;
     lead.editions[0].assessmentVersion = 3;
     lead.editions[0].latitude = null;
@@ -439,13 +439,13 @@ describe("coordinated long-range research", () => {
     expect(result.total).toBeLessThan(70);
   });
 
-  it("checks a due discovered lead monthly and reuses unchanged extraction", async () => {
+  it("re-checks a settled confirmed lead after 90 days and reuses unchanged extraction", async () => {
     const test = setup();
     await collectLongRange(test.input);
     expect(test.create).toHaveBeenCalledTimes(1);
     await collectLongRange(test.input);
     expect(test.pageFetcher).toHaveBeenCalledTimes(1);
-    const later = new Date("2026-10-07T12:00:00Z");
+    const later = new Date("2026-12-06T12:00:00Z");
     test.state().discoveredAt = later.toISOString();
     test.state().announcementSearchAt = later.toISOString();
     await collectLongRange({ ...test.input, now: later });
@@ -580,6 +580,7 @@ describe("coordinated long-range research", () => {
     expect(test.create).toHaveBeenCalledTimes(2);
     // A cached date extraction must not cancel the hunt for hotel evidence.
     expect(test.state().leads[0].pendingStage).toBe("demand");
+    test.state().discoveredAt = "2026-09-21T12:00:00Z";
     test.state().announcementSearchAt = "2026-09-21T12:00:00Z";
     await collectLongRange({ ...test.input, now: new Date("2026-09-21T12:00:00Z") });
     expect(test.create).toHaveBeenCalledTimes(2);
@@ -804,6 +805,8 @@ it("limits repeated paid follow-ups while continuing cheap checks of the known p
   });
   await collectLongRange(test.input);
   expect(test.create).toHaveBeenCalledTimes(2); // One extraction and one follow-up.
+  // The page is re-read monthly while the demand hunt is open (7 Oct, 6 Nov). Once the paid
+  // follow-ups are spent the lead counts as settled and waits 90 days, so 6 Dec reads nothing.
   for (const [date, calls] of [["2026-09-21", 2], ["2026-10-07", 3], ["2026-11-06", 3], ["2026-12-06", 3]] as const) {
     const check = new Date(`${date}T12:00:00Z`);
     test.state().discoveredAt = check.toISOString();
@@ -811,17 +814,17 @@ it("limits repeated paid follow-ups while continuing cheap checks of the known p
     await collectLongRange({ ...test.input, now: check });
     expect(test.create).toHaveBeenCalledTimes(calls);
   }
-  expect(test.pageFetcher).toHaveBeenCalledTimes(4);
+  expect(test.pageFetcher).toHaveBeenCalledTimes(3);
   expect(test.state().leads[0].editions).toHaveLength(1);
   // New official information is still processed after the follow-up allowance ran out.
   test.pageFetcher.mockResolvedValue(parseOfficialPage(`${text} New official announcement.`, url));
-  test.state().discoveredAt = "2027-01-05T12:00:00Z";
-  test.state().announcementSearchAt = "2027-01-05T12:00:00Z";
-  await collectLongRange({ ...test.input, now: new Date("2027-01-05T12:00:00Z") });
+  test.state().discoveredAt = "2027-02-04T12:00:00Z";
+  test.state().announcementSearchAt = "2027-02-04T12:00:00Z";
+  await collectLongRange({ ...test.input, now: new Date("2027-02-04T12:00:00Z") });
   expect(test.create.mock.calls.length).toBeGreaterThan(3);
 });
 
-it("runs full discovery immediately, reuses it at two weeks, then searches fully after 30 days", async () => {
+it("runs full discovery immediately, reuses it within the week, then searches fully after 7 days", async () => {
   const test = setup();
   test.state().discoveredAt = null;
   test.state().announcementSearchAt = undefined;
@@ -833,10 +836,10 @@ it("runs full discovery immediately, reuses it at two weeks, then searches fully
   });
   await collectLongRange({ ...test.input, requestedAt: now.toISOString() });
   expect(queries).toHaveLength(14);
+  await collectLongRange({ ...test.input, now: new Date("2026-09-10T12:00:00Z"), requestedAt: "2026-09-10T12:00:00Z" });
+  expect(queries).toHaveLength(14);
+  await collectLongRange({ ...test.input, now: new Date("2026-09-13T12:00:00Z"), requestedAt: "2026-09-13T12:00:00Z" });
+  expect(queries).toHaveLength(14);
   await collectLongRange({ ...test.input, now: new Date("2026-09-14T12:00:00Z"), requestedAt: "2026-09-14T12:00:00Z" });
-  expect(queries).toHaveLength(14);
-  await collectLongRange({ ...test.input, now: new Date("2026-09-21T12:00:00Z"), requestedAt: "2026-09-21T12:00:00Z" });
-  expect(queries).toHaveLength(14);
-  await collectLongRange({ ...test.input, now: new Date("2026-10-07T12:00:00Z"), requestedAt: "2026-10-07T12:00:00Z" });
   expect(queries).toHaveLength(28);
 });

@@ -16,6 +16,7 @@ import type { EventCandidate, ValidationReason } from "@/features/events/types";
 import { validateCandidate } from "@/features/events/validate";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Database, Json } from "@/lib/supabase/database.types";
+import { NEAR_TERM_SEARCH_DAYS } from "./schedule";
 
 import {
   CLAUDE_ASSESSMENT_VERSION,
@@ -82,7 +83,7 @@ export function createCollectionRepository(): CollectionRepository {
   return {
     async reuseNearTermEvidence(context) {
       if (!context.area.enabledSources.includes("claude")) return 0;
-      const cutoff = new Date(Date.now() - 30 * 86_400_000).toISOString();
+      const cutoff = new Date(Date.now() - NEAR_TERM_SEARCH_DAYS * 86_400_000).toISOString();
       const { data: links, error: linkError } = await supabase.from("account_event_areas")
         .select("event_id").eq("account_id", context.area.accountId).eq("collection_area_id", context.area.id);
       if (linkError) throw linkError;

@@ -37,11 +37,26 @@ Order matters. The new code defaults to Luna and stops research with "OpenAI cre
 1. In Vercel production, add `OPENAI_API_KEY` and `RESEARCH_PROVIDER=luna`.
 2. Deploy the code.
 3. After the first run per location, open `/admin/source-health` and confirm model `gpt-6-luna`, billing mode `standard`, no failed requests and under $2.50 per location.
-4. Record the switch date here: ____. Sonnet code is deleted 30 days later if `RESEARCH_PROVIDER` never went back to `sonnet`.
+4. Switched on 23 September 2026 (deployed 22:23 UTC). Sonnet code is deleted on or after 23 October 2026 if `RESEARCH_PROVIDER` never went back to `sonnet`.
 
 Rollback: set `RESEARCH_PROVIDER=sonnet` in Vercel and redeploy the same code (Vercel only applies changed variables to new deployments). `ANTHROPIC_API_KEY` and `ANTHROPIC_MODEL` must still be set for that.
 
 Hotels now start their automatic search on a fixed weekday (Monday to Friday, spread by hotel), so ten hotels do not all hit OpenAI's per-minute limit on the same morning. A hotel that was never searched starts immediately. If OpenAI rate limits still show up, lower the Luna client's parallel requests from 4 to 2 before changing any schedule.
+
+### Weekly announcement checks and venue agendas
+
+These replace the all-monthly schedule of 21 September once deployed.
+
+| Work | Interval |
+|---|---|
+| Hotel queued by the daily scheduler (on its own weekday) | 7 days |
+| Broad long-range announcement search | 7 days |
+| Venue agendas on `/admin/venue-calendars` within the market radius, plus national ones | 7 days |
+| Near-term search (next 90 days) | 14 days |
+| Lead still being worked on (unannounced, failed, owed evidence or repair) | 30 days |
+| Lead whose edition is confirmed and fully assessed | 90 days |
+
+Order matters: apply migration `202609240001_venue_calendars.sql` to the production database before deploying this code. Without the table every long-range research job stops with a database error. Switching a venue agenda off or removing it keeps the events already found; the page just stops being read weekly.
 
 ## Email notification rollout
 

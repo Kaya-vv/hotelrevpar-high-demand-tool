@@ -6,8 +6,11 @@ import { collectionWindow, publishLongRangeResult, type CollectionContext } from
 import { longRangeWindow, marketWindow } from "./sources/claude";
 import { collectLongRange } from "./sources/long-range";
 import type { SourceResult } from "./types";
-import { searchDue } from "./schedule";
+import { ANNOUNCEMENT_SEARCH_DAYS, searchDue } from "./schedule";
 import { researchBatchingEnabled } from "./research-client";
+import { geocodeCity } from "./research-location";
+import { distanceKm } from "../events/distance";
+import type { AdminClient } from "@/lib/supabase/admin";
 
 export type MarketWork = {
   kind: "market-research" | "market-publication";
@@ -35,11 +38,41 @@ export async function readAndEnqueueResearch(context: CollectionContext, runId: 
   const state = await createLongRangeStore().load(market.key);
   if (state?.research?.completedAt && !state.publicationPending && !state.cycle?.pending
     && state.version === LONG_RANGE_VERSION * 1000 + CLAUDE_ASSESSMENT_VERSION
-    && !searchDue(state.research.requestedAt)) {
+    && !searchDue(state.research.requestedAt, new Date(), ANNOUNCEMENT_SEARCH_DAYS)) {
     return { ...storedLongRangeResult(state), researchPending: false };
   }
   await publishCollectionJob({ kind: "market-research", accountId: context.area.accountId, areaId: context.area.id, runId, requestedAt: new Date().toISOString() });
   return { ...storedLongRangeResult(state), researchPending: true };
+}
+
+/**
+ * The owner's venue agendas this market should re-read weekly: national promoters plus venues
+ * whose city lies inside the market radius. A venue whose city cannot be placed is skipped for
+ * now and stays on the list; coordinates found once are stored so later runs skip the lookup.
+ */
+export async function venueCalendarLeads(market: { location: string; radiusKm: number }, admin: AdminClient,
+  geocode: (city: string) => Promise<{ latitude: number; longitude: number } | null> = (city) => geocodeCity(city)) {
+  const { data: rows, error } = await admin.from("venue_calendars")
+    .select("id, name, url, city, latitude, longitude, national").eq("active", true).order("name");
+  if (error) throw error;
+  const local = rows.filter((row) => !row.national);
+  const centre = local.length ? await geocode(market.location) : null;
+  if (local.length && !centre) console.warn("Venue calendars: market centre could not be placed", { location: market.location });
+  const leads: { title: string; url: string }[] = [];
+  for (const row of rows) {
+    if (row.national) { leads.push({ title: row.name, url: row.url }); continue; }
+    if (!centre) continue;
+    let point = row.latitude !== null && row.longitude !== null ? { latitude: row.latitude, longitude: row.longitude } : null;
+    if (!point) {
+      point = await geocode(row.city);
+      if (!point) { console.warn("Venue calendars: city could not be placed", { name: row.name, city: row.city }); continue; }
+      const { error: saveError } = await admin.from("venue_calendars")
+        .update({ latitude: point.latitude, longitude: point.longitude, updated_at: new Date().toISOString() }).eq("id", row.id);
+      if (saveError) throw saveError;
+    }
+    if (distanceKm(centre.latitude, centre.longitude, point.latitude, point.longitude) <= market.radiusKm) leads.push({ title: row.name, url: row.url });
+  }
+  return leads;
 }
 
 export async function processMarketWork(work: MarketWork) {
@@ -87,7 +120,7 @@ export async function processMarketWork(work: MarketWork) {
     // narrowing the search would strand every hotel that is riding the same market.
     await collectLongRange({
       ...longRangeWindow(marketWindow(collectionWindow())), location: market.location, radiusKm: market.radiusKm,
-      seeds: context.longRangeSeeds, batching: { enabled: researchBatchingEnabled() },
+      seeds: context.longRangeSeeds, calendars: await venueCalendarLeads(market, admin), batching: { enabled: researchBatchingEnabled() },
       requestedAt: work.requestedAt, fastFirstSearch: true,
       onProgress: async (state) => Boolean(await publishState(state)),
       onUsage: (usage) => repository.recordUsage(work.runId, "claude", usage),

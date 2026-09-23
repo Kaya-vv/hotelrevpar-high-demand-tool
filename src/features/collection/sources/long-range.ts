@@ -13,7 +13,7 @@ import { researchBudget, estimatedCostUsd } from "../research-budget";
 import { geocodeCity, createLocationResolver } from "../research-location";
 import { pageChunks, pageHash } from "../official-pages";
 import { normalizeText } from "@/features/events/normalize";
-import { searchDue, CHECK_INTERVAL_DAYS, BROAD_SEARCH_INTERVAL_DAYS } from "../schedule";
+import { searchDue, ANNOUNCEMENT_SEARCH_DAYS, CONFIRMED_RECHECK_DAYS, LEAD_RECHECK_DAYS } from "../schedule";
 import type { CollectionWindow, SourceResult } from "../types";
 import { BatchPendingError, CLAUDE_ASSESSMENT_VERSION } from "../anthropic-batches";
 import { projectEditions, projectionInstructions, rememberEdition } from "../series-projections";
@@ -49,6 +49,14 @@ function fetchTarget(lead: Lead) {
   return [lead.url, lead.officialPage].find((url) => url && /^https?:\/\//i.test(url) && url !== lead.blockedPage) ?? null;
 }
 
+/** One spelling per agenda page, so a listed URL and a discovered one land on the same lead. */
+function calendarUrlKey(url: string) {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.hostname.replace(/^www\./, "")}${parsed.pathname.replace(/\/$/, "")}${parsed.search}`.toLowerCase();
+  } catch { return url.trim().toLowerCase(); }
+}
+
 function targetWasRejected(message: Anthropic.Message, target: string | null) {
   return message.content.some((block) => block.type === "web_fetch_tool_result"
     && block.content.type === "web_fetch_tool_result_error" && block.content.error_code === "url_not_allowed"
@@ -58,7 +66,7 @@ function targetWasRejected(message: Anthropic.Message, target: string | null) {
 
 const FETCH_SLOTS = 18;    // monthly lead checks
 const CALENDAR_SLOTS = 6;  // reserved inside FETCH_SLOTS for calendar hubs
-const SWEEP_DAYS = BROAD_SEARCH_INTERVAL_DAYS;
+const SWEEP_DAYS = LEAD_RECHECK_DAYS;
 const MONITORING_VERSION = 3;
 // A cycle drains its backlog across resumable invocations; 18 left confirmed-but-unassessed leads
 // queued behind fresh discovery for months (pendingDemand 60 against demandAccepted 6).
@@ -145,6 +153,8 @@ export type LongRangeInput = CollectionWindow & {
   discoveryModel?: string;
   resolutionModel?: string;
   seeds?: LongRangeSeed[];
+  /** The owner's venue agenda pages near this market; re-read weekly. */
+  calendars?: { title: string; url: string }[];
   client?: ResearchClient;
   batching?: Batching;
   store?: LongRangeStore;
@@ -156,9 +166,14 @@ export type LongRangeInput = CollectionWindow & {
   pageFetcher?: PageFetcher | false;
 };
 
-/** All automatic source checks use the same monthly interval. */
-export function nextCheckAt(_lead: Lead, now: Date): string {
-  return later(now, CHECK_INTERVAL_DAYS);
+/**
+ * The owner's venue agendas are re-read weekly. A lead whose edition is confirmed and assessed only
+ * needs an occasional re-check; one that still owes evidence keeps the monthly rhythm.
+ */
+export function nextCheckAt(lead: Lead, now: Date): string {
+  if (lead.origin === "venue_list") return later(now, ANNOUNCEMENT_SEARCH_DAYS);
+  const settled = lead.outcome === "confirmed" && !lead.pendingStage && !repairPending(lead);
+  return later(now, settled ? CONFIRMED_RECHECK_DAYS : LEAD_RECHECK_DAYS);
 }
 
 /** All due official pages, ordered in fair windows. Paid requests remain budget bounded. */
@@ -168,7 +183,10 @@ export function selectDueLeads(leads: Lead[], now: Date, bootstrap: boolean) {
   const selected: Lead[] = [];
   // These are fairness windows, not a pass limit. Persisted spend bounds paid work.
   while (remaining.length) {
-    const calendars = fairQueue(remaining.filter((lead) => lead.kind === "calendar")).slice(0, CALENDAR_SLOTS);
+    // The owner's list first, so discovered agenda pages never crowd it out.
+    const listed = remaining.filter((lead) => lead.kind === "calendar" && lead.origin === "venue_list");
+    const calendars = [...fairQueue(listed), ...fairQueue(remaining.filter((lead) => lead.kind === "calendar" && !listed.includes(lead)))]
+      .slice(0, CALENDAR_SLOTS);
     const eventLeads = remaining.filter((lead) => lead.kind !== "calendar");
     const firstChecks = fairQueue(eventLeads.filter((lead) => !lead.checkedAt && !(lead.attempts ?? 0))).slice(0, Math.ceil(FETCH_SLOTS / 4));
     const events = [...firstChecks, ...fairQueue(eventLeads.filter((lead) => !firstChecks.includes(lead)))].slice(0, FETCH_SLOTS - calendars.length);
@@ -282,7 +300,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
   // Multiple hotels share this market. A later hotel or a redelivery must not
   // reopen finished research and buy the same work again between checks.
   if (state.research?.completedAt && !state.cycle?.pending && state.version === version
-    && !searchDue(state.research.requestedAt, now)) {
+    && !searchDue(state.research.requestedAt, now, ANNOUNCEMENT_SEARCH_DAYS)) {
     return { source: "claude", requests: 0, usage: { researchReused: 1 },
       candidates: uniqueEvidenceEditions(state.leads.filter((lead) => lead.outcome !== "conflict")
         .flatMap((lead) => lead.editions).filter((event) => validEventRange(event)
@@ -343,7 +361,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
   // A scoring/evidence upgrade must reopen exhausted old work without resetting
   // the monthly spend ledger or replacing an already submitted batch manifest.
   if (!state.cycle?.pending) state.version = version;
-  if (!state.cycle || (state.cycle.finished && searchDue(state.cycle.startedAt, now))) {
+  if (!state.cycle || (state.cycle.finished && searchDue(state.cycle.startedAt, now, ANNOUNCEMENT_SEARCH_DAYS))) {
     state.cycle = { monitoringVersion: MONITORING_VERSION, startedAt: now.toISOString(), waves: 0, leadKeys: [], queued: state.cycle?.queued ?? [] };
   }
   const workCycle = state.cycle;
@@ -455,6 +473,26 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
     }
   }
 
+  // The owner's venue agendas. A lead that leaves the list keeps its events and drops back to
+  // the normal rhythm. No list at all (a caller that does not load it) changes nothing.
+  const listed = new Set<string>();
+  for (const calendar of input.calendars ?? []) {
+    const target = calendarUrlKey(calendar.url);
+    const calendarKey = createHash("sha256").update(target).digest("hex");
+    listed.add(calendarKey);
+    const existing = state.leads.find((lead) => lead.key === calendarKey || (lead.kind === "calendar" && lead.url && calendarUrlKey(lead.url) === target));
+    if (!existing) {
+      state.leads.push({ key: calendarKey, title: calendar.title, url: calendar.url, kind: "calendar", group: 0, origin: "venue_list",
+        attempts: 0, checkedAt: null, nextCheck: now.toISOString(), outcome: "pending", editions: [], notes: [] });
+      continue;
+    }
+    listed.add(existing.key);
+    existing.origin = "venue_list";
+    const weekly = later(now, ANNOUNCEMENT_SEARCH_DAYS);
+    if (existing.nextCheck > weekly) existing.nextCheck = weekly;
+  }
+  if (input.calendars) for (const lead of state.leads) if (lead.origin === "venue_list" && !listed.has(lead.key)) delete lead.origin;
+
   for (const lead of state.leads) {
     if (lead.kind === "event" && lead.outcome !== "conflict") for (const edition of lead.editions) {
       if (labelKey(edition.title) === labelKey(lead.title)) rememberEdition(lead, { start: eventLocalDate(edition.startAt), end: eventLocalDate(edition.endAt), sourceUrl: edition.sourceUrl! });
@@ -462,9 +500,9 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
     lead.projections = projectEditions(lead, input.start, input.end);
   }
 
-  const discoveryDue = searchDue(state.discoveredAt, now, BROAD_SEARCH_INTERVAL_DAYS)
-    && searchDue(state.discoveryAttemptAt ?? null, now);
-  const announcementsDue = searchDue(state.announcementSearchAt ?? null, now);
+  const discoveryDue = searchDue(state.discoveredAt, now, ANNOUNCEMENT_SEARCH_DAYS)
+    && searchDue(state.discoveryAttemptAt ?? null, now, ANNOUNCEMENT_SEARCH_DAYS);
+  const announcementsDue = searchDue(state.announcementSearchAt ?? null, now, ANNOUNCEMENT_SEARCH_DAYS);
   async function discover() {
   if (workCycle.pending?.phase === "search" || (!workCycle.pending && !workCycle.finished && (discoveryDue || announcementsDue || state.searchCycle))) {
     state.searchCycle ??= { dueAt: now.toISOString(), broad: discoveryDue, completed: [] };
@@ -577,7 +615,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
       const spent = lead.followupSearches?.scope === followupScope ? lead.followupSearches.attempts : 0;
       const lastAttempt = lead.followupSearches?.scope === followupScope ? lead.followupSearches.lastAttemptAt : undefined;
       if (spent >= 2 || (lastAttempt && lastAttempt < workCycle.startedAt
-        && !searchDue(lastAttempt, now, BROAD_SEARCH_INTERVAL_DAYS))) {
+        && !searchDue(lastAttempt, now, LEAD_RECHECK_DAYS))) {
         job.cached = true; return false;
       }
       job.followupScope = followupScope;
@@ -988,7 +1026,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
     let series = state.leads.find((lead) => lead.kind === "event" && (lead.editions.some((edition) => edition.providerEventId === candidate.providerEventId) || ((labelKey(lead.title) === labelKey(candidate.title) || candidate.evidence?.aliases?.some((alias) => labelKey(alias) === labelKey(lead.title))) && (!lead.url || !candidate.sourceUrl || new URL(lead.url).hostname === new URL(candidate.sourceUrl).hostname))));
     if (!series && candidate.sourceUrl) {
       series = { key, title: candidate.title, url: candidate.sourceUrl, kind: "event", group: 0,
-        outcome: "confirmed", editions: [candidate], notes: [], nextCheck: later(now, CHECK_INTERVAL_DAYS), checkedAt: now.toISOString() };
+        outcome: "confirmed", editions: [candidate], notes: [], nextCheck: later(now, LEAD_RECHECK_DAYS), checkedAt: now.toISOString() };
       state.leads.push(series);
     }
     if (series && candidate.sourceUrl && series.outcome !== "conflict") {
