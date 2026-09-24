@@ -33,7 +33,7 @@ export default async function VenueCalendarsPage({ searchParams }: { searchParam
       {message && <p role="status" className={`notice ${message.success ? "success" : "error"}`}>{message.text}</p>}
       <section className="panel">
         <h2>Agenda toevoegen</h2>
-        <form action={saveVenueCalendar} className="inline-form">
+        <form action={saveVenueCalendar} className="inline-form venue-calendar-form">
           <label>
             Naam
             <input name="name" required />
@@ -46,7 +46,7 @@ export default async function VenueCalendarsPage({ searchParams }: { searchParam
             Plaats
             <input name="city" required />
           </label>
-          <label>
+          <label className="inline-check">
             <input name="national" type="checkbox" /> Landelijk
           </label>
           <SubmitButton primary>Toevoegen</SubmitButton>

@@ -1142,6 +1142,25 @@ a {
   align-items: end;
 }
 
+/* Name, address, city, a checkbox and the button on one row. */
+.inline-form.venue-calendar-form {
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 2fr) minmax(0, 1fr) auto auto;
+}
+
+.inline-form label.inline-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+
+.inline-check input {
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  padding: 0;
+}
+
 .table-wrap {
   overflow-x: auto;
 }
@@ -1910,6 +1929,10 @@ td {
   }
 
   .inline-form {
+    grid-template-columns: 1fr;
+  }
+
+  .inline-form.venue-calendar-form {
     grid-template-columns: 1fr;
   }
 
