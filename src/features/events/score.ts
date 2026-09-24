@@ -2,7 +2,7 @@ import { hasDemandEvidence, evidencedAudienceScale } from "./evidence";
 import { assessHotelDemand, hasHotelDemand } from "./demand-assessment";
 import { distanceKm } from "./distance";
 import { localParts } from "./normalize";
-import { bigVenueConcert, knownVenueCapacity, venueCrowdIsAudience } from "./venues";
+import { knownVenueCapacity, stadiumConcertCapacity, venueCrowdIsAudience } from "./venues";
 import type { DemandScore, EventCandidate } from "./types";
 
 function marqueeSport(category: string, title = "", regionScope = "") {
@@ -240,21 +240,12 @@ export function scoreHotelEvent({
     ? { assessment, impactPoints: evidenced, impactBasis: "demand_rule", distanceKm: measuredDistance, distancePoints, stayPressurePoints, total: evidenced, suggestedImportance: importance(evidenced) }
     : { assessment, impactPoints: impactScore.points, impactBasis: impactScore.basis, distanceKm: measuredDistance, distancePoints, stayPressurePoints, total, suggestedImportance: importance(total) };
 
-  // A big-venue concert is graded by the venue when nothing better is known. The same gates as
+  // A stadium concert is graded High by the venue when nothing better is known. The same gates as
   // every other grade apply: inside the radius, confirmed, active and not contradicted.
-  const bigVenue = contextOnly || outsideRadius || contraryEvidence ? null
-    : bigVenueConcert(candidate.category, candidate.title, candidate.venue);
-  if (!bigVenue || proxy.total >= 70) return proxy;
-  const capacity = bigVenue.capacity.toLocaleString("nl-NL");
-  const venueAssessment = {
-    ...assessment,
-    reasons: [...assessment.reasons.filter((reason) => !reason.startsWith("Duur, zaalcapaciteit")),
-      bigVenue.tier === "stadium"
-        ? `Concert in een stadion met circa ${capacity} plaatsen. Stadionconcerten trekken veel publiek van buiten de regio, daarom automatisch Hoog.`
-        : `Concert in een grote zaal met circa ${capacity} plaatsen. Hoeveel bezoekers blijven overnachten is onbekend; kies zelf een niveau.`],
-  };
-  if (bigVenue.tier === "stadium") {
-    return { ...proxy, assessment: venueAssessment, impactPoints: 75, impactBasis: "stadium_concert", total: 75, suggestedImportance: "High" };
-  }
-  return { ...proxy, assessment: venueAssessment, impactBasis: "arena_concert" };
+  const stadium = contextOnly || outsideRadius || contraryEvidence ? null
+    : stadiumConcertCapacity(candidate.category, candidate.title, candidate.venue);
+  if (stadium === null || proxy.total >= 70) return proxy;
+  const reasons = [...assessment.reasons.filter((reason) => !reason.startsWith("Duur, zaalcapaciteit")),
+    `Concert in een stadion met circa ${stadium.toLocaleString("nl-NL")} plaatsen. Stadionconcerten trekken veel publiek van buiten de regio, daarom automatisch Hoog.`];
+  return { ...proxy, assessment: { ...assessment, reasons }, impactPoints: 75, impactBasis: "stadium_concert", total: 75, suggestedImportance: "High" };
 }

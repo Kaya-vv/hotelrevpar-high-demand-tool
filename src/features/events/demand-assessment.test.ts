@@ -135,7 +135,7 @@ describe("hotel demand evidence upgrades and contradicts the proxy score", () =>
   });
 });
 
-describe("concerts at the biggest venues", () => {
+describe("stadium concerts", () => {
   // Steigenberger Airport Hotel's location; the Johan Cruijff ArenA and the Ziggo Dome are ~12 km away.
   const schiphol = { latitude: 52.3086, longitude: 4.7639, demandRadiusKm: 25, holidayRegion: null };
   // A one-night show with a date-only listing and a middling model grade: what the ArenA agenda gives.
@@ -153,11 +153,11 @@ describe("concerts at the biggest venues", () => {
     expect(visibility(score)).toEqual({ visible: true, announced: false });
   });
 
-  it("leaves an arena concert for the manager to grade", () => {
+  it("keeps an arena concert without evidence off the calendar", () => {
+    // Owner's review of the Ziggo Dome agenda: only about a quarter of the shows draw overnight fans.
     const score = scoreHotelEvent({ candidate: show("Ziggo Dome"), hotel: schiphol, overlaps: [] });
     expect(score.suggestedImportance).not.toBe("High");
-    expect(score.impactBasis).toBe("arena_concert");
-    expect(visibility(score)).toEqual({ visible: true, announced: true });
+    expect(visibility(score)).toEqual({ visible: false, announced: false });
   });
 
   it.each([
@@ -168,7 +168,7 @@ describe("concerts at the biggest venues", () => {
     ["a concert at a smaller hall", show("AFAS Live")],
   ])("does not apply to %s", (_case, candidate) => {
     const score = scoreHotelEvent({ candidate, hotel: schiphol, overlaps: [] });
-    expect(["stadium_concert", "arena_concert"]).not.toContain(score.impactBasis);
+    expect(score.impactBasis).not.toBe("stadium_concert");
   });
 
   it("keeps a stronger evidenced grade instead of the venue rule", () => {

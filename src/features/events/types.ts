@@ -84,7 +84,6 @@ export type DemandScore = {
     | "holiday_rule"
     | "competition_rule"
     | "stadium_concert"
-    | "arena_concert"
     | "default";
   distanceKm: number | null;
   distancePoints: number;
