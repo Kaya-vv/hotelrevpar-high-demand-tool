@@ -76,7 +76,7 @@ export function gradedDemand(score: {
 export const nearTermDestinationMaxDays = 14;
 
 /**
- * "Zelf beoordelen" (formerly "Hotelvraag"): an event worth showing without a High or Peak grade. Two kinds qualify.
+ * "Zelf beoordelen" (formerly "Hotelvraag"): an event worth showing without a High or Peak grade. Three kinds qualify.
  *
  * Beyond the near-term horizon a demand grade cannot be earned yet: a future edition has no
  * attendance of its own and organisers rarely publish audience information a year ahead. Inside
@@ -92,9 +92,11 @@ export const nearTermDestinationMaxDays = 14;
  * official organiser page already confirms both its date and its location: a three-day-or-longer
  * continuous run committed to a year ahead is a destination event by construction, and requiring
  * attendance evidence for it is structurally unachievable. Per-performance categories are excluded
- * from that second rule: their "duration" is a series span, not a stay.
+ * from that second rule: their "duration" is a series span, not a stay. The third is a concert at
+ * an arena of 15,000+ seats (`arena_concert`, see `bigVenueConcert`); stadium concerts are graded
+ * High by the scorer instead.
  *
- * A model-assigned proxy grade is deliberately NOT a third trigger. `impactPoints: 35` means the
+ * A model-assigned proxy grade is deliberately NOT a trigger. `impactPoints: 35` means the
  * model found no applicable demand signal, and the scorer then placed the event below High. Such
  * an event is not ungradeable, it is graded and judged insufficient; announcing it anyway
  * contradicted both and made visibility depend on the calendar date rather than the event. On
@@ -135,7 +137,9 @@ export function isAnnouncedDemand(input: {
   const destination = durationDays >= 3 && !perPerformanceCategory(input.category)
     && input.hasConfirmedDateAndLocation && withinRadius
     && (input.startDate > input.nearTermHorizon || durationDays <= nearTermDestinationMaxDays);
-  return assessed || destination;
+  // Arena concerts: the scorer flags them (`arena_concert`) and the manager grades each one.
+  const arenaConcert = withinRadius && input.scores.some((score) => score.impactBasis === "arena_concert");
+  return assessed || destination || arenaConcert;
 }
 
 export type HotelCalendarVisibilityScore = {

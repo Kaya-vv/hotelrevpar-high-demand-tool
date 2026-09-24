@@ -69,19 +69,20 @@ for (const area of areas) {
     const evidenced = withinRadius && eventScores.some((score) => hasHotelDemand(readDemandAssessment(score.assessment)));
     const destination = days >= 3 && !perPerformanceCategory(event.category)
       && hasConfirmedDateAndLocation && withinRadius && (start > nearTermHorizon || days <= nearTermDestinationMaxDays);
-    announced.push({ event, start, days, evidenced, destination, scores: eventScores });
+    const arena = withinRadius && eventScores.some((score) => score.impactBasis === "arena_concert");
+    announced.push({ event, start, days, evidenced, destination, arena, scores: eventScores });
   }
 
-  console.log(`\n=== ${area.name} — ${graded.length} graded, ${announced.length} announced (Hotelvraag) ===`);
+  console.log(`\n=== ${area.name} — ${graded.length} graded, ${announced.length} announced (Zelf beoordelen) ===`);
   console.log(`horizon ${nearTermHorizon}, radius ${hotel.demand_radius_km} km\n`);
   console.log("-- graded (High/Peak, exportable automatically) --");
   for (const row of graded.sort((a, b) => a.start.localeCompare(b.start)))
     console.log(`  ${row.start} ${String(row.days).padStart(2)}d ${String(row.score.total).padStart(3)}/${row.score.importance.padEnd(5)} ${row.score.impactBasis.padEnd(14)} ${row.event.title.slice(0, 48)}`);
   console.log("\n-- announced, no level (hotel must set export level by hand) --");
   for (const row of announced.sort((a, b) => a.start.localeCompare(b.start)))
-    console.log(`  ${row.start} ${String(row.days).padStart(2)}d ${[row.evidenced && "evidence", row.destination && "destination"].filter(Boolean).join("+").padEnd(20)} tot=${String(row.scores[0]?.total ?? "-").padStart(3)} ${row.event.title.slice(0, 46)}`);
+    console.log(`  ${row.start} ${String(row.days).padStart(2)}d ${[row.evidenced && "evidence", row.destination && "destination", row.arena && "arena"].filter(Boolean).join("+").padEnd(20)} tot=${String(row.scores[0]?.total ?? "-").padStart(3)} ${row.event.title.slice(0, 46)}`);
   const byBranch = announced.reduce((acc, row) => {
-    const key = [row.evidenced && "evidence", row.destination && "destination"].filter(Boolean).join("+") || "none";
+    const key = [row.evidenced && "evidence", row.destination && "destination", row.arena && "arena"].filter(Boolean).join("+") || "none";
     acc[key] = (acc[key] ?? 0) + 1; return acc;
   }, {});
   console.log(`\n  announced by trigger: ${JSON.stringify(byBranch)}`);

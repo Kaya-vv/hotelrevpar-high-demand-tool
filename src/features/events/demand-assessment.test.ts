@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { assessHotelDemand, hasHotelDemand } from "./demand-assessment";
 import { scoreHotelEvent } from "./score";
-import { isAnnouncedDemand, isPublishableDemand } from "./importance";
+import { hotelCalendarVisibility, isAnnouncedDemand, isPublishableDemand } from "./importance";
 import { verifyEventEvidence, type EventEvidence } from "./evidence";
 import type { EventCandidate } from "./types";
 
@@ -132,5 +132,49 @@ describe("hotel demand evidence upgrades and contradicts the proxy score", () =>
     expect(assessHotelDemand({ ...base, evidence: facts }, hotel).magnitude).toBe("Peak");
     facts.demand[0] = { ...facts.demand[0], scope: "historical", year: 2025, applicability: "Comparable previous congress at the same venue." };
     expect(assessHotelDemand({ ...base, evidence: facts }, hotel).magnitude).not.toBe("Peak");
+  });
+});
+
+describe("concerts at the biggest venues", () => {
+  // Steigenberger Airport Hotel's location; the Johan Cruijff ArenA and the Ziggo Dome are ~12 km away.
+  const schiphol = { latitude: 52.3086, longitude: 4.7639, demandRadiusKm: 25, holidayRegion: null };
+  // A one-night show with a date-only listing and a middling model grade: what the ArenA agenda gives.
+  const show = (venue: string, overrides: Partial<EventCandidate> = {}): EventCandidate => ({ ...base, title: "Oasis Live '27", category: "Concert",
+    venue, latitude: 52.3144, longitude: 4.9419, startAt: "2027-07-15T00:00:00+02:00", endAt: "2027-07-15T23:59:59+02:00",
+    localRank: null, venueCapacity: null, aiImpactPoints: 45, evidence: evidence(), ...overrides });
+  const visibility = (score: ReturnType<typeof scoreHotelEvent>) => hotelCalendarVisibility({ active: true, confirmed: true, supported: true,
+    startDate: "2027-07-15", endDate: "2027-07-15", nearTermHorizon: "2026-12-23", demandRadiusKm: 25, category: "Concert",
+    hasConfirmedDateAndLocation: true, scores: [{ importance: score.suggestedImportance, impactBasis: score.impactBasis, distanceKm: score.distanceKm, assessment: score.assessment }] });
+
+  it("grades a stadium concert High without any hotel evidence, and says why", () => {
+    const score = scoreHotelEvent({ candidate: show("Johan Cruijff ArenA"), hotel: schiphol, overlaps: [] });
+    expect(score).toMatchObject({ suggestedImportance: "High", impactBasis: "stadium_concert" });
+    expect(score.assessment.reasons.join(" ")).toContain("stadion");
+    expect(visibility(score)).toEqual({ visible: true, announced: false });
+  });
+
+  it("leaves an arena concert for the manager to grade", () => {
+    const score = scoreHotelEvent({ candidate: show("Ziggo Dome"), hotel: schiphol, overlaps: [] });
+    expect(score.suggestedImportance).not.toBe("High");
+    expect(score.impactBasis).toBe("arena_concert");
+    expect(visibility(score)).toEqual({ visible: true, announced: true });
+  });
+
+  it.each([
+    ["a football match in the stadium", show("Johan Cruijff ArenA", { title: "Ajax - Telstar", category: "football match" })],
+    ["a hospitality package at the stadium", show("Johan Cruijff ArenA", { title: "Oasis Live '27 | Skybox" })],
+    ["a cancelled stadium concert", show("Johan Cruijff ArenA", { sourceState: "cancelled" })],
+    ["a stadium concert outside the radius", show("Philips Stadion", { latitude: 51.4417, longitude: 5.4675 })],
+    ["a concert at a smaller hall", show("AFAS Live")],
+  ])("does not apply to %s", (_case, candidate) => {
+    const score = scoreHotelEvent({ candidate, hotel: schiphol, overlaps: [] });
+    expect(["stadium_concert", "arena_concert"]).not.toContain(score.impactBasis);
+  });
+
+  it("keeps a stronger evidenced grade instead of the venue rule", () => {
+    const facts = { ...evidence("hotel_stay", "1000 hotel rooms per night are booked for fans."), continuous: false };
+    facts.demand[0].quantity = { value: 1000, unit: "hotel_rooms", period: "per_night" };
+    const score = scoreHotelEvent({ candidate: show("Johan Cruijff ArenA", { evidence: facts }), hotel: schiphol, overlaps: [] });
+    expect(score).toMatchObject({ suggestedImportance: "Peak", impactBasis: "demand_rule" });
   });
 });

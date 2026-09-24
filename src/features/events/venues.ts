@@ -86,3 +86,22 @@ export function knownVenueCapacity(venue: string | null): number | null {
   }
   return null;
 }
+
+/** A stadium concert fills hotels on its own; a few a year, mostly acts that draw fans nationwide. */
+export const STADIUM_CONCERT_CAPACITY = 30_000;
+/** An arena has a show most nights, many with a local audience; the manager judges each one. */
+export const ARENA_CONCERT_CAPACITY = 15_000;
+
+/**
+ * Concerts at the biggest venues, decided with the owner on 24 September 2026 after Oasis at the
+ * Johan Cruijff ArenA stayed hidden: the ArenA agenda lists dates, never hotel stays, so no
+ * evidence rule could ever lift it. Stadiums (Johan Cruijff ArenA, De Kuip, Philips Stadion,
+ * GelreDome) grade High; arenas (Ziggo Dome, Ahoy, Galgenwaard, Euroborg) are shown for the
+ * manager to grade. Football is excluded by `venueCrowdIsAudience`.
+ */
+export function bigVenueConcert(category: string, title: string, venue: string | null) {
+  if (!venueCrowdIsAudience(category, title, venue)) return null;
+  const capacity = knownVenueCapacity(venue);
+  if (capacity === null || capacity < ARENA_CONCERT_CAPACITY) return null;
+  return { tier: capacity >= STADIUM_CONCERT_CAPACITY ? "stadium" as const : "arena" as const, capacity };
+}
