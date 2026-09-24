@@ -76,6 +76,20 @@ export function gradedDemand(score: {
 export const nearTermDestinationMaxDays = 14;
 
 /**
+ * Whether a multi-day span in this category can mean one continuous run, and so a stay. Not for
+ * per-performance categories (`perPerformanceCategory`), nor for single shows the research labels
+ * "Music": four Festival Oude Muziek touring concerts reached the Utrecht calendar that way in
+ * September 2026. A festival stays a festival. "Dance" is deliberately absent: it covers both a
+ * dance première run and Holland Masters Dans, a competition that draws couples from abroad.
+ * Holidays are calendar context, never a destination.
+ */
+export function continuousRunCategory(category: string) {
+  return !perPerformanceCategory(category)
+    && !(/music|muziek|ballet|opera/i.test(category) && !/festival/i.test(category))
+    && !/^(public_holiday|school_holiday)$/.test(category);
+}
+
+/**
  * "Zelf beoordelen" (formerly "Hotelvraag"): an event worth showing without a High or Peak grade. Two kinds qualify.
  *
  * Beyond the near-term horizon a demand grade cannot be earned yet: a future edition has no
@@ -130,10 +144,8 @@ export function isAnnouncedDemand(input: {
     && input.scores.some((score) => hasHotelDemand(readDemandAssessment(score.assessment)));
   const durationDays = Math.round(
     (Date.parse(`${input.endDate.slice(0, 10)}T00:00:00Z`) - Date.parse(`${input.startDate.slice(0, 10)}T00:00:00Z`)) / 86_400_000) + 1;
-  // Duration only means a stay for a continuous run. A concert series listed as "17, 19, 22
-  // January" is extracted as one six-day event, which made four single Festival Oude Muziek
-  // concerts look like destination events in Utrecht while the festival itself was graded High.
-  const destination = durationDays >= 3 && !perPerformanceCategory(input.category)
+  // Duration only means a stay for a continuous run, see `continuousRunCategory`.
+  const destination = durationDays >= 3 && continuousRunCategory(input.category)
     && input.hasConfirmedDateAndLocation && withinRadius
     && (input.startDate > input.nearTermHorizon || durationDays <= nearTermDestinationMaxDays);
   return assessed || destination;

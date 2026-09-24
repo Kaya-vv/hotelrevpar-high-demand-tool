@@ -81,6 +81,12 @@ describe("hotel demand evidence upgrades and contradicts the proxy score", () =>
     // A concert series is extracted as one multi-day span; duration is not a stay for it.
     expect(band({ days: 3, category: "Concert" })).toBe(false);
     expect(band({ days: 3, category: "Music Festival" })).toBe(true);
+    // The research also labels single concerts "Music" (Festival Oude Muziek tour dates, Utrecht).
+    expect(band({ days: 3, category: "Music" })).toBe(false);
+    // A dance competition keeps its multi-day run (Holland Masters Dans, Rotterdam).
+    expect(band({ days: 3, category: "Dans" })).toBe(true);
+    // A school holiday is calendar context, never a destination.
+    expect(band({ days: 3, category: "school_holiday" })).toBe(false);
     // Real hotel-demand evidence still announces a single day.
     const assessment = assessHotelDemand({ ...base, evidence: evidence("hotel_stay") }, hotel);
     expect(band({ scores: [{ importance: "Medium", impactBasis: "ai_assessment", distanceKm: 1, assessment }] })).toBe(true);

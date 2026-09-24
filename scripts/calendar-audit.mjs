@@ -20,11 +20,11 @@ const batched = async (ids, build) => {
 };
 
 const server = await createServer({ configFile: false, logLevel: "error", resolve: { alias: { "@": resolve("src") } }, server: { middlewareMode: true, hmr: false } });
-const { isAnnouncedDemand, isPublishableDemand, gradedDemand, nearTermDestinationMaxDays } = await server.ssrLoadModule("/src/features/events/importance.ts");
+const { isAnnouncedDemand, isPublishableDemand, gradedDemand, nearTermDestinationMaxDays, continuousRunCategory } = await server.ssrLoadModule("/src/features/events/importance.ts");
 const { readDemandAssessment, hasHotelDemand } = await server.ssrLoadModule("/src/features/events/demand-assessment.ts");
 const { isEnabledPrimarySource } = await server.ssrLoadModule("/src/features/events/source-evidence.ts");
 // The calendar converts to LOCAL dates; slicing UTC inflates a CET-boundary event by a day.
-const { eventLocalDate, perPerformanceCategory } = await server.ssrLoadModule("/src/features/events/normalize.ts");
+const { eventLocalDate } = await server.ssrLoadModule("/src/features/events/normalize.ts");
 
 const filter = process.argv[2] ?? "utrecht";
 const areas = (await api("collection_areas?select=id,name,account_id,hotel_id,enabled_sources"))
@@ -67,7 +67,7 @@ for (const area of areas) {
     // both; the label must name every trigger, or removing one looks more destructive than it is.
     const withinRadius = eventScores.some((score) => score.distanceKm !== null && score.distanceKm <= hotel.demand_radius_km);
     const evidenced = withinRadius && eventScores.some((score) => hasHotelDemand(readDemandAssessment(score.assessment)));
-    const destination = days >= 3 && !perPerformanceCategory(event.category)
+    const destination = days >= 3 && continuousRunCategory(event.category)
       && hasConfirmedDateAndLocation && withinRadius && (start > nearTermHorizon || days <= nearTermDestinationMaxDays);
     announced.push({ event, start, days, evidenced, destination, scores: eventScores });
   }
