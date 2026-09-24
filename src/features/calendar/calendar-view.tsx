@@ -56,7 +56,7 @@ export type CalendarEvent = {
    * `hotelScores`. A manual override targets this row.
    */
   assessedScore?: CalendarHotelScore;
-  /** "Hotelvraag": likely hotel demand without a High or Peak grade; see `isAnnouncedDemand`. */
+  /** "Zelf beoordelen": likely hotel demand without a High or Peak grade; see `isAnnouncedDemand`. */
   announced?: boolean;
   /** Internal result of the shared calendar publication rule. */
   visible?: boolean;
@@ -131,7 +131,7 @@ function EventDetails({
           </span>
         )}
         {!score && event.announced && (
-          <span className="importance announced">Hotelvraag</span>
+          <span className="importance announced">Zelf beoordelen</span>
         )}
       </header>
       <p className="event-date">
@@ -150,8 +150,8 @@ function EventDetails({
       )}
       {!score && event.announced && (
         <p className="demand-pending">
-          Hotelvraag is aannemelijk; de omvang is nog onbekend. Dit geldt voor alle
-          datums. Voor export is een handmatig niveau nodig.
+          Dit evenement trekt waarschijnlijk extra hotelgasten, maar hoeveel weten we
+          nog niet. Kies hieronder zelf een niveau; dan kan het ook mee in de export.
         </p>
       )}
       {primarySource && (
@@ -257,7 +257,7 @@ function EventOverview({
               </span>
             )}
             {!score && event.announced && (
-              <span className="importance announced">Hotelvraag</span>
+              <span className="importance announced">Zelf beoordelen</span>
             )}
             {score && (
               <strong className="event-overview-score">
@@ -292,7 +292,7 @@ function EventOverview({
         {events.some((event) => event.announced) && (
           <div>
             <strong>{events.filter((event) => event.announced).length}</strong>
-            <span>Hotelvraag</span>
+            <span>Zelf beoordelen</span>
           </div>
         )}
       </div>
@@ -470,7 +470,7 @@ export function CalendarView({
                       </>
                     )}
                     {!score && event.announced && (
-                      <span className="importance announced">Hotelvraag</span>
+                      <span className="importance announced">Zelf beoordelen</span>
                     )}
                   </button>
                 );

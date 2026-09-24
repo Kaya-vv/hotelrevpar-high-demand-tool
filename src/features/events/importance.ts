@@ -76,7 +76,7 @@ export function gradedDemand(score: {
 export const nearTermDestinationMaxDays = 14;
 
 /**
- * "Hotelvraag": an event worth showing without a High or Peak grade. Two kinds qualify.
+ * "Zelf beoordelen" (formerly "Hotelvraag"): an event worth showing without a High or Peak grade. Two kinds qualify.
  *
  * Beyond the near-term horizon a demand grade cannot be earned yet: a future edition has no
  * attendance of its own and organisers rarely publish audience information a year ahead. Inside
