@@ -1135,6 +1135,29 @@ a {
   max-width: 520px;
 }
 
+.account-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+}
+
+.account-toggle input {
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
+  padding: 0;
+  margin: 0;
+  accent-color: var(--blue);
+}
+
+/* Keep logging out visually apart from saving the e-mail preference. */
+.account-panel form + form {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
 .inline-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr)) auto;

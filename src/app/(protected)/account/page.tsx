@@ -18,13 +18,13 @@ export default async function AccountPage() {
       <section className="panel account-panel">
         <p><strong>Rol</strong><br />{account.role === "platform_admin" ? "Platformbeheerder" : "Operator"}</p>
         <form action={updateEventNotifications}>
-          <label>
+          <label className="account-toggle">
             <input
               type="checkbox"
               name="enabled"
               value="true"
               defaultChecked={membership.event_notifications_enabled}
-            />{" "}
+            />
             E-mail bij nieuwe events
           </label>
           <p className="muted">Je ontvangt per hotel één overzicht wanneer nieuwe events aan de kalender zijn toegevoegd.</p>
