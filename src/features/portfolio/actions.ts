@@ -17,6 +17,9 @@ export type FormState = {
   saved?: boolean;
 };
 
+// The database refuses a hotel over the account's limit with this English code; show Dutch instead.
+const HOTEL_LIMIT_REACHED = "Je account heeft geen ruimte meer voor een extra hotel. Archiveer er een of neem contact op.";
+
 export async function setHotelArchived(formData: FormData) {
   const { accountId } = await requireAccount();
   const id = String(formData.get("hotelId") ?? "");
@@ -25,6 +28,7 @@ export async function setHotelArchived(formData: FormData) {
   const { data, error } = await supabase.from("hotels")
     .update({ archived_at: archived ? new Date().toISOString() : null })
     .eq("account_id", accountId).eq("id", id).select("id").single();
+  if (error?.message.includes("hotel_limit_reached")) throw new Error(HOTEL_LIMIT_REACHED);
   if (error) throw error;
   if (!data) throw new Error("Hotel niet gevonden in dit account.");
   const jar = await cookies();
@@ -61,6 +65,22 @@ export async function saveHotel(
   if (existingError) throw existingError;
   if (requestedId && !existing)
     return { message: "Hotel niet gevonden in dit account." };
+
+  if (!requestedId) {
+    // Check before the address lookup so a full account never pays for a geocode call.
+    const [limitRow, hotelCount] = await Promise.all([
+      supabase.from("accounts").select("hotel_limit").eq("id", account.accountId).single(),
+      supabase.from("hotels").select("id", { count: "exact", head: true })
+        .eq("account_id", account.accountId).is("archived_at", null),
+    ]);
+    if (limitRow.error) throw limitRow.error;
+    if (hotelCount.error) throw hotelCount.error;
+    const limit = limitRow.data.hotel_limit;
+    if (limit !== null && (hotelCount.count ?? 0) >= limit)
+      return {
+        message: `Je account heeft ruimte voor ${limit} ${limit === 1 ? "hotel" : "hotels"}. Archiveer een hotel of neem contact op om er meer toe te voegen.`,
+      };
+  }
 
   const enabledSources =
     account.role === "platform_admin"
@@ -118,7 +138,12 @@ export async function saveHotel(
         .single()
     : await supabase.from("hotels").insert(row).select("id").single();
 
-  if (result.error) return { message: result.error.message };
+  if (result.error)
+    return {
+      message: result.error.message.includes("hotel_limit_reached")
+        ? HOTEL_LIMIT_REACHED
+        : result.error.message,
+    };
   const hotelId = result.data.id;
   const requiresCollection =
     !existing ||

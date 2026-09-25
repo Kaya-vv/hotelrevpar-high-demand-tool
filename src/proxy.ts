@@ -3,7 +3,9 @@ import { type NextRequest, NextResponse } from "next/server";
 import { loginDestination } from "@/lib/auth/login-destination";
 
 export function isPublicPath(pathname: string) {
-  return pathname === "/login" || pathname === "/api/cron/collect" || pathname === "/api/queues/collect-hotel";
+  // These routes carry their own secret or signature instead of a login session.
+  return pathname === "/login" || pathname === "/api/cron/collect" || pathname === "/api/queues/collect-hotel"
+    || pathname === "/api/webhooks/plugandpay";
 }
 
 export async function proxy(request: NextRequest) {

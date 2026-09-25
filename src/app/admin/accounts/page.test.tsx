@@ -3,7 +3,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/auth/require-account", () => ({ requirePlatformAdmin: vi.fn() }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: vi.fn() }));
-vi.mock("./actions", () => ({ createSubscriberAccount: vi.fn(), deleteSubscriberUser: vi.fn(), resendSubscriberLink: vi.fn(), setSubscriberHotelArchived: vi.fn() }));
+vi.mock("./actions", () => ({ createSubscriberAccount: vi.fn(), deleteSubscriberUser: vi.fn(), resendSubscriberLink: vi.fn(), setAccountHotelLimit: vi.fn(), setSubscriberHotelArchived: vi.fn() }));
 import { requirePlatformAdmin } from "@/lib/auth/require-account";
 import { createAdminClient } from "@/lib/supabase/admin";
 import AccountsPage from "./page";
@@ -12,7 +12,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(requirePlatformAdmin).mockResolvedValue({ accountId: "admin", accountName: "Admin", role: "platform_admin", userId: "admin-user" });
   const rows: Record<string, unknown[]> = {
-    accounts: [{ id: "retained", name: "Account zonder login", active: true }, { id: "subscriber", name: "Abonnee", active: true }],
+    accounts: [{ id: "retained", name: "Account zonder login", active: true, hotel_limit: null }, { id: "subscriber", name: "Abonnee", active: true, hotel_limit: 3 }],
     account_members: [{ account_id: "subscriber", user_id: "user", role: "operator" }],
     hotels: [
       { id: "old-hotel", account_id: "retained", name: "Bewaard hotel", archived_at: null },

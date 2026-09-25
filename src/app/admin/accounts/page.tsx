@@ -2,7 +2,7 @@ import { requirePlatformAdmin } from "@/lib/auth/require-account";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchAllRows } from "@/lib/supabase/fetch-in-batches";
 
-import { createSubscriberAccount, deleteSubscriberUser, resendSubscriberLink, setSubscriberHotelArchived } from "./actions";
+import { createSubscriberAccount, deleteSubscriberUser, resendSubscriberLink, setAccountHotelLimit, setSubscriberHotelArchived } from "./actions";
 import { accountMessages } from "./messages";
 import { SubmitButton } from "./submit-button";
 
@@ -13,7 +13,7 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
   const admin = createAdminClient();
   const { data: accounts, error } = await admin
     .from("accounts")
-    .select("id, name, active, created_at")
+    .select("id, name, active, created_at, hotel_limit")
     .order("created_at", { ascending: false });
   if (error) throw error;
   const { data: memberships, error: memberError } = await admin.from("account_members").select("account_id, user_id, role");
@@ -44,6 +44,10 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
             E-mailadres
             <input name="email" type="email" required />
           </label>
+          <label>
+            Aantal hotels
+            <input name="hotelLimit" type="number" min="0" placeholder="Onbeperkt" />
+          </label>
           <SubmitButton primary>Uitnodigen</SubmitButton>
         </form>
       </section>
@@ -53,7 +57,7 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
         <p>Een verwijderde login stopt de hotelzoekopdrachten niet. Werk dat al bij de zoekdienst is gestart, kan nog kosten geven.</p>
         <div className="table-wrap">
           <table>
-            <thead><tr><th>Naam</th><th>Status</th><th>E-mailadres</th><th>Hotels</th></tr></thead>
+            <thead><tr><th>Naam</th><th>Status</th><th>E-mailadres</th><th>Hotels</th><th>Aantal hotels</th></tr></thead>
             <tbody>
               {accounts?.map((account) => (
                 <tr key={account.id}>
@@ -102,6 +106,14 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
                         </div>
                       </details>
                     ) : "Geen hotels"}
+                  </td>
+                  <td>
+                    <form action={setAccountHotelLimit} className="subscriber-login">
+                      <input type="hidden" name="accountId" value={account.id} />
+                      <input name="hotelLimit" type="number" min="0" placeholder="Onbeperkt"
+                        defaultValue={account.hotel_limit ?? ""} aria-label={`Aantal hotels voor ${account.name}`} />
+                      <SubmitButton>Opslaan</SubmitButton>
+                    </form>
                   </td>
                 </tr>
               ))}

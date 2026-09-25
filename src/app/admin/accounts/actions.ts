@@ -5,8 +5,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
-import { provisionSubscriber } from "@/features/accounts/provision-subscriber";
-import { baselineMemberNotifications } from "@/features/notifications/service";
+import { provisionSubscriberAccount } from "@/features/accounts/provision-subscriber-supabase";
 import { SELECTED_HOTEL_COOKIE } from "@/features/workspace/hotel-context";
 import { requirePlatformAdmin } from "@/lib/auth/require-account";
 import { createAdminClient, type AdminClient } from "@/lib/supabase/admin";
@@ -55,6 +54,14 @@ async function activeAccount(admin: AdminClient, accountId: string) {
   if (!data.active) throw new AccountActionError("inactive");
 }
 
+function parseHotelLimit(value: FormDataEntryValue | null): number | null {
+  const raw = String(value ?? "").trim();
+  if (raw === "") return null;
+  const limit = Number(raw);
+  if (!Number.isInteger(limit) || limit < 0) throw new AccountActionError("limit-input");
+  return limit;
+}
+
 export async function createSubscriberAccount(formData: FormData) {
   await requirePlatformAdmin();
   return runAccountAction("invited", async () => {
@@ -62,67 +69,27 @@ export async function createSubscriberAccount(formData: FormData) {
     const accountId = String(formData.get("accountId") ?? "");
     const email = String(formData.get("email") ?? "").trim().toLowerCase();
     if ((!accountId && !accountName) || !z.email().safeParse(email).success) throw new AccountActionError("input");
+    const hotelLimit = parseHotelLimit(formData.get("hotelLimit"));
     const redirectTo = passwordRedirect();
     const admin = createAdminClient();
     if (accountId) await activeAccount(admin, accountId);
-
-    await provisionSubscriber({ accountName, email }, {
-      inviteUser: async (inviteEmail) => {
-        // Reserve a NEW identity first. Re-inviting an existing unconfirmed user
-        // must never reach provisioning rollback and delete their existing login.
-        const created = await admin.auth.admin.createUser({ email: inviteEmail, email_confirm: false });
-        if (created.error || !created.data.user) throw created.error ?? new Error("User creation failed");
-        const userId = created.data.user.id;
-        const invited = await admin.auth.admin.inviteUserByEmail(inviteEmail, { redirectTo });
-        if (invited.error) {
-          const removed = await admin.auth.admin.deleteUser(userId);
-          if (removed.error) throw removed.error;
-          throw invited.error;
-        }
-        return userId;
-      },
-      createAccount: async ({ accountName: name, userId }) => {
-        let targetId = accountId;
-        if (!targetId) {
-          const { data, error } = await admin.from("accounts").insert({ name }).select("id").single();
-          if (error) throw error;
-          targetId = data.id;
-        }
-        const { error } = await admin.from("account_members").insert({
-          account_id: targetId,
-          user_id: userId,
-          event_notifications_enabled: false,
-        });
-        if (error) {
-          if (!accountId) {
-            const cleanup = await admin.from("accounts").delete().eq("id", targetId);
-            if (cleanup.error) throw cleanup.error;
-          }
-          throw error;
-        }
-        try {
-          await baselineMemberNotifications(targetId, userId, admin);
-          const enabled = await admin.from("account_members")
-            .update({ event_notifications_enabled: true })
-            .eq("account_id", targetId)
-            .eq("user_id", userId);
-          if (enabled.error) throw enabled.error;
-        } catch (notificationError) {
-          const membershipCleanup = await admin.from("account_members")
-            .delete().eq("account_id", targetId).eq("user_id", userId);
-          if (membershipCleanup.error) throw membershipCleanup.error;
-          if (!accountId) {
-            const accountCleanup = await admin.from("accounts").delete().eq("id", targetId);
-            if (accountCleanup.error) throw accountCleanup.error;
-          }
-          throw notificationError;
-        }
-      },
-      removeUser: async (userId) => {
-        const { error } = await admin.auth.admin.deleteUser(userId);
-        if (error) throw error;
-      },
+    await provisionSubscriberAccount(admin, {
+      accountName, email, accountId: accountId || undefined, hotelLimit, redirectTo,
     });
+  });
+}
+
+export async function setAccountHotelLimit(formData: FormData) {
+  await requirePlatformAdmin();
+  return runAccountAction("limit-saved", async () => {
+    const accountId = String(formData.get("accountId") ?? "");
+    if (!accountId) throw new AccountActionError("missing");
+    const limit = parseHotelLimit(formData.get("hotelLimit"));
+    const admin = createAdminClient();
+    const { data, error } = await admin.from("accounts")
+      .update({ hotel_limit: limit }).eq("id", accountId).select("id").maybeSingle();
+    if (error) throw error;
+    if (!data) throw new AccountActionError("missing");
   });
 }
 
@@ -164,6 +131,7 @@ export async function setSubscriberHotelArchived(formData: FormData) {
     const { data, error } = await admin.from("hotels")
       .update({ archived_at: archived === "true" ? new Date().toISOString() : null })
       .eq("account_id", accountId).eq("id", hotelId).select("id").maybeSingle();
+    if (error?.message?.includes("hotel_limit_reached")) throw new AccountActionError("hotel-limit");
     if (error) throw error;
     if (!data) throw new AccountActionError("hotel-missing");
     const jar = await cookies();

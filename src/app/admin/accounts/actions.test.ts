@@ -7,6 +7,7 @@ vi.mock("next/headers", () => ({ cookies: async () => selection }));
 vi.mock("@/lib/auth/require-account", () => ({ requirePlatformAdmin: vi.fn() }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: vi.fn() }));
 vi.mock("@/features/notifications/service", () => ({ baselineMemberNotifications: vi.fn().mockResolvedValue(0) }));
+vi.mock("server-only", () => ({}));
 import { requirePlatformAdmin } from "@/lib/auth/require-account";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createSubscriberAccount, deleteSubscriberUser, resendSubscriberLink, setSubscriberHotelArchived } from "./actions";

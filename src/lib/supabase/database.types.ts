@@ -365,21 +365,33 @@ export type Database = {
         Row: {
           active: boolean;
           created_at: string;
+          hotel_limit: number | null;
           id: string;
           name: string;
+          plugandpay_subscription_id: string | null;
         };
         Insert: {
           active?: boolean;
           created_at?: string;
+          hotel_limit?: number | null;
           id?: string;
           name: string;
+          plugandpay_subscription_id?: string | null;
         };
         Update: {
           active?: boolean;
           created_at?: string;
+          hotel_limit?: number | null;
           id?: string;
           name?: string;
+          plugandpay_subscription_id?: string | null;
         };
+        Relationships: [];
+      };
+      plugandpay_events: {
+        Row: { event_key: string; trigger_type: string; triggerable_id: string; account_id: string | null; status: string; detail: string | null; received_at: string; updated_at: string };
+        Insert: { event_key: string; trigger_type: string; triggerable_id: string; account_id?: string | null; status: string; detail?: string | null; received_at?: string; updated_at?: string };
+        Update: { event_key?: string; trigger_type?: string; triggerable_id?: string; account_id?: string | null; status?: string; detail?: string | null; received_at?: string; updated_at?: string };
         Relationships: [];
       };
       collection_areas: {
@@ -1089,6 +1101,7 @@ export type Database = {
         Returns: { event_id: string }[];
       };
       is_account_member: { Args: { target: string }; Returns: boolean };
+      account_for_billing_email: { Args: { target: string }; Returns: string | null };
     };
     Enums: {
       account_event_state: "active" | "needs_review" | "excluded" | "ended";
