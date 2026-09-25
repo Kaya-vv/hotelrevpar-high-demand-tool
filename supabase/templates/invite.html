@@ -1,4 +1,103 @@
-<h2>Welkom bij DemandRadar</h2>
-<p>Je bent uitgenodigd voor DemandRadar. Kies via onderstaande link zelf een wachtwoord. Daarna log je in met je e-mailadres en dat wachtwoord.</p>
-<p><a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=invite">Wachtwoord instellen</a></p>
-<p>De link wordt pas gebruikt wanneer je je wachtwoord opslaat. Gebruik altijd de meest recente e-mail.</p>
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Activeer uw DemandRadar-account</title>
+  </head>
+  <body style="margin:0; padding:0; background:#f4f6f8; font-family:Arial, Helvetica, sans-serif; color:#1f2933;">
+    <div style="display:none; max-height:0; overflow:hidden; opacity:0; mso-hide:all;">
+      {{ if .Data.purchased }}Bedankt voor uw aankoop. Activeer uw DemandRadar-account en stel uw wachtwoord in.{{ else }}Uw DemandRadar-account staat klaar. Activeer het en stel uw wachtwoord in.{{ end }}
+    </div>
+
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation" style="background:#f4f6f8;">
+      <tr>
+        <td align="center" style="padding:32px 16px;">
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation" style="max-width:620px; background:#ffffff; border-radius:10px; overflow:hidden;">
+            <tr>
+              <td style="padding:32px 28px 28px;">
+                <p style="margin:0 0 28px; font-size:22px; line-height:1.3; font-weight:bold; color:#0f172a;">
+                  Demand<span style="color:#f26522;">Radar</span>
+                </p>
+
+                <h1 style="margin:0 0 16px; font-size:24px; line-height:1.3; color:#0f172a;">
+                  {{ if .Data.purchased }}Bedankt voor uw aankoop{{ else }}Uw account staat klaar{{ end }}
+                </h1>
+
+                <p style="margin:0 0 16px; font-size:16px; line-height:1.6;">
+                  {{ if .Data.purchased }}Uw betaling is gelukt en uw DemandRadar-account is aangemaakt.{{ else }}Er is een DemandRadar-account voor u aangemaakt.{{ end }}
+                  Ontdek welke evenementen de vraag naar hotelovernachtingen kunnen verhogen en bekijk ze overzichtelijk in uw kalender.
+                </p>
+
+                <p style="margin:0 0 16px; font-size:16px; line-height:1.6;">
+                  Klik op onderstaande knop om uw account te activeren en uw wachtwoord in te stellen. Daarna voegt u uw hotel toe en gaat DemandRadar direct op zoek naar evenementen in de buurt.
+                </p>
+
+                <p lang="en" style="margin:0 0 24px; font-size:15px; line-height:1.6; color:#52616b;">
+                  {{ if .Data.purchased }}Thank you for your purchase. Your DemandRadar account has been created.{{ else }}A DemandRadar account has been created for you.{{ end }}
+                  Use the button below to activate your account and set your password.
+                </p>
+
+                <table role="presentation" border="0" cellspacing="0" cellpadding="0" style="margin:28px 0;">
+                  <tr>
+                    <td align="left">
+                      <!--[if mso]>
+                      <v:roundrect
+                        xmlns:v="urn:schemas-microsoft-com:vml"
+                        xmlns:w="urn:schemas-microsoft-com:office:word"
+                        href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=invite"
+                        style="height:48px;v-text-anchor:middle;width:240px;"
+                        arcsize="12%"
+                        stroke="f"
+                        fillcolor="#f26522">
+                        <w:anchorlock/>
+                        <center style="color:#ffffff;font-family:Arial, Helvetica, sans-serif;font-size:16px;font-weight:bold;">
+                          Account activeren
+                        </center>
+                      </v:roundrect>
+                      <![endif]-->
+
+                      <!--[if !mso]><!-->
+                      <a
+                        href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=invite"
+                        style="background:#f26522; border-radius:6px; color:#ffffff; display:inline-block; font-family:Arial, Helvetica, sans-serif; font-size:16px; font-weight:bold; line-height:48px; text-align:center; text-decoration:none; width:240px;">
+                        Account activeren
+                      </a>
+                      <!--<![endif]-->
+                    </td>
+                  </tr>
+                </table>
+
+                <p style="margin:0 0 24px; font-size:13px; line-height:1.6; color:#52616b;">
+                  De link wordt pas gebruikt wanneer u uw wachtwoord opslaat. Werkt de link niet meer? Vraag op de inlogpagina een nieuwe wachtwoordlink aan.
+                </p>
+
+                <hr style="border:none; border-top:1px solid #e5e7eb; margin:28px 0;">
+
+                <p style="margin:0 0 14px; font-size:15px; line-height:1.6;">
+                  Met vriendelijke groet / With kind regards,
+                </p>
+
+                <p style="margin:0 0 18px; font-size:15px; line-height:1.6;">
+                  <strong>Robert van Vliet</strong><br>
+                  Revenue Consultant
+                </p>
+
+                <p style="margin:0 0 18px; font-size:14px; line-height:1.6; color:#374151;">
+                  Kerklaan 11<br>
+                  1427 AA | Amstelhoek<br>
+                  the Netherlands
+                </p>
+
+                <p style="margin:0; font-size:14px; line-height:1.6; color:#374151;">
+                  mob. <a href="tel:+31630098288" style="color:#0f766e; text-decoration:none;">+31 (0) 6 30098288</a><br>
+                  <a href="https://www.hotelrevpar.nl/" style="color:#0f766e;">www.hotelrevpar.nl</a>
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

@@ -60,6 +60,7 @@ export async function POST(request: Request) {
         email: input.email,
         hotelLimit: input.hotelLimit,
         plugandpaySubscriptionId: input.subscriptionId,
+        purchased: true,
         // The same set-password link the admin page sends.
         redirectTo: new URL("/auth/confirm?next=/auth/set-password", requiredEnv("NEXT_PUBLIC_SITE_URL")).toString(),
       });

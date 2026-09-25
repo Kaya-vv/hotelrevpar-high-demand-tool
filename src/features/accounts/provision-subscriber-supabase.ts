@@ -13,6 +13,8 @@ export type ProvisionAccountInput = {
   /** How many hotels the new account may run. `null` means no limit. */
   hotelLimit?: number | null;
   plugandpaySubscriptionId?: string | null;
+  /** The buyer paid through Plug&Pay; the activation e-mail then thanks them for the purchase. */
+  purchased?: boolean;
   redirectTo: string;
 };
 
@@ -28,7 +30,12 @@ export async function provisionSubscriberAccount(
     inviteUser: async (inviteEmail) => {
       // Reserve a NEW identity first. Re-inviting an existing unconfirmed user
       // must never reach provisioning rollback and delete their existing login.
-      const created = await admin.auth.admin.createUser({ email: inviteEmail, email_confirm: false });
+      // The e-mail template reads `purchased` to choose the purchase wording.
+      const created = await admin.auth.admin.createUser({
+        email: inviteEmail,
+        email_confirm: false,
+        ...(input.purchased ? { user_metadata: { purchased: true } } : {}),
+      });
       if (created.error || !created.data.user) throw created.error ?? new Error("User creation failed");
       const userId = created.data.user.id;
       const invited = await admin.auth.admin.inviteUserByEmail(inviteEmail, { redirectTo });

@@ -27,8 +27,10 @@ additional_redirect_urls = ["http://localhost:3000"]
 jwt_expiry = 3600
 enable_signup = true
 
+# Production copies of these templates live in the Supabase dashboard, with the live app address
+# written in place of {{ .SiteURL }} (the hosted Site URL is managed by the Vercel integration).
 [auth.email.template.invite]
-subject = "Je uitnodiging voor DemandRadar"
+subject = "Activeer uw DemandRadar-account"
 content_path = "./supabase/templates/invite.html"
 
 [auth.email.template.recovery]
