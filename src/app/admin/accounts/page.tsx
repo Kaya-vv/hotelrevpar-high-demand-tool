@@ -25,6 +25,80 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
   }));
   const hotels = await fetchAllRows((from, to) => admin.from("hotels")
     .select("id, account_id, name, archived_at").order("name").order("id").range(from, to));
+  const hasLogin = (accountId: string) => members.some((member) => member.account_id === accountId);
+  const shown = (accounts ?? []).filter((account) => account.active && hasLogin(account.id));
+  const hidden = (accounts ?? []).filter((account) => !account.active || !hasLogin(account.id));
+  // Hidden accounts without a login still search for their non-archived hotels; keep that cost visible.
+  const stillSearching = hotels.filter((hotel) => !hotel.archived_at
+    && hidden.some((account) => account.id === hotel.account_id && account.active)).length;
+
+  const accountTable = (rows: typeof shown) => (
+    <div className="table-wrap">
+      <table>
+        <thead><tr><th>Naam</th><th>Status</th><th>E-mailadres</th><th>Hotels</th><th>Aantal hotels</th></tr></thead>
+        <tbody>
+          {rows.map((account) => (
+            <tr key={account.id}>
+              <td>{account.name}</td>
+              <td>{account.active ? "Actief" : "Uitgeschakeld"}</td>
+              <td>
+                <div className="form-stack">
+                  {!hasLogin(account.id) && <span>Geen login</span>}
+                  {members.filter((member) => member.account_id === account.id).map((member) => (
+                    <div key={member.user_id} className="subscriber-login">
+                      <span>{member.email}</span>
+                      {member.role !== "platform_admin" && member.user_id !== current.userId && (
+                        <div className="subscriber-login-actions">
+                          {account.active && (
+                            <form action={resendSubscriberLink}>
+                              <input type="hidden" name="accountId" value={account.id} />
+                              <input type="hidden" name="userId" value={member.user_id} />
+                              <SubmitButton>Nieuwe wachtwoordlink</SubmitButton>
+                            </form>
+                          )}
+                          <form action={deleteSubscriberUser}>
+                            <input type="hidden" name="accountId" value={account.id} />
+                            <input type="hidden" name="userId" value={member.user_id} />
+                            <SubmitButton confirmation={`Login van ${member.email} definitief verwijderen? Hotels en exportgeschiedenis blijven bewaard.`}>Verwijderen</SubmitButton>
+                          </form>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </td>
+              <td>
+                {hotels.some((hotel) => hotel.account_id === account.id) ? (
+                  <details>
+                    <summary>Hotels beheren ({hotels.filter((hotel) => hotel.account_id === account.id).length})</summary>
+                    <div className="form-stack">
+                      {hotels.filter((hotel) => hotel.account_id === account.id).map((hotel) => (
+                        <form key={hotel.id} action={setSubscriberHotelArchived} className="subscriber-login">
+                          <span><strong>{hotel.name}</strong><br />{hotel.archived_at ? "Gearchiveerd" : account.active ? "Zoeken aan" : "Account uitgeschakeld"}</span>
+                          <input type="hidden" name="accountId" value={account.id} />
+                          <input type="hidden" name="hotelId" value={hotel.id} />
+                          <input type="hidden" name="archived" value={String(!hotel.archived_at)} />
+                          <SubmitButton>{hotel.archived_at ? "Herstellen" : "Archiveren"}</SubmitButton>
+                        </form>
+                      ))}
+                    </div>
+                  </details>
+                ) : "Geen hotels"}
+              </td>
+              <td>
+                <form action={setAccountHotelLimit} className="subscriber-login">
+                  <input type="hidden" name="accountId" value={account.id} />
+                  <input name="hotelLimit" type="number" min="0" placeholder="Onbeperkt"
+                    defaultValue={account.hotel_limit ?? ""} aria-label={`Aantal hotels voor ${account.name}`} />
+                  <SubmitButton>Opslaan</SubmitButton>
+                </form>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 
   return (
     <main className="admin-page">
@@ -55,71 +129,16 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
         <h2>Bestaande accounts</h2>
         <p>Archiveer hotels die niet meer nodig zijn om nieuwe zoekopdrachten en e-mails te stoppen. Hun geschiedenis blijft bewaard en je kunt ze later herstellen.</p>
         <p>Een verwijderde login stopt de hotelzoekopdrachten niet. Werk dat al bij de zoekdienst is gestart, kan nog kosten geven.</p>
-        <div className="table-wrap">
-          <table>
-            <thead><tr><th>Naam</th><th>Status</th><th>E-mailadres</th><th>Hotels</th><th>Aantal hotels</th></tr></thead>
-            <tbody>
-              {accounts?.map((account) => (
-                <tr key={account.id}>
-                  <td>{account.name}</td>
-                  <td>{account.active ? "Actief" : "Uitgeschakeld"}</td>
-                  <td>
-                    <div className="form-stack">
-                      {!members.some((member) => member.account_id === account.id) && <span>Geen login</span>}
-                      {members.filter((member) => member.account_id === account.id).map((member) => (
-                        <div key={member.user_id} className="subscriber-login">
-                          <span>{member.email}</span>
-                          {member.role !== "platform_admin" && member.user_id !== current.userId && (
-                            <div className="subscriber-login-actions">
-                              {account.active && (
-                                <form action={resendSubscriberLink}>
-                                  <input type="hidden" name="accountId" value={account.id} />
-                                  <input type="hidden" name="userId" value={member.user_id} />
-                                  <SubmitButton>Nieuwe wachtwoordlink</SubmitButton>
-                                </form>
-                              )}
-                              <form action={deleteSubscriberUser}>
-                                <input type="hidden" name="accountId" value={account.id} />
-                                <input type="hidden" name="userId" value={member.user_id} />
-                                <SubmitButton confirmation={`Login van ${member.email} definitief verwijderen? Hotels en exportgeschiedenis blijven bewaard.`}>Verwijderen</SubmitButton>
-                              </form>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </td>
-                  <td>
-                    {hotels.some((hotel) => hotel.account_id === account.id) ? (
-                      <details>
-                        <summary>Hotels beheren ({hotels.filter((hotel) => hotel.account_id === account.id).length})</summary>
-                        <div className="form-stack">
-                          {hotels.filter((hotel) => hotel.account_id === account.id).map((hotel) => (
-                            <form key={hotel.id} action={setSubscriberHotelArchived} className="subscriber-login">
-                              <span><strong>{hotel.name}</strong><br />{hotel.archived_at ? "Gearchiveerd" : account.active ? "Zoeken aan" : "Account uitgeschakeld"}</span>
-                              <input type="hidden" name="accountId" value={account.id} />
-                              <input type="hidden" name="hotelId" value={hotel.id} />
-                              <input type="hidden" name="archived" value={String(!hotel.archived_at)} />
-                              <SubmitButton>{hotel.archived_at ? "Herstellen" : "Archiveren"}</SubmitButton>
-                            </form>
-                          ))}
-                        </div>
-                      </details>
-                    ) : "Geen hotels"}
-                  </td>
-                  <td>
-                    <form action={setAccountHotelLimit} className="subscriber-login">
-                      <input type="hidden" name="accountId" value={account.id} />
-                      <input name="hotelLimit" type="number" min="0" placeholder="Onbeperkt"
-                        defaultValue={account.hotel_limit ?? ""} aria-label={`Aantal hotels voor ${account.name}`} />
-                      <SubmitButton>Opslaan</SubmitButton>
-                    </form>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        {accountTable(shown)}
+        {hidden.length > 0 && (
+          <details className="hidden-accounts">
+            <summary>
+              Uitgeschakeld of zonder login ({hidden.length})
+              {stillSearching > 0 && ` · ${stillSearching} ${stillSearching === 1 ? "hotel zoekt" : "hotels zoeken"} nog`}
+            </summary>
+            {accountTable(hidden)}
+          </details>
+        )}
       </section>
     </main>
   );

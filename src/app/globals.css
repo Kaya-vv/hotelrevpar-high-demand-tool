@@ -1201,6 +1201,16 @@ a {
   gap: 16px;
 }
 
+.hidden-accounts {
+  margin-top: 24px;
+}
+
+.hidden-accounts > summary {
+  cursor: pointer;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
 .subscriber-login-actions {
   margin-left: auto;
   justify-content: flex-end;

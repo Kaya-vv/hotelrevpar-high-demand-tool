@@ -12,11 +12,16 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(requirePlatformAdmin).mockResolvedValue({ accountId: "admin", accountName: "Admin", role: "platform_admin", userId: "admin-user" });
   const rows: Record<string, unknown[]> = {
-    accounts: [{ id: "retained", name: "Account zonder login", active: true, hotel_limit: null }, { id: "subscriber", name: "Abonnee", active: true, hotel_limit: 3 }],
-    account_members: [{ account_id: "subscriber", user_id: "user", role: "operator" }],
+    accounts: [
+      { id: "retained", name: "Account zonder login", active: true, hotel_limit: null },
+      { id: "subscriber", name: "Abonnee", active: true, hotel_limit: 3 },
+      { id: "disabled", name: "Uitgeschakeld account", active: false, hotel_limit: null },
+    ],
+    account_members: [{ account_id: "subscriber", user_id: "user", role: "operator" }, { account_id: "disabled", user_id: "user-2", role: "operator" }],
     hotels: [
       { id: "old-hotel", account_id: "retained", name: "Bewaard hotel", archived_at: null },
       { id: "archived-hotel", account_id: "subscriber", name: "Gearchiveerd hotel", archived_at: "2026-09-20T12:00:00Z" },
+      { id: "disabled-hotel", account_id: "disabled", name: "Stilgelegd hotel", archived_at: null },
     ],
   };
   const admin = {
@@ -42,6 +47,18 @@ it("keeps hotels manageable after the last login was removed and offers restore 
   const restore = screen.getByRole("button", { name: "Herstellen", hidden: true }).closest("form")!;
   expect(new FormData(restore).get("hotelId")).toBe("archived-hotel");
   expect(new FormData(restore).get("archived")).toBe("false");
+});
+
+it("tucks disabled and loginless accounts away and counts only their hotels that still search", async () => {
+  const { container } = render(await AccountsPage({ searchParams: Promise.resolve({}) }));
+  const page = within(container);
+  const hiddenSection = page.getByText(/Uitgeschakeld of zonder login \(2\)/).closest("details")!;
+  expect(hiddenSection).not.toHaveAttribute("open");
+  expect(within(hiddenSection).getByText("Account zonder login")).toBeInTheDocument();
+  expect(within(hiddenSection).getByText("Uitgeschakeld account")).toBeInTheDocument();
+  expect(within(hiddenSection).queryByText("Abonnee")).not.toBeInTheDocument();
+  expect(page.getByText("Abonnee").closest("details")).toBeNull();
+  expect(hiddenSection.querySelector("summary")).toHaveTextContent("1 hotel zoekt nog");
 });
 
 it("requires platform administration before loading the account list", async () => {
