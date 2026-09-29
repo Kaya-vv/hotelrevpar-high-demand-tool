@@ -3,7 +3,7 @@ import { assessHotelDemand, hasHotelDemand } from "./demand-assessment";
 import { scoreHotelEvent } from "./score";
 import { hotelCalendarVisibility, isAnnouncedDemand, isPublishableDemand } from "./importance";
 import { verifyEventEvidence, type EventEvidence } from "./evidence";
-import type { EventCandidate } from "./types";
+import type { DemandScore, EventCandidate } from "./types";
 
 const hotel = { latitude: 51.44, longitude: 5.48, demandRadiusKm: 25, holidayRegion: null };
 const base: EventCandidate = { provider: "claude", providerEventId: "test", sourceUrl: "https://organizer.example/event",
@@ -182,5 +182,70 @@ describe("stadium concerts", () => {
     facts.demand[0].quantity = { value: 1000, unit: "hotel_rooms", period: "per_night" };
     const score = scoreHotelEvent({ candidate: show("Johan Cruijff ArenA", { evidence: facts }), hotel: schiphol, overlaps: [] });
     expect(score).toMatchObject({ suggestedImportance: "Peak", impactBasis: "demand_rule" });
+  });
+});
+
+describe("size check", () => {
+  // A three-day festival with confirmed dates and place but no size: a "Zelf beoordelen" event.
+  const festival = (overrides: Partial<EventCandidate> = {}): EventCandidate => ({ ...base, title: "Film Festival", category: "festival",
+    localRank: null, venueCapacity: null, aiImpactPoints: 35, evidence: evidence(), ...overrides });
+  const check = (verdict: "big" | "small" | "unsure") => ({ version: 1 as const, verdict, visitors: "circa 300.000",
+    reason: "Internationaal filmfestival met veel bezoekers van buiten de regio.", model: "claude-sonnet-5", checkedAt: "2026-09-29T09:00:00Z" });
+  const visibility = (score: DemandScore, includeMedium = false) => hotelCalendarVisibility({
+    active: true, confirmed: true, supported: true, startDate: "2027-01-01", endDate: "2027-01-03", nearTermHorizon: "2026-12-28",
+    demandRadiusKm: 25, category: "festival", hasConfirmedDateAndLocation: true, includeMedium,
+    scores: [{ importance: score.suggestedImportance, impactBasis: score.impactBasis, distanceKm: score.distanceKm, assessment: score.assessment }] });
+
+  it("leaves an unchecked or unknown event to the operator", () => {
+    for (const sizeCheck of [undefined, check("unsure")]) {
+      const score = scoreHotelEvent({ candidate: festival({ sizeCheck }), hotel, overlaps: [] });
+      expect(score.suggestedImportance).not.toBe("High");
+      expect(visibility(score)).toEqual({ visible: true, announced: true });
+    }
+  });
+
+  it("grades a big event High and tells the operator why", () => {
+    const score = scoreHotelEvent({ candidate: festival({ sizeCheck: check("big") }), hotel, overlaps: [] });
+    expect(score).toMatchObject({ suggestedImportance: "High", impactBasis: "size_check" });
+    expect(score.assessment.reasons.join(" ")).toContain("circa 300.000");
+    expect(visibility(score)).toEqual({ visible: true, announced: false });
+  });
+
+  it("moves a small event behind the Medium toggle unless its organiser proves travelling visitors", () => {
+    const small = scoreHotelEvent({ candidate: festival({ sizeCheck: check("small") }), hotel, overlaps: [] });
+    expect(small.suggestedImportance).not.toBe("High");
+    expect(visibility(small)).toEqual({ visible: false, announced: false });
+    expect(visibility(small, true)).toEqual({ visible: true, announced: false });
+    // Anastacia at AFAS Live: the model called it small, the organiser's page quoted travelling fans.
+    const evidenced = scoreHotelEvent({ candidate: festival({ sizeCheck: check("small"),
+      evidence: evidence("travelling_audience", "Fans travel from abroad for this festival.") }), hotel, overlaps: [] });
+    expect(visibility(evidenced)).toEqual({ visible: true, announced: true });
+  });
+
+  it("keeps a small event reachable through the Medium toggle when its own grade was Low", () => {
+    const low = festival({ aiImpactPoints: 0 });
+    expect(scoreHotelEvent({ candidate: low, hotel, overlaps: [] }).suggestedImportance).toBe("Low");
+    const small = scoreHotelEvent({ candidate: { ...low, sizeCheck: check("small") }, hotel, overlaps: [] });
+    expect(visibility(small)).toEqual({ visible: false, announced: false });
+    expect(visibility(small, true)).toEqual({ visible: true, announced: false });
+  });
+
+  it("applies a small answer to an event whose organiser describes a local audience, but never a big one", () => {
+    const local = festival({ evidence: evidence("local_audience", "Een feest voor de bewoners van de wijk.") });
+    expect(visibility(scoreHotelEvent({ candidate: local, hotel, overlaps: [] }))).toEqual({ visible: true, announced: true });
+    const small = scoreHotelEvent({ candidate: { ...local, sizeCheck: check("small") }, hotel, overlaps: [] });
+    expect(visibility(small)).toEqual({ visible: false, announced: false });
+    expect(visibility(small, true)).toEqual({ visible: true, announced: false });
+    const big = scoreHotelEvent({ candidate: { ...local, sizeCheck: check("big") }, hotel, overlaps: [] });
+    expect(big.suggestedImportance).not.toBe("High");
+  });
+
+  it.each([
+    ["outside the hotel's radius", { latitude: 52.37, longitude: 4.9 }],
+    ["cancelled", { sourceState: "cancelled" as const }],
+  ])("never lifts an event %s", (_case, overrides) => {
+    const score = scoreHotelEvent({ candidate: festival({ sizeCheck: check("big"), ...overrides }), hotel, overlaps: [] });
+    expect(score.impactBasis).not.toBe("size_check");
+    expect(score.suggestedImportance).not.toBe("High");
   });
 });

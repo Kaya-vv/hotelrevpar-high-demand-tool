@@ -18,6 +18,7 @@ describe("event notification email", () => {
           startAt: "2027-10-10T10:00:00Z",
           endAt: "2027-10-12T22:00:00Z",
           level: "Hoog",
+          announced: false,
         },
         {
           id: "event-2",
@@ -26,6 +27,7 @@ describe("event notification email", () => {
           startAt: "2027-11-01T10:00:00Z",
           endAt: "2027-11-01T22:00:00Z",
           level: "Zelf beoordelen",
+          announced: true,
         },
       ],
       "https://app.example",

@@ -47,7 +47,7 @@ const SEARCH_BUDGET = 36;
 const RECOVERY_LIMIT = 4;
 
 export type ClaudeUsageEvent = {
-  phase: "discovery" | "discovery_fetch" | "demand_triage" | "demand_verification";
+  phase: "discovery" | "discovery_fetch" | "demand_triage" | "demand_verification" | "size_check";
   model: string;
   requestId?: string;
   marketKey?: string;

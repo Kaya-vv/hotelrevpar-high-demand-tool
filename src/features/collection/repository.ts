@@ -12,6 +12,7 @@ import {
 } from "@/features/events/review-fingerprint";
 import { scoreHotelEvent } from "@/features/events/score";
 import { selectScoreEvidence } from "@/features/events/source-evidence";
+import { readEventSizeCheck } from "@/features/events/size-check";
 import type { EventCandidate, ValidationReason } from "@/features/events/types";
 import { validateCandidate } from "@/features/events/validate";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -61,6 +62,7 @@ function storedCandidate(event: Database["public"]["Tables"]["events"]["Row"], e
     overnightAudience: evidence.overnight_audience as EventCandidate["overnightAudience"],
     evidenceText: evidence.evidence_text,
     primarySourceConfirmed: evidence.primary_source_confirmed,
+    sizeCheck: readEventSizeCheck(event.size_check),
   };
 }
 
@@ -675,13 +677,19 @@ export function createCollectionRepository(): CollectionRepository {
         certainty: candidate.certainty,
         updated_at: new Date().toISOString(),
       };
+      let sizeCheck: EventCandidate["sizeCheck"];
       if (!eventId) {
         const { data, error } = await supabase.from("events").insert(eventRow).select("id").single();
         if (error) throw error;
         eventId = data.id;
-      } else if (!preserveCanonical) {
-        const { error } = await supabase.from("events").update(eventRow).eq("id", eventId);
-        if (error) throw error;
+      } else {
+        // A collector never carries the size check; without the stored one a big event would drop
+        // back to "Zelf beoordelen" until the end-of-run recalculation.
+        const stored = preserveCanonical
+          ? await supabase.from("events").select("size_check").eq("id", eventId).single()
+          : await supabase.from("events").update(eventRow).eq("id", eventId).select("size_check").single();
+        if (stored.error) throw stored.error;
+        sizeCheck = readEventSizeCheck(stored.data.size_check);
       }
 
       if (candidate.evidence && existingSource) {
@@ -804,7 +812,7 @@ export function createCollectionRepository(): CollectionRepository {
           endAt: score.events.end_at,
           preOverlapTotal: score.impact_points + score.distance_points + Math.min(10, score.stay_pressure_points),
         }));
-        const score = scoreHotelEvent({ candidate, hotel, overlaps });
+        const score = scoreHotelEvent({ candidate: { ...candidate, sizeCheck }, hotel, overlaps });
         const { error: scoreError } = await supabase.from("hotel_event_scores").upsert({
           hotel_id: hotel.id,
           event_id: eventId,

@@ -921,6 +921,7 @@ export type Database = {
           longitude: number | null;
           normalized_identity: string;
           region_scope: string | null;
+          size_check: Json | null;
           source_state: string;
           start_at: string;
           title: string;
@@ -937,6 +938,7 @@ export type Database = {
           longitude?: number | null;
           normalized_identity: string;
           region_scope?: string | null;
+          size_check?: Json | null;
           source_state?: string;
           start_at: string;
           title: string;
@@ -953,6 +955,7 @@ export type Database = {
           longitude?: number | null;
           normalized_identity?: string;
           region_scope?: string | null;
+          size_check?: Json | null;
           source_state?: string;
           start_at?: string;
           title?: string;

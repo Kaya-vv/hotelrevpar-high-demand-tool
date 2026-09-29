@@ -108,12 +108,15 @@ export async function processMarketWork(work: MarketWork) {
     }
     const result = storedLongRangeResult(state);
     const publication: Record<string, number> = {};
+    const contexts: CollectionContext[] = [];
     for (const area of matching) {
-      const counts = await publishLongRangeResult(repository, await repository.loadContext(area.account_id, area.id), result);
+      const areaContext = await repository.loadContext(area.account_id, area.id);
+      contexts.push(areaContext);
+      const counts = await publishLongRangeResult(repository, areaContext, result);
       for (const [name, count] of Object.entries(counts ?? {})) publication[name] = (publication[name] ?? 0) + count;
     }
     if (state.research) state.research.usage = { ...state.research.usage, ...result.usage, ...publication };
-    return matching;
+    return contexts;
   }
   if (work.kind === "market-research") {
     // Research runs at the market's radius, not this hotel's: a wider host already covers it, and
@@ -137,15 +140,23 @@ export async function processMarketWork(work: MarketWork) {
     const state = await store.load(key);
     if (!state) return;
     if (!state.research?.completedAt || state.cycle?.pending) throw new Error("Publication waits for research to finish");
-    const matching = await publishState(state);
-    if (!matching) throw new Error("Publication waits for the active hotel refresh to finish before applying newer evidence");
+    const contexts = await publishState(state);
+    if (!contexts) throw new Error("Publication waits for the active hotel refresh to finish before applying newer evidence");
+    // Newly published editions get their size answer before any email is prepared. Answers live on
+    // the shared event, so every area re-scores once any area's check stored something new.
+    const { runSizeChecks } = await import("./size-check");
+    let sized = 0;
+    for (const areaContext of contexts) {
+      sized += (await runSizeChecks(areaContext, (usage) => repository.recordUsage(work.runId, "claude", usage))).checked;
+    }
+    if (sized) for (const areaContext of contexts) await repository.recalculateScores(areaContext);
     state.publicationPending = false;
     state.publishedAt = new Date().toISOString();
     await store.save(key, state);
     // Only final publication prepares mail. If staging fails, this publication
     // message retries without buying research or losing the unsent notification.
     const { stageHotelEventNotifications } = await import("@/features/notifications/service");
-    for (const area of matching) await stageHotelEventNotifications(area.account_id, area.id);
+    for (const areaContext of contexts) await stageHotelEventNotifications(areaContext.area.accountId, areaContext.area.id);
   } finally {
     await store.release(key);
   }

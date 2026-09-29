@@ -44,6 +44,8 @@ export type EventCandidate = {
   overnightAudience?: OvernightAudience | null;
   evidenceText: string | null;
   primarySourceConfirmed: boolean;
+  /** Stored on the event by the size check; absent until an event is checked. */
+  sizeCheck?: import("./size-check").EventSizeCheck | null;
 };
 
 export type NormalizedCandidate = EventCandidate & {
@@ -84,6 +86,7 @@ export type DemandScore = {
     | "holiday_rule"
     | "competition_rule"
     | "stadium_concert"
+    | "size_check"
     | "default";
   distanceKm: number | null;
   distancePoints: number;

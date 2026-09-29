@@ -29,6 +29,7 @@ import { LongRangeLeaseError, type LongRangeSeed } from "./long-range-store";
 import { BatchPendingError } from "./anthropic-batches";
 import { searchDue, NEAR_TERM_SEARCH_DAYS } from "./schedule";
 import { researchProvider } from "./research-client";
+import type { SizeCheckResult } from "./size-check";
 
 export type CollectionAreaContext = {
   id: string;
@@ -287,11 +288,13 @@ type EvidenceReviewer = (input: {
   requests: number;
   usage: Record<string, number>;
 }>;
+type SizeChecker = (context: CollectionContext) => Promise<SizeCheckResult>;
 type RunDependencies = {
   repository: CollectionRepository;
   collectors: Partial<Record<SourceName, Collector>>;
   demandTriageReviewer?: DemandTriageReviewer;
   evidenceReviewer?: EvidenceReviewer;
+  sizeChecker?: SizeChecker;
 };
 export type RunCollectionInput = {
   accountId: string;
@@ -412,6 +415,13 @@ function defaultEvidenceReviewer(
       onUsage: (usage) => onUsage("predicthq", usage),
     });
   };
+}
+
+function defaultSizeChecker(
+  onUsage: (source: SourceName, usage: ClaudeUsageEvent) => Promise<void>
+): SizeChecker {
+  // Dynamic: size-check.ts reads the calendar policy through the notifications query.
+  return async (context) => (await import("./size-check")).runSizeChecks(context, (usage) => onUsage("claude", usage));
 }
 
 function relevantToHotel(candidate: EventCandidate, hotel: HotelContext) {
@@ -862,7 +872,19 @@ export async function runCollection(
     };
     const settled = await Promise.allSettled(sourcesToRun.map((source) => collectSource(source)));
     for (const outcome of settled) if (outcome.status === "rejected") throw outcome.reason;
-    const publication = await repository.recalculateScores(context);
+    let publication = await repository.recalculateScores(context);
+    // Asked after scoring, because only the scores say which events are "Zelf beoordelen".
+    const sizeChecker = dependencies ? dependencies.sizeChecker : defaultSizeChecker(observeUsage);
+    if (sizeChecker) {
+      try {
+        const sized = await sizeChecker(context);
+        sourceResults.sizeCheck = sized;
+        if (sized.checked) publication = await repository.recalculateScores(context);
+      } catch (error) {
+        failed = true;
+        sourceResults.sizeCheck = errorState(error);
+      }
+    }
     const claudeResult = sourceResults.claude as { usage?: Record<string, number> } | undefined;
     if (publication && claudeResult?.usage) for (const [key, value] of Object.entries(publication)) claudeResult.usage[`longRange_${key}`] = value;
   } catch (error) {

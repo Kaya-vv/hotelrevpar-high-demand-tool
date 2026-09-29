@@ -240,12 +240,31 @@ export function scoreHotelEvent({
     ? { assessment, impactPoints: evidenced, impactBasis: "demand_rule", distanceKm: measuredDistance, distancePoints, stayPressurePoints, total: evidenced, suggestedImportance: importance(evidenced) }
     : { assessment, impactPoints: impactScore.points, impactBasis: impactScore.basis, distanceKm: measuredDistance, distancePoints, stayPressurePoints, total, suggestedImportance: importance(total) };
 
-  // A stadium concert is graded High by the venue when nothing better is known. The same gates as
-  // every other grade apply: inside the radius, confirmed, active and not contradicted.
-  const stadium = contextOnly || outsideRadius || contraryEvidence ? null
-    : stadiumConcertCapacity(candidate.category, candidate.title, candidate.venue);
-  if (stadium === null || proxy.total >= 70) return proxy;
-  const reasons = [...assessment.reasons.filter((reason) => !reason.startsWith("Duur, zaalcapaciteit")),
-    `Concert in een stadion met circa ${stadium.toLocaleString("nl-NL")} plaatsen. Stadionconcerten trekken veel publiek van buiten de regio, daarom automatisch Hoog.`];
-  return { ...proxy, assessment: { ...assessment, reasons }, impactPoints: 75, impactBasis: "stadium_concert", total: 75, suggestedImportance: "High" };
+  if (proxy.total >= 70 || contextOnly || outsideRadius) return proxy;
+  const size = candidate.sizeCheck;
+  // Only a source that argues against hotel demand stops a lift; it never stops a demotion.
+  if (!contraryEvidence) {
+    // A stadium concert is graded High by the venue when nothing better is known.
+    const stadium = stadiumConcertCapacity(candidate.category, candidate.title, candidate.venue);
+    if (stadium !== null) {
+      const reasons = [...assessment.reasons.filter((reason) => !reason.startsWith("Duur, zaalcapaciteit")),
+        `Concert in een stadion met circa ${stadium.toLocaleString("nl-NL")} plaatsen. Stadionconcerten trekken veel publiek van buiten de regio, daarom automatisch Hoog.`];
+      return { ...proxy, assessment: { ...assessment, reasons }, impactPoints: 75, impactBasis: "stadium_concert", total: 75, suggestedImportance: "High" };
+    }
+    // The size check supplies the one fact the sources lacked: how big the event is.
+    if (size?.verdict === "big") {
+      const reasons = [...assessment.reasons.filter((reason) => !reason.startsWith("Duur, zaalcapaciteit")),
+        `Groot evenement volgens algemene kennis (${size.visitors}): ${size.reason}`];
+      return { ...proxy, assessment: { ...assessment, reasons }, impactPoints: 75, impactBasis: "size_check", total: 75, suggestedImportance: "High" };
+    }
+  }
+  // A "small" answer takes the event off the "Zelf beoordelen" list (see `isAnnouncedDemand`) and
+  // leaves it at Medium, the level "Ook Medium tonen" shows; a Low grade would hide it outright.
+  // Quoted overnight or travelling visitors outrank the model's memory (Anastacia at AFAS Live,
+  // September 2026), so such an event stays on the list.
+  if (size?.verdict === "small" && !hasHotelDemand(assessment)) {
+    const reasons = [...assessment.reasons, `Klein of vooral lokaal evenement volgens algemene kennis: ${size.reason}`];
+    return { ...proxy, assessment: { ...assessment, reasons }, impactBasis: "size_check", suggestedImportance: "Medium" };
+  }
+  return proxy;
 }

@@ -18,6 +18,8 @@ export type NotificationEvent = {
   startAt: string;
   endAt: string;
   level: string;
+  /** Shown as "Zelf beoordelen": no High or Peak grade; see `isAnnouncedDemand`. */
+  announced: boolean;
 };
 
 export type NotificationHotel = {
@@ -162,6 +164,7 @@ export async function loadVisibleNotificationEvents(
         startAt,
         endAt,
         level: graded ? demandLabels[graded.importance] : announcedDemandLabel,
+        announced: visibility.announced,
       },
     ];
   });

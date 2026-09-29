@@ -10,6 +10,7 @@ import fixture from "../../../tests/fixtures/the-match-repair.json";
 import { stageHotelEventNotifications } from "@/features/notifications/service";
 import { CLAUDE_ASSESSMENT_VERSION } from "./anthropic-batches";
 import { LONG_RANGE_VERSION } from "./long-range-store";
+import { runSizeChecks } from "./size-check";
 
 vi.mock("./jobs", () => ({ publishCollectionJob: vi.fn(async () => {}) }));
 vi.mock("./sources/long-range", () => ({ collectLongRange: vi.fn() }));
@@ -19,6 +20,7 @@ vi.mock("./repository", () => ({ createCollectionRepository: vi.fn() }));
 vi.mock("@/features/notifications/service", () => ({
   stageHotelEventNotifications: vi.fn(async () => ({ queued: 0 })),
 }));
+vi.mock("./size-check", () => ({ runSizeChecks: vi.fn(async () => ({ state: "zero", due: 0, checked: 0, failed: 0, requests: 0 })) }));
 
 /**
  * `resolveLongRangeMarket` reads the markets table to find a wider city research this hotel can
@@ -107,6 +109,7 @@ describe("hotel refresh and shared research separation", () => {
 
   it.each(["market-publication", "market-research"] as const)("publishes %s results to every narrower hotel in the city", async kind => {
     vi.mocked(stageHotelEventNotifications).mockClear();
+    vi.mocked(runSizeChecks).mockClear();
     const areas = [
       { id: "own", account_id: "a", search_location: "Eindhoven", radius_km: 25 },
       { id: "narrower", account_id: "b", search_location: "eindhoven", radius_km: 15 },
@@ -151,6 +154,11 @@ describe("hotel refresh and shared research separation", () => {
     expect(stageHotelEventNotifications).toHaveBeenCalledTimes(
       kind === "market-publication" ? 2 : 0,
     );
+    // New editions get their size answer before any email about them is prepared.
+    expect(vi.mocked(runSizeChecks).mock.calls.map(([context]) => context.area.id).sort())
+      .toEqual(kind === "market-publication" ? ["narrower", "own"] : []);
+    if (kind === "market-publication") expect(Math.max(...vi.mocked(runSizeChecks).mock.invocationCallOrder))
+      .toBeLessThan(Math.min(...vi.mocked(stageHotelEventNotifications).mock.invocationCallOrder));
   });
 });
 

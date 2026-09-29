@@ -127,6 +127,9 @@ export function continuousRunCategory(category: string) {
  * A hand-set level outranks all of it. An operator who grades an announcement Low or Medium has
  * judged the event not worth a room-rate decision, so announcing it anyway is the calendar
  * contradicting the person using it.
+ *
+ * So does the size check: below High, a `size_check` basis means "known to be small or mainly
+ * local", which the scorer records only when no quoted evidence proves overnight visitors.
  */
 export function isAnnouncedDemand(input: {
   startDate: string;
@@ -141,6 +144,7 @@ export function isAnnouncedDemand(input: {
 }) {
   if (input.scores.some((score) => isPublishableDemand(score.importance, score.impactBasis, input.includeMedium))) return false;
   if (input.scores.some((score) => score.manualLevel)) return false;
+  if (input.scores.some((score) => score.impactBasis === "size_check")) return false;
   const withinRadius = input.scores.some((score) =>
     score.distanceKm !== null && input.demandRadiusKm !== null && score.distanceKm <= input.demandRadiusKm);
   const assessed = withinRadius
