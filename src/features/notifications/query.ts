@@ -1,5 +1,6 @@
 import { readEventEvidence } from "@/features/events/evidence";
 import {
+  announcedDemandLabel,
   demandLabels,
   gradedDemand,
   hotelCalendarVisibility,
@@ -160,7 +161,7 @@ export async function loadVisibleNotificationEvents(
           null,
         startAt,
         endAt,
-        level: graded ? demandLabels[graded.importance] : "Aangekondigd",
+        level: graded ? demandLabels[graded.importance] : announcedDemandLabel,
       },
     ];
   });

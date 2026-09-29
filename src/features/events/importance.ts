@@ -10,6 +10,9 @@ export const demandLabels: Record<DemandLevel, string> = {
   Peak: "Piek",
 };
 
+/** Label for an event shown without a High or Peak grade; see `isAnnouncedDemand`. */
+export const announcedDemandLabel = "Zelf beoordelen";
+
 export const demandLevels = Object.keys(demandLabels) as DemandLevel[];
 
 export const publishableDemandLevels = ["High", "Peak"] as const;

@@ -208,10 +208,10 @@ describe("notification calendar parity", () => {
       "override-announced",
     ]);
     expect(notification?.events.map((event) => event.level)).toEqual([
-      "Aangekondigd",
+      "Zelf beoordelen",
       "Hoog",
       "Piek",
-      "Aangekondigd",
+      "Zelf beoordelen",
     ]);
   });
 });

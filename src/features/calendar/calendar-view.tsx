@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import {
+  announcedDemandLabel,
   demandLabels,
   publishableDemandLevels,
   type DemandLevel,
@@ -131,7 +132,7 @@ function EventDetails({
           </span>
         )}
         {!score && event.announced && (
-          <span className="importance announced">Zelf beoordelen</span>
+          <span className="importance announced">{announcedDemandLabel}</span>
         )}
       </header>
       <p className="event-date">
@@ -257,7 +258,7 @@ function EventOverview({
               </span>
             )}
             {!score && event.announced && (
-              <span className="importance announced">Zelf beoordelen</span>
+              <span className="importance announced">{announcedDemandLabel}</span>
             )}
             {score && (
               <strong className="event-overview-score">
@@ -292,7 +293,7 @@ function EventOverview({
         {events.some((event) => event.announced) && (
           <div>
             <strong>{events.filter((event) => event.announced).length}</strong>
-            <span>Zelf beoordelen</span>
+            <span>{announcedDemandLabel}</span>
           </div>
         )}
       </div>
@@ -470,7 +471,7 @@ export function CalendarView({
                       </>
                     )}
                     {!score && event.announced && (
-                      <span className="importance announced">Zelf beoordelen</span>
+                      <span className="importance announced">{announcedDemandLabel}</span>
                     )}
                   </button>
                 );
