@@ -18,17 +18,21 @@ export function calendarBounds(
   view: "list" | "calendar" = "calendar",
   period: OverviewPeriod = "all",
   now = new Date(),
+  /** Last date this account may see; `null` means no cap. */
+  horizonEnd: string | null = null,
 ) {
+  const capped = (bounds: { start: string; end: string }) =>
+    horizonEnd && bounds.end > horizonEnd ? { ...bounds, end: horizonEnd } : bounds;
   if (view === "calendar") {
     const [year, number] = month.split("-").map(Number);
-    return { start: `${month}-01`, end: new Date(Date.UTC(year, number, 0)).toISOString().slice(0, 10) };
+    return capped({ start: `${month}-01`, end: new Date(Date.UTC(year, number, 0)).toISOString().slice(0, 10) });
   }
   const start = eventLocalDate(now.toISOString());
   const [year, number, day] = start.split("-").map(Number);
-  if (period === "all") return { start, end: `${year + 1}-12-31` };
+  if (period === "all") return capped({ start, end: `${year + 1}-12-31` });
   const targetMonth = changeMonth(start.slice(0, 7), Number(period));
   const lastDay = new Date(Date.UTC(year, number + Number(period), 0)).getUTCDate();
-  return { start, end: `${targetMonth}-${String(Math.min(day, lastDay)).padStart(2, "0")}` };
+  return capped({ start, end: `${targetMonth}-${String(Math.min(day, lastDay)).padStart(2, "0")}` });
 }
 
 export function overviewMonth(startAt: string, rangeStart?: string) {

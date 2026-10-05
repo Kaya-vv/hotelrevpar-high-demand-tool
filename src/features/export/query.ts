@@ -17,16 +17,19 @@ const isDate = (value: string | null | undefined): value is string => {
 export type ExportRange = { start: string; end: string };
 
 /**
- * Default to the full research horizon; explicit date selections remain supported.
+ * Default to the full research horizon; explicit date selections remain supported. A free trial
+ * passes `horizonEnd`, and no date it picks can reach past it.
  */
 export function exportRange(
   from: string | null | undefined,
   to: string | null | undefined,
   today = new Date(),
+  horizonEnd: string | null = null,
 ): ExportRange {
-  const start = isDate(from) ? from : today.toISOString().slice(0, 10);
+  const cap = (date: string) => horizonEnd && date > horizonEnd ? horizonEnd : date;
+  const start = cap(isDate(from) ? from : today.toISOString().slice(0, 10));
   const fallbackEnd = `${today.getUTCFullYear() + 1}-12-31`;
-  const end = isDate(to) ? to : fallbackEnd;
+  const end = cap(isDate(to) ? to : fallbackEnd);
   return end < start ? { start: end, end: start } : { start, end };
 }
 

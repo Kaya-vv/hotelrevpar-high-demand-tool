@@ -14,6 +14,8 @@ export type ViewedAccount = CurrentAccount & {
   viewedAccountName: string;
   /** True while the platform administrator looks at someone else's hotel. Everything on screen is then read-only. */
   viewingOtherAccount: boolean;
+  /** The viewed account's trial end, so an administrator sees what a trial customer sees. */
+  viewedTrialEndsAt: string | null;
 };
 
 /**
@@ -29,6 +31,7 @@ export const requireViewedAccount = cache(async function requireViewedAccount():
     viewedAccountId: account.accountId,
     viewedAccountName: account.accountName,
     viewingOtherAccount: false,
+    viewedTrialEndsAt: account.trialEndsAt,
   };
   if (account.role !== "platform_admin") return own;
 
@@ -47,7 +50,7 @@ export const requireViewedAccount = cache(async function requireViewedAccount():
 
   const { data: other, error: accountError } = await supabase
     .from("accounts")
-    .select("name")
+    .select("name, trial_ends_at")
     .eq("id", hotel.account_id)
     .eq("active", true)
     .maybeSingle();
@@ -59,5 +62,6 @@ export const requireViewedAccount = cache(async function requireViewedAccount():
     viewedAccountId: hotel.account_id,
     viewedAccountName: other.name,
     viewingOtherAccount: true,
+    viewedTrialEndsAt: other.trial_ends_at,
   };
 });

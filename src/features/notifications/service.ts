@@ -28,6 +28,7 @@ export async function postEventNotification(
     subject: string;
     html: string;
     text: string;
+    idempotencyKey?: string;
   },
   config: { apiKey: string; from: string; replyTo?: string },
   fetcher: typeof fetch = fetch,
@@ -37,7 +38,7 @@ export async function postEventNotification(
     headers: {
       Authorization: `Bearer ${config.apiKey}`,
       "Content-Type": "application/json",
-      "Idempotency-Key": `demandradar/event-notification/${input.id}`,
+      "Idempotency-Key": input.idempotencyKey ?? `demandradar/event-notification/${input.id}`,
     },
     body: JSON.stringify({
       from: config.from,

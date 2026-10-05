@@ -50,6 +50,7 @@ describe("personal event notification preference", () => {
       accountName: "Hotel account",
       role: "operator",
       userId: "user-1",
+      trialEndsAt: null,
     });
   });
 

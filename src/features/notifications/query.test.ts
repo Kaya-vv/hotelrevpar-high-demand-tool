@@ -28,6 +28,8 @@ const { tables, database } = vi.hoisted(() => {
         limit: () => query,
         maybeSingle: () =>
           Promise.resolve({ data: rows[0] ?? null, error: null }),
+        single: () =>
+          Promise.resolve(rows.length === 1 ? { data: rows[0], error: null } : { data: null, error: new Error("not one row") }),
         then: (resolve: (value: unknown) => unknown) =>
           Promise.resolve({ data: rows, error: null }).then(resolve),
       };
@@ -150,6 +152,7 @@ describe("notification calendar parity", () => {
         enabled_sources: ["claude"],
       },
     ];
+    tables.accounts = [{ id: "account", trial_ends_at: null }];
   });
 
   afterEach(() => vi.useRealTimers());
@@ -214,10 +217,30 @@ describe("notification calendar parity", () => {
       "Zelf beoordelen",
     ]);
   });
+
+  it("tells a trial account only about what its 90-day calendar shows", async () => {
+    tables.accounts = [{ id: "account", trial_ends_at: "2026-09-28T12:00:00Z" }];
+    addEvent({ id: "inside", start: "2026-11-20" });
+    addEvent({ id: "last-day", start: "2026-12-07" });
+    addEvent({ id: "past-wall", start: "2026-12-08" });
+    addEvent({ id: "next-summer", level: "Peak" });
+
+    const calendar = await getCalendarData("account", {
+      month: "2026-09",
+      view: "list",
+      period: "all",
+      horizonEnd: "2026-12-07",
+    });
+    const notification = await loadVisibleNotificationEvents(database as never, "account", "hotel", new Date());
+
+    expect(notification?.events.map((event) => event.id)).toEqual(["inside", "last-day"]);
+    expect(calendar.events.map((event) => event.id)).toEqual(["inside", "last-day"]);
+  });
 });
 
 it("does not expose archived hotel events to notification staging", async () => {
   tables.hotels = [{ id: "archived", account_id: "account", archived_at: "2026-09-16T12:00:00Z" }];
+  tables.accounts = [{ id: "account", trial_ends_at: null }];
   tables.collection_areas = [{ id: "area", hotel_id: "archived", account_id: "account", enabled_sources: ["claude"] }];
   expect(await loadVisibleNotificationEvents(database as never, "account", "archived")).toBeNull();
 });

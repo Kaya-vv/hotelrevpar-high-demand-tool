@@ -11,6 +11,7 @@ export function CalendarFilters({
   includeMedium,
   categories,
   levels,
+  horizonEnd,
 }: {
   month: string;
   view: "list" | "calendar";
@@ -20,6 +21,8 @@ export function CalendarFilters({
   includeMedium?: boolean;
   categories: string[];
   levels: Array<{ value: string; label: string }>;
+  /** Set for a free trial: every period choice would show the same three months. */
+  horizonEnd?: string | null;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const submit = () => formRef.current?.requestSubmit();
@@ -33,7 +36,7 @@ export function CalendarFilters({
     >
       <input name="month" type="hidden" value={month} />
       <input name="view" type="hidden" value={view} />
-      {view === "list" ? (
+      {view === "list" && !horizonEnd ? (
         <label>Periode
           <select name="period" defaultValue={period} onChange={submit}>
             <option value="3">Komende 3 maanden</option>

@@ -369,6 +369,8 @@ export type Database = {
           id: string;
           name: string;
           plugandpay_subscription_id: string | null;
+          trial_ends_at: string | null;
+          trial_reminder_sent_at: string | null;
         };
         Insert: {
           active?: boolean;
@@ -377,6 +379,8 @@ export type Database = {
           id?: string;
           name: string;
           plugandpay_subscription_id?: string | null;
+          trial_ends_at?: string | null;
+          trial_reminder_sent_at?: string | null;
         };
         Update: {
           active?: boolean;
@@ -385,6 +389,8 @@ export type Database = {
           id?: string;
           name?: string;
           plugandpay_subscription_id?: string | null;
+          trial_ends_at?: string | null;
+          trial_reminder_sent_at?: string | null;
         };
         Relationships: [];
       };

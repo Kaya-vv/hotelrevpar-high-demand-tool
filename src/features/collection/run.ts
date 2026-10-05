@@ -27,7 +27,7 @@ import { collectTicketmaster } from "./sources/ticketmaster";
 import type { CollectionWindow, SourceResult } from "./types";
 import { LongRangeLeaseError, type LongRangeSeed } from "./long-range-store";
 import { BatchPendingError } from "./anthropic-batches";
-import { searchDue, NEAR_TERM_SEARCH_DAYS } from "./schedule";
+import { searchDue, nearTermHorizonEnd, NEAR_TERM_SEARCH_DAYS } from "./schedule";
 import { researchProvider } from "./research-client";
 import type { SizeCheckResult } from "./size-check";
 
@@ -56,6 +56,8 @@ export type CollectionContext = {
   window: CollectionWindow;
   knownClaudeUrls: string[];
   longRangeSeeds?: LongRangeSeed[];
+  /** False while the account is on a free trial: it only pays for the near-term search. */
+  longRangeAllowed: boolean;
   claudeAgendaSeedUrls?: string[];
   runNearTermClaude?: boolean;
   /**
@@ -76,12 +78,7 @@ type ClaudeSourceRow = {
 };
 
 export function collectionWindow(now = new Date()): CollectionWindow {
-  const end = new Date(now);
-  end.setUTCDate(end.getUTCDate() + 90);
-  return {
-    start: now.toISOString().slice(0, 10),
-    end: end.toISOString().slice(0, 10),
-  };
+  return { start: now.toISOString().slice(0, 10), end: nearTermHorizonEnd(now) };
 }
 
 export function claudeDiscoveryDue(
@@ -336,8 +333,9 @@ function defaultCollectors(
   resume: boolean,
 ): Partial<Record<SourceName, Collector>> {
   return {
-    rijksoverheid: (context) => collectRijksoverheid({ start: context.window.start, end: longRangeWindow(context.window).end }),
-    openholidays: (context) => collectOpenHolidays({ start: context.window.start, end: longRangeWindow(context.window).end }),
+    // A free trial only ever sees the near-term window, so it is not sent further-out holidays.
+    rijksoverheid: (context) => collectRijksoverheid({ start: context.window.start, end: context.longRangeAllowed ? longRangeWindow(context.window).end : context.window.end }),
+    openholidays: (context) => collectOpenHolidays({ start: context.window.start, end: context.longRangeAllowed ? longRangeWindow(context.window).end : context.window.end }),
     ticketmaster: (context) =>
       collectTicketmaster({
         ...context.window,
@@ -377,6 +375,7 @@ function defaultCollectors(
         agendaSeedUrls: context.claudeAgendaSeedUrls,
         runNearTerm: context.runNearTermClaude,
         knownEvents: context.knownEvents,
+        longRangeEnabled: context.longRangeAllowed && process.env.LONG_RANGE_DISCOVERY === "enabled",
         onUsage: (usage) => onUsage("claude", usage),
         // Still shared either way: reading the city result is what lets a new hotel in a covered
         // market skip the sweep entirely, which is faster than any dispatch mode.
@@ -441,7 +440,8 @@ function relevantToHotel(candidate: EventCandidate, hotel: HotelContext) {
 
 /** Reuses the same repository, radius checks, decisions and score calculation as a refresh. */
 export async function publishLongRangeResult(repository: CollectionRepository, context: CollectionContext, result: SourceResult) {
-  if (!context.area.enabledSources.includes("claude")) return;
+  // Research is shared per city, but a free trial must never receive what lies past its 90 days.
+  if (!context.area.enabledSources.includes("claude") || !context.longRangeAllowed) return;
   if (result.quarantinedProviderEventIds?.length) await repository.quarantineClaudeEditions(context, result.quarantinedProviderEventIds);
   const unplaceable: EventCandidate[] = [];
   for (const event of result.candidates) {
@@ -530,7 +530,7 @@ export async function runCollection(
         !(await repository.shouldRunClaudeDiscovery(context, input.trigger))
       ) {
         claudeDiscoveryMode = reused ? "reused" : "deferred";
-        if (process.env.LONG_RANGE_DISCOVERY === "enabled") {
+        if (context.longRangeAllowed && process.env.LONG_RANGE_DISCOVERY === "enabled") {
           context.runNearTermClaude = false;
           sourcesToRun.push(source);
           continue;
@@ -837,7 +837,11 @@ export async function runCollection(
       let duplicateCount = relevant.length - unique.size;
       const canonicalIds = new Set<string>();
       const canonicalReviewIds = new Set<string>();
+      // Every collector's results are saved here (shared city research goes through
+      // `publishLongRangeResult`, which refuses trials), so this enforces a trial's 90-day wall.
+      const trialWall = context.longRangeAllowed ? null : nearTermHorizonEnd();
       for (const event of candidates) {
+        if (trialWall && eventLocalDate(event.startAt) > trialWall) continue;
         const persisted = await repository.persistCandidate(context, event);
         if (persisted.state === "needs_review") reviewCount += 1;
         if (persisted.eventId) canonicalIds.add(persisted.eventId);

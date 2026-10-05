@@ -93,4 +93,13 @@ describe("RevControl export", () => {
       end: "2026-09-30",
     });
   });
+
+  it("never lets a trial account export past its last visible day", () => {
+    const today = new Date("2026-09-03T12:00:00Z");
+    const wall = "2026-12-02";
+    expect(exportRange(null, null, today, wall)).toEqual({ start: "2026-09-03", end: wall });
+    expect(exportRange("2026-10-01", "2027-06-30", today, wall)).toEqual({ start: "2026-10-01", end: wall });
+    // A range that lies wholly past the wall shrinks to the last visible day, not an inverted range.
+    expect(exportRange("2027-03-01", "2027-06-30", today, wall)).toEqual({ start: wall, end: wall });
+  });
 });

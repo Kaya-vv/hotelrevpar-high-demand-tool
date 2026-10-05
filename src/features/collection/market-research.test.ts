@@ -31,7 +31,7 @@ function adminStub(markets: MarketRow[] = []) {
     maybeSingle: vi.fn(async () => ({ data: { id: "account" }, error: null })),
     then: (resolve: (value: { data: unknown; error: null }) => unknown) => resolve({ data: markets, error: null }),
   };
-  for (const method of ["select", "eq", "gte", "order", "limit", "update", "is"]) query[method] = vi.fn(() => query);
+  for (const method of ["select", "eq", "gte", "order", "limit", "update", "is", "or"]) query[method] = vi.fn(() => query);
   vi.mocked(createAdminClient).mockReturnValue({ from: () => query } as unknown as AdminClient);
   return query;
 }
@@ -46,7 +46,7 @@ describe("hotel refresh and shared research separation", () => {
     vi.stubEnv("RESEARCH_PROVIDER", provider);
     vi.stubEnv("ANTHROPIC_BATCHES", setting);
     adminStub();
-    vi.mocked(createCollectionRepository).mockReturnValue({ loadContext: async () => ({ area: { searchLocation: "Eindhoven", radiusKm: 25, enabledSources: ["claude"] } }) } as unknown as ReturnType<typeof createCollectionRepository>);
+    vi.mocked(createCollectionRepository).mockReturnValue({ loadContext: async () => ({ area: { searchLocation: "Eindhoven", radiusKm: 25, enabledSources: ["claude"] }, longRangeAllowed: true }) } as unknown as ReturnType<typeof createCollectionRepository>);
     try {
       await processMarketWork({ kind: "market-research", accountId: "account", areaId: "area", runId: "run", requestedAt: "2026-09-09T12:00:00Z" });
       expect(collectLongRange).toHaveBeenLastCalledWith(expect.objectContaining({ batching: { enabled } }));
@@ -122,7 +122,7 @@ describe("hotel refresh and shared research separation", () => {
       then: (resolve: (value: { data: unknown; error: null }) => unknown) =>
         resolve({ data: query.table === "collection_areas" ? areas : [], error: null }),
     };
-    for (const method of ["select", "eq", "gte", "order", "limit", "update", "is", "in", "contains"]) query[method] = vi.fn(() => query);
+    for (const method of ["select", "eq", "gte", "order", "limit", "update", "is", "in", "contains", "or"]) query[method] = vi.fn(() => query);
     vi.mocked(createAdminClient).mockReturnValue({
       from: (table: string) => { query.table = table; return query; },
     } as unknown as AdminClient);
@@ -135,7 +135,7 @@ describe("hotel refresh and shared research separation", () => {
     vi.mocked(createCollectionRepository).mockReturnValue({
       loadContext: async (_account: string, areaId: string) => {
         published.push(areaId);
-        return { area: { id: areaId, searchLocation: "Eindhoven", radiusKm: 25, enabledSources: ["claude"] }, hotels: [] };
+        return { area: { id: areaId, searchLocation: "Eindhoven", radiusKm: 25, enabledSources: ["claude"] }, hotels: [], longRangeAllowed: true };
       },
       recalculateScores: async () => ({}),
     } as unknown as ReturnType<typeof createCollectionRepository>);

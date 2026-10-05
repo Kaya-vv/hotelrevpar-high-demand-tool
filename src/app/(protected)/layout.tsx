@@ -21,6 +21,8 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
       batch={workspace.batch}
       collectionStatus={workspace.collectionStatus}
       viewingOtherAccount={account.viewingOtherAccount}
+      trialEndsAt={account.viewedTrialEndsAt}
+      checkoutUrl={process.env.PLUGANDPAY_CHECKOUT_URL || null}
     >
       {children}
     </AppShell>

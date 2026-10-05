@@ -6,8 +6,11 @@ import { exportPeriod } from "./display";
 import { useExportView } from "./export-tabs";
 import { ExportSkeleton } from "./export-skeleton";
 
-export function ExportFilters({ hotels, hotelIds, from, to, children }: {
-  hotels: { id: string; name: string }[]; hotelIds: string[]; from: string; to: string; view: string; children: ReactNode;
+export function ExportFilters({ hotels, hotelIds, from, to, horizonEnd, children }: {
+  hotels: { id: string; name: string }[]; hotelIds: string[]; from: string; to: string;
+  /** Last date a free trial may export; `null` means no cap. */
+  horizonEnd?: string | null;
+  view: string; children: ReactNode;
 }) {
   const router = useRouter();
   const activeView = useExportView();
@@ -27,7 +30,7 @@ export function ExportFilters({ hotels, hotelIds, from, to, children }: {
         <input type="hidden" name="view" value={activeView} />
         <div className="date-range">
           <label>Van<input key={`from-${from}`} disabled={pending} name="from" type="date" defaultValue={from} max={to} required onBlur={(event) => { if (event.target.value !== from) update(event.currentTarget.form!); }} /></label>
-          <label>Tot en met<input key={`to-${to}`} disabled={pending} name="to" type="date" defaultValue={to} min={from} required onBlur={(event) => { if (event.target.value !== to) update(event.currentTarget.form!); }} /></label>
+          <label>Tot en met<input key={`to-${to}`} disabled={pending} name="to" type="date" defaultValue={to} min={from} max={horizonEnd ?? undefined} required onBlur={(event) => { if (event.target.value !== to) update(event.currentTarget.form!); }} /></label>
         </div>
         <fieldset className="checkbox-grid"><legend>Hotels</legend>{hotels.map((hotel) => <label key={`${hotel.id}-${hotelIds.includes(hotel.id)}`}><input disabled={pending} name="hotel" type="checkbox" value={hotel.id} defaultChecked={hotelIds.includes(hotel.id)} onChange={(event) => update(event.currentTarget.form!)} />{hotel.name}</label>)}</fieldset>
         <button type="submit" className="visually-hidden">Filters bijwerken</button>

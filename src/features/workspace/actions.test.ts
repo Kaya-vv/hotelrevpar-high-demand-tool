@@ -22,6 +22,7 @@ function signedIn(role: "operator" | "platform_admin") {
     accountName: "Hotelrevpar",
     role,
     userId: "user-1",
+    trialEndsAt: null,
   });
 }
 

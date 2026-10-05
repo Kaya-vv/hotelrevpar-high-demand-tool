@@ -21,6 +21,7 @@ const context = () => ({
   area: { id: areaId, accountId, name: "Enschede", searchLocation: "Enschede",
     latitude: 52.1946038542334, longitude: 6.7813574062599, radiusKm: 50, enabledSources: ["claude" as const] },
   hotels: [{ id: hotelId, latitude: 52.1946038542334, longitude: 6.7813574062599, demandRadiusKm: 50, holidayRegion: "north" }],
+  longRangeAllowed: true,
   window: { start: "2026-09-10", end: "2026-12-09" },
   knownClaudeUrls: [],
   knownEvents: [],

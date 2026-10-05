@@ -18,6 +18,8 @@ export async function POST(request: Request) {
     webhookKey: process.env.PLUGANDPAY_WEBHOOK_KEY,
     hotelProductIds: (process.env.PLUGANDPAY_HOTEL_PRODUCT_IDS ?? "")
       .split(",").map((part) => part.trim()).filter(Boolean).map(Number).filter(Number.isInteger),
+    trialProductIds: (process.env.PLUGANDPAY_TRIAL_PRODUCT_IDS ?? "")
+      .split(",").map((part) => part.trim()).filter(Boolean).map(Number).filter(Number.isInteger),
     allowTestMode: process.env.PLUGANDPAY_TEST_MODE === "enabled",
     fetchOrder: (orderId) => fetchPlugAndPayOrder(orderId, requiredEnv("PLUGANDPAY_API_TOKEN")),
     claimEvent: async ({ key, triggerType, triggerableId }) => {
@@ -46,10 +48,13 @@ export async function POST(request: Request) {
     },
     applyPurchase: async (input) => {
       if (input.accountId) {
-        // `active: true` switches an account back on when a cancelled buyer purchases again.
+        // `active: true` switches an account back on when a cancelled buyer purchases again, and
+        // any purchase ends a free trial.
         const { error } = await admin.from("accounts").update({
           hotel_limit: input.hotelLimit,
           active: true,
+          trial_ends_at: null,
+          trial_reminder_sent_at: null,
           ...(input.subscriptionId ? { plugandpay_subscription_id: input.subscriptionId } : {}),
         }).eq("id", input.accountId);
         if (error) throw error;
@@ -60,7 +65,8 @@ export async function POST(request: Request) {
         email: input.email,
         hotelLimit: input.hotelLimit,
         plugandpaySubscriptionId: input.subscriptionId,
-        purchased: true,
+        purchased: input.plan === "paid",
+        trialEndsAt: input.trialEndsAt,
         // The same set-password link the admin page sends.
         redirectTo: new URL("/auth/confirm?next=/auth/set-password", requiredEnv("NEXT_PUBLIC_SITE_URL")).toString(),
       });

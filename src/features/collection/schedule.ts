@@ -6,6 +6,15 @@ export const LEAD_RECHECK_DAYS = 30;
 export const CONFIRMED_RECHECK_DAYS = 90;
 /** Near-term (next 90 days) search. */
 export const NEAR_TERM_SEARCH_DAYS = 14;
+/** How far ahead the near-term search looks. The long-range search starts the day after. */
+export const NEAR_TERM_HORIZON_DAYS = 90;
+
+/** Last date the near-term search covers, as YYYY-MM-DD. */
+export function nearTermHorizonEnd(now = new Date()) {
+  const end = new Date(now);
+  end.setUTCDate(end.getUTCDate() + NEAR_TERM_HORIZON_DAYS);
+  return end.toISOString().slice(0, 10);
+}
 
 /** Compare calendar days so a few minutes in the queue cannot add another day. */
 export function searchDue(lastStartedAt: string | null, now: Date, days: number) {

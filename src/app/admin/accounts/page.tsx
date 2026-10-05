@@ -13,7 +13,7 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
   const admin = createAdminClient();
   const { data: accounts, error } = await admin
     .from("accounts")
-    .select("id, name, active, created_at, hotel_limit")
+    .select("id, name, active, created_at, hotel_limit, trial_ends_at")
     .order("created_at", { ascending: false });
   if (error) throw error;
   const { data: memberships, error: memberError } = await admin.from("account_members").select("account_id, user_id, role");
@@ -35,12 +35,15 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
   const accountTable = (rows: typeof shown) => (
     <div className="table-wrap">
       <table>
-        <thead><tr><th>Naam</th><th>Status</th><th>E-mailadres</th><th>Hotels</th><th>Aantal hotels</th></tr></thead>
+        <thead><tr><th>Naam</th><th>Status</th><th>Abonnement</th><th>E-mailadres</th><th>Hotels</th><th>Aantal hotels</th></tr></thead>
         <tbody>
           {rows.map((account) => (
             <tr key={account.id}>
               <td>{account.name}</td>
               <td>{account.active ? "Actief" : "Uitgeschakeld"}</td>
+              <td>{account.trial_ends_at
+                ? `Proef t/m ${new Date(account.trial_ends_at).toLocaleDateString("nl-NL", { dateStyle: "medium", timeZone: "Europe/Amsterdam" })}`
+                : "Betaald"}</td>
               <td>
                 <div className="form-stack">
                   {!hasLogin(account.id) && <span>Geen login</span>}

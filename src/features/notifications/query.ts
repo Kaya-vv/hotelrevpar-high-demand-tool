@@ -1,3 +1,4 @@
+import { trialHorizonEnd } from "@/features/accounts/trial";
 import { readEventEvidence } from "@/features/events/evidence";
 import {
   announcedDemandLabel,
@@ -34,7 +35,11 @@ export async function loadVisibleNotificationEvents(
   hotelId: string,
   now = new Date(),
 ): Promise<NotificationHotel | null> {
-  const [{ data: hotel, error: hotelError }, { data: area, error: areaError }] =
+  const [
+    { data: hotel, error: hotelError },
+    { data: area, error: areaError },
+    { data: account, error: accountError },
+  ] =
     await Promise.all([
       admin
         .from("hotels")
@@ -48,9 +53,15 @@ export async function loadVisibleNotificationEvents(
         .eq("account_id", accountId)
         .eq("hotel_id", hotelId)
         .maybeSingle(),
+      admin
+        .from("accounts")
+        .select("trial_ends_at")
+        .eq("id", accountId)
+        .single(),
     ]);
   if (hotelError) throw hotelError;
   if (areaError) throw areaError;
+  if (accountError) throw accountError;
   if (!hotel || !area) return null;
 
   const { data: links, error: linkError } = await admin
@@ -108,7 +119,10 @@ export async function loadVisibleNotificationEvents(
     .toISOString()
     .slice(0, 10);
   const start = eventLocalDate(now.toISOString());
-  const end = `${Number(start.slice(0, 4)) + 1}-12-31`;
+  const yearEnd = `${Number(start.slice(0, 4)) + 1}-12-31`;
+  // A free trial is never told about an event it cannot see in its calendar.
+  const horizonEnd = trialHorizonEnd(account.trial_ends_at, now);
+  const end = horizonEnd && horizonEnd < yearEnd ? horizonEnd : yearEnd;
 
   const visible = events.flatMap((event) => {
     const decision = decisionsByEvent.get(event.id);

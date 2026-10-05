@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 
+import { unexpiredTrialFilter } from "@/features/accounts/trial";
+
 import { BatchPendingError } from "./anthropic-batches";
 import { errorMessage, runCollection } from "./run";
 import { processMarketWork, type MarketWork } from "./market-research";
@@ -177,7 +179,8 @@ export async function processCollectionJob(
   }
 
   const [{ data: account, error: accountError }, { data: area, error: areaError }] = await Promise.all([
-    admin.from("accounts").select("id").eq("id", job.account_id).eq("active", true).maybeSingle(),
+    // An ended trial gets no search even before the daily switch-off has run.
+    admin.from("accounts").select("id").eq("id", job.account_id).eq("active", true).or(unexpiredTrialFilter()).maybeSingle(),
     admin
       .from("collection_areas")
       .select("id, hotels!inner(archived_at)").is("hotels.archived_at", null)

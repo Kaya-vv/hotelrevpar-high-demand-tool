@@ -23,12 +23,14 @@ function selectable(data: unknown) {
     eq: vi.fn(),
     is: vi.fn(),
     in: vi.fn(),
+    or: vi.fn(),
     maybeSingle: vi.fn().mockResolvedValue({ data, error: null }),
   };
   query.select.mockReturnValue(query);
   query.eq.mockReturnValue(query);
   query.is.mockReturnValue(query);
   query.in.mockReturnValue(query);
+  query.or.mockReturnValue(query);
   return query;
 }
 

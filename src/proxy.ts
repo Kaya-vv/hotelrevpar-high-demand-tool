@@ -5,7 +5,7 @@ import { loginDestination } from "@/lib/auth/login-destination";
 export function isPublicPath(pathname: string) {
   // These routes carry their own secret or signature instead of a login session.
   return pathname === "/login" || pathname === "/api/cron/collect" || pathname === "/api/queues/collect-hotel"
-    || pathname === "/api/webhooks/plugandpay";
+    || pathname === "/api/webhooks/plugandpay" || pathname === "/api/cron/trials";
 }
 
 // The address users knew before app.demandradar.nl. Pages move to the current address, but /api

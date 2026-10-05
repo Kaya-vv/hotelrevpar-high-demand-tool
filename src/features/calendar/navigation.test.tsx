@@ -22,6 +22,15 @@ describe("calendar navigation", () => {
     expect(overviewMonth("2027-02-01T12:00:00Z", "2026-09-08")).toBe("2027-02");
   });
 
+  it("never reaches past a trial account's last visible day, whatever period it asks for", () => {
+    const now = new Date("2026-10-02T00:00:00Z");
+    expect(calendarBounds("2026-10", "list", "all", now, "2026-12-31")).toEqual({ start: "2026-10-02", end: "2026-12-31" });
+    expect(calendarBounds("2026-10", "list", "12", now, "2026-12-31")).toEqual({ start: "2026-10-02", end: "2026-12-31" });
+    // A month that ends before the wall is left alone; a month past it ends at the wall.
+    expect(calendarBounds("2026-11", "calendar", "all", now, "2026-12-31")).toEqual({ start: "2026-11-01", end: "2026-11-30" });
+    expect(calendarBounds("2027-03", "calendar", "all", now, "2026-12-31").end).toBe("2026-12-31");
+  });
+
   it("jumps to a selected year and month while retaining filters and period", () => {
     const { container } = render(<MonthNavigation month="2026-12" todayMonth="2026-09" baseHref="/calendar?view=calendar&category=concert&importance=High&period=12" />);
     fireEvent.click(container.querySelector("summary")!);
@@ -39,5 +48,11 @@ describe("calendar navigation", () => {
     expect(screen.getByLabelText("Categorie")).toHaveValue("concert");
     expect(screen.getByLabelText("Periode")).toHaveValue("all");
     expect(new FormData(container.querySelector("form")!).get("view")).toBe("list");
+  });
+
+  it("offers a trial account no period choice, since every choice would show the same 90 days", () => {
+    const { container } = render(<CalendarFilters month="2026-09" view="list" period="all" categories={[]} levels={[]} horizonEnd="2026-12-31" />);
+    expect(screen.queryByLabelText("Periode")).not.toBeInTheDocument();
+    expect(new FormData(container.querySelector("form")!).get("period")).toBe("all");
   });
 });

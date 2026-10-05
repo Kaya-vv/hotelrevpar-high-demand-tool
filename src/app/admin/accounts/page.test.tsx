@@ -10,7 +10,7 @@ import AccountsPage from "./page";
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(requirePlatformAdmin).mockResolvedValue({ accountId: "admin", accountName: "Admin", role: "platform_admin", userId: "admin-user" });
+  vi.mocked(requirePlatformAdmin).mockResolvedValue({ accountId: "admin", accountName: "Admin", role: "platform_admin", userId: "admin-user", trialEndsAt: null });
   const rows: Record<string, unknown[]> = {
     accounts: [
       { id: "retained", name: "Account zonder login", active: true, hotel_limit: null },

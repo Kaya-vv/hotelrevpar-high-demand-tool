@@ -1,5 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
+import { TRIAL_HOTEL_LIMIT, trialEndsOn } from "@/features/accounts/trial";
+
 import type { PlugAndPayOrder } from "./client";
 
 export type PurchaseInput = {
@@ -8,11 +10,14 @@ export type PurchaseInput = {
   email: string;
   hotelLimit: number;
   subscriptionId: string | null;
+  plan: "paid" | "trial";
+  trialEndsAt: string | null;
 };
 
 export type PlugAndPayWebhookDependencies = {
   webhookKey: string | undefined;
   hotelProductIds: number[];
+  trialProductIds: number[];
   allowTestMode: boolean;
   fetchOrder: (orderId: string) => Promise<PlugAndPayOrder>;
   /** Inserts the claim row. Returns "duplicate" when this message was already handled. */
@@ -73,27 +78,38 @@ export function createPlugAndPayWebhookHandler(dependencies: PlugAndPayWebhookDe
       if (triggerType === "order_payment_completed") {
         const order = await dependencies.fetchOrder(triggerableId);
         if (order.mode === "test" && !dependencies.allowTestMode) return await ignore("test_mode");
-        if (order.payment?.status !== "paid") return await ignore("not_paid");
         // Only DemandRadar products grant hotels; Robert's other products never create accounts.
-        const items = order.items.filter((item) => dependencies.hotelProductIds.includes(item.product_id));
-        if (!items.length) return await ignore("no_hotel_product");
-        const hotelLimit = items.reduce((total, item) => total + item.quantity, 0);
+        const hotelItems = order.items.filter((item) => dependencies.hotelProductIds.includes(item.product_id));
+        const trialItems = order.items.filter((item) => dependencies.trialProductIds.includes(item.product_id));
+        // A paid product in the same order always wins: nobody downgrades themselves to a trial.
+        if (!hotelItems.length && !trialItems.length) return await ignore("no_hotel_product");
+        const plan = hotelItems.length ? "paid" : "trial";
+        // The trial product costs nothing, so Plug&Pay has no payment to report on it.
+        if (plan === "paid" && order.payment?.status !== "paid") return await ignore("not_paid");
+        const hotelLimit = plan === "trial"
+          ? TRIAL_HOTEL_LIMIT
+          : hotelItems.reduce((total, item) => total + item.quantity, 0);
         if (hotelLimit === 0) return await ignore("zero_quantity");
         const contact = order.billing?.contact;
         const email = contact?.email?.trim().toLowerCase();
-        // A paid order without an email needs attention, so fail loudly.
+        // An order without an email needs attention, so fail loudly.
         if (!email) throw new Error("no_billing_email");
-        const subscription = items.find((item) => item.subscription)?.subscription;
+        const accountId = await dependencies.findAccountByEmail(email);
+        // One trial per e-mail address, ever: an expired trial cannot start a second one, and an
+        // existing customer cannot turn their paid account into a trial.
+        if (plan === "trial" && accountId) return await ignore("trial_existing_account");
+        const subscription = hotelItems.find((item) => item.subscription)?.subscription;
         const accountName = contact?.company?.trim()
           || `${contact?.firstname ?? ""} ${contact?.lastname ?? ""}`.trim()
           || email;
-        const accountId = await dependencies.findAccountByEmail(email);
         const resolved = await dependencies.applyPurchase({
           accountId,
           accountName,
           email,
           hotelLimit,
           subscriptionId: subscription ? String(subscription.id) : null,
+          plan,
+          trialEndsAt: plan === "trial" ? trialEndsOn() : null,
         });
         await dependencies.finishEvent({ key: eventKey, status: "done", accountId: resolved });
         return Response.json({ status: "provisioned", hotels: hotelLimit });

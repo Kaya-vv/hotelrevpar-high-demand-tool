@@ -27,6 +27,7 @@ describe("notification calendar link", () => {
       accountName: "Hotel account",
       role: "operator",
       userId: "user-1",
+      trialEndsAt: null,
     });
   });
 
@@ -62,6 +63,7 @@ describe("notification calendar link", () => {
       accountName: "Hotelrevpar",
       role: "platform_admin",
       userId: "user-1",
+      trialEndsAt: null,
     });
     const query = hotelQuery({ id: "hotel-2" });
     vi.mocked(createServerClient).mockResolvedValue({

@@ -16,6 +16,7 @@ describe("dashboard hotel status", () => {
   ])("returns $expected for $jobStatus with fatal error $fatalError", async ({ jobStatus, fatalError, expected }) => {
     const rows: Record<string, unknown[]> = {
       hotels: [{ id: "hotel-1", name: "Groningen" }],
+      accounts: [{ trial_ends_at: null }],
       collection_areas: [{ id: "area-1", hotel_id: "hotel-1" }],
       collection_runs: [{
         collection_area_id: "area-1",
@@ -37,6 +38,7 @@ describe("dashboard hotel status", () => {
         order: vi.fn().mockReturnThis(),
         range: vi.fn().mockReturnThis(),
         limit: vi.fn().mockReturnThis(),
+        single: () => Promise.resolve({ data: (rows[table] ?? [])[0] ?? null, error: null }),
         then: (resolve: (value: unknown) => unknown) => Promise.resolve({ data: rows[table] ?? [], error: null }).then(resolve),
       };
       return query;

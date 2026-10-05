@@ -8,6 +8,8 @@ export type CurrentAccount = {
   accountName: string;
   role: "operator" | "platform_admin";
   userId: string;
+  /** Set while the account is on a free trial. */
+  trialEndsAt: string | null;
 };
 
 export const requireAccount = cache(async function requireAccount(): Promise<CurrentAccount> {
@@ -27,7 +29,7 @@ export const requireAccount = cache(async function requireAccount(): Promise<Cur
 
   const { data: account } = await supabase
     .from("accounts")
-    .select("name")
+    .select("name, trial_ends_at")
     .eq("id", membership.account_id)
     .eq("active", true)
     .maybeSingle();
@@ -39,6 +41,7 @@ export const requireAccount = cache(async function requireAccount(): Promise<Cur
     accountName: account.name,
     role: membership.role,
     userId,
+    trialEndsAt: account.trial_ends_at,
   } as CurrentAccount;
 });
 

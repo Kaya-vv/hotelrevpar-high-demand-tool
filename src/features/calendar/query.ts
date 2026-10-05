@@ -26,6 +26,8 @@ export type CalendarFilters = {
   importance?: DemandLevel;
   /** Show Medium events too; the export and notifications keep the High/Peak threshold. */
   includeMedium?: boolean;
+  /** Last date a free trial account may see; `null` means no cap. */
+  horizonEnd?: string | null;
 };
 
 async function loadAccountEvents(
@@ -76,7 +78,7 @@ export async function getCalendarData(
   const { supabase, hotels, selectedHotelId, areaId, enabledSources } =
     await getHotelScope(accountId);
   const linkedIds = await linkedEventIds(accountId, areaId);
-  const bounds = calendarBounds(filters.month, filters.view, filters.period);
+  const bounds = calendarBounds(filters.month, filters.view, filters.period, undefined, filters.horizonEnd ?? null);
   const [{ decisions, events, sources }, runResult] =
     await Promise.all([
       loadAccountEvents(accountId, "active", linkedIds, bounds),

@@ -15,6 +15,8 @@ export type ProvisionAccountInput = {
   plugandpaySubscriptionId?: string | null;
   /** The buyer paid through Plug&Pay; the activation e-mail then thanks them for the purchase. */
   purchased?: boolean;
+  /** Set for a free trial account: when it is switched off. */
+  trialEndsAt?: string | null;
   redirectTo: string;
 };
 
@@ -53,6 +55,7 @@ export async function provisionSubscriberAccount(
           name,
           hotel_limit: input.hotelLimit ?? null,
           plugandpay_subscription_id: input.plugandpaySubscriptionId ?? null,
+          trial_ends_at: input.trialEndsAt ?? null,
         }).select("id").single();
         if (error) throw error;
         targetId = data.id;

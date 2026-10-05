@@ -1,14 +1,15 @@
+import { trialHorizonEnd } from "@/features/accounts/trial";
 import { requireAccount } from "@/lib/auth/require-account";
 import { createServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Json } from "@/lib/supabase/database.types";
 import { createExport, ExportConflict, exportRequestSchema } from "@/features/export/create";
-import { loadExportEvents } from "@/features/export/query";
+import { exportRange, loadExportEvents } from "@/features/export/query";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
-  const { accountId, userId } = await requireAccount();
+  const { accountId, userId, trialEndsAt } = await requireAccount();
   const parsed = exportRequestSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: "Controleer hotels, periode en exportkeuzes." }, { status: 400 });
   const supabase = await createServerClient();
@@ -19,7 +20,8 @@ export async function POST(request: Request) {
         if (error) throw error;
         return data;
       },
-      load: async (input) => (await loadExportEvents(accountId, { start: input.from, end: input.to }, input.hotelIds)).events,
+      // A free trial cannot download past its 90 days, whatever range the browser sends.
+      load: async (input) => (await loadExportEvents(accountId, exportRange(input.from, input.to, undefined, trialHorizonEnd(trialEndsAt)), input.hotelIds)).events,
       commit: async (input, hash, bytes, items) => {
         const { data, error } = await createAdminClient().rpc("commit_hotel_export", {
           p_account: accountId, p_user: userId, p_key: input.requestKey, p_hash: hash,

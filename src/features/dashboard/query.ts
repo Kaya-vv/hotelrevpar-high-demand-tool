@@ -1,6 +1,8 @@
 import { createServerClient } from "@/lib/supabase/server";
 import { fetchAllRows, fetchInBatches, fetchPagedInBatches } from "@/lib/supabase/fetch-in-batches";
+import { trialHorizonEnd } from "@/features/accounts/trial";
 import { publishableReviewEventIds } from "@/features/events/importance";
+import { eventLocalDate } from "@/features/events/normalize";
 
 export type DashboardHotel = {
   id: string;
@@ -16,6 +18,11 @@ export async function getDashboardData(accountId: string): Promise<DashboardHote
   const hotels = await fetchAllRows((from, to) => supabase.from("hotels").select("id, name")
     .eq("account_id", accountId).is("archived_at", null).order("name").order("id").range(from, to));
   if (!hotels.length) return [];
+  const { data: account, error: accountError } = await supabase.from("accounts")
+    .select("trial_ends_at").eq("id", accountId).single();
+  if (accountError) throw accountError;
+  // A free trial's next peak must be one it can actually open in its calendar.
+  const horizonEnd = trialHorizonEnd(account.trial_ends_at);
 
   const hotelIds = hotels.map((hotel) => hotel.id);
   const areas = await fetchInBatches(hotelIds, ids => supabase.from("collection_areas")
@@ -49,13 +56,15 @@ export async function getDashboardData(accountId: string): Promise<DashboardHote
     : [];
 
   const decisionsByEvent = new Map(decisions.map((decision) => [decision.event_id, decision]));
-  const eventById = new Map(events.map((event) => {
+  const eventById = new Map(events.flatMap((event) => {
     const decision = decisionsByEvent.get(event.id);
-    return [event.id, {
+    const startAt = decision?.override_start_at ?? event.start_at;
+    if (horizonEnd && eventLocalDate(startAt) > horizonEnd) return [];
+    return [[event.id, {
       ...event,
       title: decision?.override_title ?? event.title,
-      start_at: decision?.override_start_at ?? event.start_at,
-    }];
+      start_at: startAt,
+    }] as const];
   }));
   const reviewIds = new Set(decisions.filter((decision) => decision.state === "needs_review").map((decision) => decision.event_id));
   const areaByHotel = new Map(areas.map((area) => [area.hotel_id!, area.id]));

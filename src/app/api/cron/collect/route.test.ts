@@ -11,7 +11,7 @@ vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({ from: (tabl
   const query = {
     select: () => query, order: () => query,
     eq: (key: string, value: unknown) => { rows = rows.filter(row => row[key] === value); return query; },
-    is: () => query,
+    is: () => query, or: () => query,
     not: (key: string, _operator: string, value: unknown) => { rows = rows.filter(row => row[key] !== value); return query; },
     in: (key: string, values: unknown[]) => { rows = rows.filter(row => values.includes(row[key])); return query; },
     gte: (key: string, value: string) => { rows = rows.filter(row => String(row[key]) >= value); return query; },

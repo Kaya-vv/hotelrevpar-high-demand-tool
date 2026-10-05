@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { trialHorizonEnd } from "@/features/accounts/trial";
 import { eventLocalDate } from "@/features/events/normalize";
 import { demandLabels } from "@/features/events/importance";
 import { ExportControls } from "@/features/export/export-controls";
@@ -18,12 +19,13 @@ function snapshotLabel(snapshot: ExportSnapshot | null) {
 }
 
 export default async function ExportPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  const { accountId, viewedAccountName, viewingOtherAccount } = await requireViewedAccount();
+  const { accountId, viewedAccountName, viewingOtherAccount, viewedTrialEndsAt } = await requireViewedAccount();
   if (viewingOtherAccount)
     return <OwnAccountOnly accountName={viewedAccountName} page="Exporteren naar RevControl" />;
   const params = await searchParams;
   const scope = await getHotelScope(accountId);
-  const range = exportRange(typeof params.from === "string" ? params.from : null, typeof params.to === "string" ? params.to : null);
+  const horizonEnd = trialHorizonEnd(viewedTrialEndsAt);
+  const range = exportRange(typeof params.from === "string" ? params.from : null, typeof params.to === "string" ? params.to : null, undefined, horizonEnd);
   const requested = Array.isArray(params.hotel) ? params.hotel : typeof params.hotel === "string" ? [params.hotel] : [];
   const selectedHotelIds = requested.length ? [...new Set(requested)].filter((id) => scope.hotels.some((hotel) => hotel.id === id)) : params.selection === "1" ? [] : scope.selectedHotelId ? [scope.selectedHotelId] : [];
   const hotelNames = Object.fromEntries(scope.hotels.map((hotel) => [hotel.id, hotel.name]));
@@ -40,7 +42,7 @@ export default async function ExportPage({ searchParams }: { searchParams: Promi
   return <div className="export-page">
     <header className="page-title"><span className="eyebrow">RevControl</span><h1>Exporteren naar RevControl</h1><p>Download je events en importeer het bestand in RevControl.</p></header>
     <ExportTabs initialView={view} newHref={`${viewLink("new")}${page > 0 ? `&historyPage=${page}` : ""}`} historyHref={`${viewLink("history")}${page > 0 ? `&historyPage=${page}` : ""}`} />
-    <ExportFilters hotels={scope.hotels} hotelIds={selectedHotelIds} from={range.start} to={range.end} view={view}>
+    <ExportFilters hotels={scope.hotels} hotelIds={selectedHotelIds} from={range.start} to={range.end} horizonEnd={horizonEnd} view={view}>
       {!scope.hotels.length ? <p className="panel">Voeg eerst een hotel toe.</p> : !selectedHotelIds.length ? <p className="panel">Kies een hotel via Aanpassen om de beschikbare events te bekijken.</p> : <>
         <ExportPanel>
           {changed > 0 && <p className="export-change-note">Er zijn events gewijzigd sinds een eerdere export. <Link href={viewLink("history")}>Bekijk wijzigingen</Link></p>}

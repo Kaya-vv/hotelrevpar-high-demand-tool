@@ -13,6 +13,7 @@ import {
   publishableDemandLevels,
 } from "@/features/events/importance";
 import { overrideImportance } from "@/features/review/actions";
+import { trialHorizonEnd } from "@/features/accounts/trial";
 import { requireViewedAccount } from "@/features/workspace/viewed-account";
 
 function currentMonth() {
@@ -39,7 +40,7 @@ export default async function CalendarPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { viewedAccountId, viewedAccountName, viewingOtherAccount } =
+  const { viewedAccountId, viewedAccountName, viewingOtherAccount, viewedTrialEndsAt } =
     await requireViewedAccount();
   const params = await searchParams;
   const rawMonth = value(params, "month");
@@ -52,7 +53,8 @@ export default async function CalendarPage({
   const view = value(params, "view") === "calendar" ? "calendar" : "list";
   const rawPeriod = value(params, "period");
   const period = rawPeriod === "3" || rawPeriod === "12" ? rawPeriod : "all";
-  const bounds = calendarBounds(month, view, period);
+  const horizonEnd = trialHorizonEnd(viewedTrialEndsAt);
+  const bounds = calendarBounds(month, view, period, undefined, horizonEnd);
   const selectableLevels = includeMedium
     ? (["Medium", ...publishableDemandLevels] as const)
     : publishableDemandLevels;
@@ -61,6 +63,7 @@ export default async function CalendarPage({
     view,
     period,
     includeMedium,
+    horizonEnd,
     category: value(params, "category"),
     importance: (selectableLevels as readonly string[]).includes(rawImportance ?? "")
       ? (rawImportance as CalendarQueryFilters["importance"])
@@ -126,6 +129,7 @@ export default async function CalendarPage({
         month={month}
         view={view}
         period={period}
+        horizonEnd={horizonEnd}
         category={filters.category}
         importance={filters.importance}
         includeMedium={includeMedium}

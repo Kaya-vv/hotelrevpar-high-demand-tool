@@ -971,6 +971,10 @@ a {
   background: #fffbec;
 }
 
+.trial-banner {
+  margin: 0 0 16px;
+}
+
 .status.review {
   color: #8c2915;
   background: #ffede8;

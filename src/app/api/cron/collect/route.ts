@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { enqueueCollectionAreas, type EnqueueResult } from "@/features/collection/jobs";
+import { unexpiredTrialFilter } from "@/features/accounts/trial";
 import { ANNOUNCEMENT_SEARCH_DAYS } from "@/features/collection/schedule";
 import { fetchAllRows, fetchPagedInBatches } from "@/lib/supabase/fetch-in-batches";
 
@@ -55,7 +56,8 @@ export async function GET(request: Request) {
     listAreas: async () => {
       const { createAdminClient } = await import("@/lib/supabase/admin");
       const admin = createAdminClient();
-      const { data: accounts, error: accountError } = await admin.from("accounts").select("id").eq("active", true);
+      const { data: accounts, error: accountError } = await admin.from("accounts").select("id").eq("active", true)
+        .or(unexpiredTrialFilter());
       if (accountError) throw accountError;
       const accountIds = accounts.map((account) => account.id);
       if (!accountIds.length) return [];

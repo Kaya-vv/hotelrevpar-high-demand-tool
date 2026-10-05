@@ -24,7 +24,7 @@ function form() {
 beforeEach(() => {
   vi.resetAllMocks();
   vi.spyOn(console, "error").mockImplementation(() => {});
-  vi.mocked(requireAccount).mockResolvedValue({ accountId: "own-account", accountName: "Test Hotel", role: "operator", userId: "subscriber" });
+  vi.mocked(requireAccount).mockResolvedValue({ accountId: "own-account", accountName: "Test Hotel", role: "operator", userId: "subscriber", trialEndsAt: null });
   vi.mocked(createServerClient).mockResolvedValue({ from } as unknown as Awaited<ReturnType<typeof createServerClient>>);
 });
 

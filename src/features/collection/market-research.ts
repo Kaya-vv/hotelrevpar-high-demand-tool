@@ -11,6 +11,7 @@ import { researchBatchingEnabled } from "./research-client";
 import { geocodeCity } from "./research-location";
 import { distanceKm } from "../events/distance";
 import type { AdminClient } from "@/lib/supabase/admin";
+import { unexpiredTrialFilter } from "@/features/accounts/trial";
 
 export type MarketWork = {
   kind: "market-research" | "market-publication";
@@ -80,7 +81,8 @@ export async function processMarketWork(work: MarketWork) {
   const { createCollectionRepository } = await import("./repository");
   const admin = createAdminClient();
   const repository = createCollectionRepository();
-  const { data: account, error } = await admin.from("accounts").select("id").eq("id", work.accountId).eq("active", true).maybeSingle();
+  const { data: account, error } = await admin.from("accounts").select("id").eq("id", work.accountId).eq("active", true)
+    .or(unexpiredTrialFilter()).maybeSingle();
   if (error) throw error;
   if (!account) return;
   const { data: activeArea, error: activeAreaError } = await admin.from("collection_areas")
@@ -89,13 +91,17 @@ export async function processMarketWork(work: MarketWork) {
   if (activeAreaError) throw activeAreaError;
   if (!activeArea) return;
   const context = await repository.loadContext(work.accountId, work.areaId);
-  if (!context.area.enabledSources.includes("claude")) return;
+  // A trial never buys city research; a job can only exist if it was queued just before an upgrade
+  // or switch-off changed the account.
+  if (!context.area.enabledSources.includes("claude") || !context.longRangeAllowed) return;
   const market = await resolveLongRangeMarket(context.area.searchLocation, context.area.radiusKm);
   const key = market.key;
   // Called under the research or publication lease; partial publication never marks
   // the research complete, and waits for an overlapping hotel refresh.
   async function publishState(state: LongRangeState) {
-    const { data: areas, error: areaError } = await admin.from("collection_areas").select("id, account_id, search_location, radius_km, accounts!inner(active), hotels!inner(archived_at)").is("hotels.archived_at", null).eq("accounts.active", true).contains("enabled_sources", ["claude"]);
+    // Free trials are left out: the research covers months they may not see, and their hotels
+    // would otherwise pay for size checks on it.
+    const { data: areas, error: areaError } = await admin.from("collection_areas").select("id, account_id, search_location, radius_km, accounts!inner(active, trial_ends_at), hotels!inner(archived_at)").is("hotels.archived_at", null).eq("accounts.active", true).is("accounts.trial_ends_at", null).contains("enabled_sources", ["claude"]);
     if (areaError) throw areaError;
     // Every hotel this research covers, not only the one whose radius happens to match it: the
     // editions are a superset and `publishLongRangeResult` filters each hotel by real distance.

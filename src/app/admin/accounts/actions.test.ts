@@ -37,7 +37,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://app.example");
   vi.spyOn(console, "error").mockImplementation(() => {});
-  vi.mocked(requirePlatformAdmin).mockResolvedValue({ userId: "admin-1", accountId: "admin-account", accountName: "Admin", role: "platform_admin" });
+  vi.mocked(requirePlatformAdmin).mockResolvedValue({ userId: "admin-1", accountId: "admin-account", accountName: "Admin", role: "platform_admin", trialEndsAt: null });
   vi.mocked(createAdminClient).mockReturnValue({ auth, from } as unknown as ReturnType<typeof createAdminClient>);
   auth.admin.deleteUser.mockResolvedValue({ error: null });
   auth.resetPasswordForEmail.mockResolvedValue({ error: null });

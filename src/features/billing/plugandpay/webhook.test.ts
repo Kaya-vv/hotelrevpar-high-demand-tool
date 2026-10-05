@@ -7,6 +7,7 @@ import { createPlugAndPayWebhookHandler, type PlugAndPayWebhookDependencies } fr
 
 const KEY = "webhook-key";
 const HOTEL_PRODUCT = 4821;
+const TRIAL_PRODUCT = 5100;
 
 function order(overrides: Partial<PlugAndPayOrder> = {}): PlugAndPayOrder {
   return {
@@ -27,6 +28,7 @@ function setup(overrides: Partial<PlugAndPayWebhookDependencies> = {}) {
   const dependencies = {
     webhookKey: KEY,
     hotelProductIds: [HOTEL_PRODUCT],
+    trialProductIds: [TRIAL_PRODUCT],
     allowTestMode: false,
     fetchOrder: vi.fn(async () => order()),
     claimEvent: vi.fn(async ({ key }: { key: string }) => {
@@ -76,6 +78,7 @@ describe("Plug&Pay webhook", () => {
     expect(dependencies.fetchOrder).toHaveBeenCalledWith("77");
     expect(dependencies.applyPurchase).toHaveBeenCalledWith({
       accountId: null, accountName: "Hotel Zuid", email: "buyer@example.com", hotelLimit: 3, subscriptionId: "901",
+      plan: "paid", trialEndsAt: null,
     });
     expect(dependencies.finishEvent).toHaveBeenCalledWith({ key: "order_payment_completed:77", status: "done", accountId: "account-new" });
   });
@@ -112,6 +115,51 @@ describe("Plug&Pay webhook", () => {
     await handler(request(paid));
     expect(dependencies.findAccountByEmail).toHaveBeenCalledWith("buyer@example.com");
     expect(dependencies.applyPurchase).toHaveBeenCalledWith(expect.objectContaining({ accountId: "account-existing", hotelLimit: 3 }));
+  });
+
+  it("starts a 30-day, one-hotel trial from a free order that reports no payment", async () => {
+    const { dependencies, handler } = setup({
+      fetchOrder: vi.fn(async () => order({ payment: null, items: [{ product_id: TRIAL_PRODUCT, quantity: 3, subscription: null }] })),
+    });
+    const before = Date.now();
+    const response = await handler(request(paid));
+    expect(await response.json()).toEqual({ status: "provisioned", hotels: 1 });
+    const input = vi.mocked(dependencies.applyPurchase).mock.calls[0][0];
+    expect(input).toMatchObject({ accountId: null, plan: "trial", hotelLimit: 1, subscriptionId: null });
+    const days = (Date.parse(input.trialEndsAt!) - before) / 86_400_000;
+    expect(days).toBeGreaterThanOrEqual(30);
+    expect(days).toBeLessThan(30.01);
+  });
+
+  it("never gives a second trial to an address that already has an account", async () => {
+    const { dependencies, handler } = setup({
+      fetchOrder: vi.fn(async () => order({ payment: null, items: [{ product_id: TRIAL_PRODUCT, quantity: 1, subscription: null }] })),
+      findAccountByEmail: vi.fn(async () => "account-expired-trial"),
+    });
+    const response = await handler(request(paid));
+    expect(await response.json()).toEqual({ status: "ignored", detail: "trial_existing_account" });
+    expect(dependencies.applyPurchase).not.toHaveBeenCalled();
+  });
+
+  it("treats an order holding both the trial and the paid package as paid", async () => {
+    const { dependencies, handler } = setup({
+      fetchOrder: vi.fn(async () => order({ items: [
+        { product_id: TRIAL_PRODUCT, quantity: 1, subscription: null },
+        { product_id: HOTEL_PRODUCT, quantity: 2, subscription: { id: 902 } },
+      ] })),
+      findAccountByEmail: vi.fn(async () => "account-on-trial"),
+    });
+    await handler(request(paid));
+    expect(dependencies.applyPurchase).toHaveBeenCalledWith(expect.objectContaining({
+      accountId: "account-on-trial", plan: "paid", hotelLimit: 2, subscriptionId: "902", trialEndsAt: null,
+    }));
+  });
+
+  it("still refuses an unpaid order for the paid package", async () => {
+    const { dependencies, handler } = setup({ fetchOrder: vi.fn(async () => order({ payment: null })) });
+    const response = await handler(request(paid));
+    expect(await response.json()).toEqual({ status: "ignored", detail: "not_paid" });
+    expect(dependencies.applyPurchase).not.toHaveBeenCalled();
   });
 
   it("deactivates a known subscription and ignores an unknown one", async () => {

@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { AppNavigation } from "@/components/app-navigation";
+import { trialDaysLeft } from "@/features/accounts/trial";
 import { StatusMonitor } from "@/features/collection/status-monitor";
 import type { CollectionStatus } from "@/features/collection/status";
 import { HotelSwitcher } from "@/components/hotel-switcher";
@@ -21,6 +22,10 @@ type AppShellProps = {
   collectionStatus?: CollectionStatus;
   /** The platform administrator is looking at a subscriber's hotel: reading only. */
   viewingOtherAccount?: boolean;
+  /** Set while the viewed account is on a free trial. */
+  trialEndsAt?: string | null;
+  /** Where the paid package is bought; the banner links to it when set. */
+  checkoutUrl?: string | null;
 };
 
 export function AppShell({
@@ -33,6 +38,8 @@ export function AppShell({
   batch,
   collectionStatus,
   viewingOtherAccount = false,
+  trialEndsAt = null,
+  checkoutUrl = null,
 }: AppShellProps) {
   return (
     <div className="shell">
@@ -78,6 +85,12 @@ export function AppShell({
             action={selectHotel}
           />
         </header>
+        {trialEndsAt && (
+          <p className="notice warning trial-banner">
+            Proefperiode: nog {trialDaysLeft(trialEndsAt)} dagen. Je ziet events tot 90 dagen vooruit.
+            {checkoutUrl && <> <a href={checkoutUrl}>Abonnement afsluiten</a></>}
+          </p>
+        )}
         <StatusMonitor initial={collectionStatus ?? { batch, pending: Boolean(batch?.active), revision: "", watchKey: batch?.batchId ?? "" }}>
           <div className="workspace-content">{children}</div>
         </StatusMonitor>

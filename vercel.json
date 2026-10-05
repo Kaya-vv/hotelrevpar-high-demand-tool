@@ -14,5 +14,8 @@
       ]
     }
   },
-  "crons": [{ "path": "/api/cron/collect", "schedule": "0 5 * * *" }]
+  "crons": [
+    { "path": "/api/cron/trials", "schedule": "30 4 * * *" },
+    { "path": "/api/cron/collect", "schedule": "0 5 * * *" }
+  ]
 }

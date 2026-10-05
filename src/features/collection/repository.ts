@@ -182,6 +182,8 @@ export function createCollectionRepository(): CollectionRepository {
       if (hotelResult.error) throw hotelResult.error;
       const hotel = hotelResult.data;
       if (hotel.archived_at) throw new Error("Dit hotel is gearchiveerd.");
+      const accountResult = await supabase.from("accounts").select("trial_ends_at").eq("id", accountId).single();
+      if (accountResult.error) throw accountResult.error;
       const window = collectionWindow();
       const futureWindow = longRangeWindow(window);
       const { data: linkData, error: linkError } = await supabase
@@ -264,6 +266,7 @@ export function createCollectionRepository(): CollectionRepository {
           holidayRegion: hotel.holiday_region,
         }],
         window,
+        longRangeAllowed: accountResult.data.trial_ends_at === null,
         firstRun: !(await supabase
           .from("collection_runs")
           .select("id", { count: "exact", head: true })

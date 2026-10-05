@@ -11,6 +11,7 @@ import {
   claudeDiscoveryDue,
   collectionWindow,
   mayDispatchSynchronously,
+  publishLongRangeResult,
   runCollection,
   selectClaudeRefreshUrls,
   selectLongRangeSeeds,
@@ -157,6 +158,7 @@ function repository(overrides: Partial<CollectionRepository> = {}): CollectionRe
       hotels: [{ id: "hotel-1", latitude: 51.44, longitude: 5.48, demandRadiusKm: 25, holidayRegion: "south" }],
       window: { start: "2026-09-10", end: "2026-12-09" },
       knownClaudeUrls: [],
+      longRangeAllowed: true,
     }),
     persistCandidate: vi.fn().mockResolvedValue({ state: "active", duplicate: false }),
     loadDemandTriages: vi.fn().mockResolvedValue({}),
@@ -238,6 +240,29 @@ describe("runCollection", () => {
     expect(repo.persistCandidate).toHaveBeenCalledOnce();
     expect(vi.mocked(repo.persistCandidate).mock.calls[0][1]).toMatchObject({ providerEventId: "night", endAt: "2026-09-12T02:30:00.000Z" });
     expect(repo.recordSourceResult).toHaveBeenCalledWith("run-1", "claude", expect.objectContaining({ invalidDates: 1 }));
+  });
+
+  it("saves nothing past a trial account's 90 days, whichever source found it", async () => {
+    const day = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString();
+    const trialContext = {
+      area: { id: "area-1", accountId: "account-1", name: "MATCH", searchLocation: "Eindhoven", latitude: 51.44, longitude: 5.48, radiusKm: 30, enabledSources: ["openholidays"] },
+      hotels: [{ id: "hotel-1", latitude: 51.44, longitude: 5.48, demandRadiusKm: 25, holidayRegion: "south" }],
+      window: { start: day(0).slice(0, 10), end: day(90).slice(0, 10) },
+      knownClaudeUrls: [],
+      longRangeAllowed: false,
+    };
+    const holiday = (providerEventId: string, offset: number) => ({ ...candidate, provider: "openholidays", providerEventId,
+      category: "school_holiday", latitude: null, longitude: null, regionScope: "south", startAt: day(offset), endAt: day(offset + 9) });
+    const repo = repository({ loadContext: vi.fn().mockResolvedValue(trialContext) });
+    const openholidays = vi.fn().mockResolvedValue({ source: "openholidays", candidates: [holiday("autumn", 20), holiday("summer", 250)], requests: 1, usage: {} });
+
+    await runCollection({ accountId: "account-1", areaId: "area-1", trigger: "manual" }, { repository: repo, collectors: { openholidays } });
+    expect(vi.mocked(repo.persistCandidate).mock.calls.map(([, saved]) => saved.providerEventId)).toEqual(["autumn"]);
+
+    // Shared city research bought by a paying hotel is never published into the trial account.
+    await publishLongRangeResult(repo, { ...trialContext, area: { ...trialContext.area, enabledSources: ["claude"] } } as never,
+      { source: "claude", candidates: [{ ...candidate, provider: "claude", startAt: day(250), endAt: day(251) }], requests: 0, usage: {} });
+    expect(repo.persistCandidate).toHaveBeenCalledOnce();
   });
 
   it("scores shared evidence and reloads history before continuing discovery", async () => {
@@ -419,6 +444,7 @@ describe("runCollection", () => {
         area: { id: "area-1", accountId: "account-1", name: "MATCH", searchLocation: "Eindhoven", latitude: 51.44, longitude: 5.48, radiusKm: 30, enabledSources: ["ticketmaster"] },
         hotels: [{ id: "hotel-1", latitude: 51.44, longitude: 5.48, demandRadiusKm: 25, holidayRegion: "south" }],
         window: { start: "2026-09-10", end: "2026-12-09" },
+        longRangeAllowed: true,
       }),
     });
     await runCollection(
@@ -443,6 +469,7 @@ describe("runCollection", () => {
         area: { id: "area-1", accountId: "account-1", name: "MATCH", searchLocation: "Eindhoven", latitude: 51.44, longitude: 5.48, radiusKm: 25, enabledSources: ["ticketmaster"] },
         hotels: [{ id: "hotel-1", latitude: 51.44, longitude: 5.48, demandRadiusKm: 25, holidayRegion: "south" }],
         window: { start: "2026-09-10", end: "2026-12-09" },
+        longRangeAllowed: true,
       }),
     });
 
@@ -523,6 +550,7 @@ describe("runCollection", () => {
         area: { id: "area-1", accountId: "account-1", name: "Testhotel", searchLocation: "Eindhoven", latitude: 51.44, longitude: 5.48, radiusKm: 25, enabledSources: ["predicthq"] },
         hotels: [{ id: "hotel-1", latitude: 51.44, longitude: 5.48, demandRadiusKm: 25, holidayRegion: "south" }],
         window: { start: "2026-09-10", end: "2026-12-09" },
+        longRangeAllowed: true,
       }),
     });
     const triageReview = { providerEventId: "phq-major", decision: "verify" as const, confidence: "high" as const, demandLevel: "high" as const, evidenceText: "Landelijke vakbeurs." };
@@ -561,6 +589,7 @@ describe("runCollection", () => {
         area: { id: "area-1", accountId: "account-1", name: "Testhotel", searchLocation: "Eindhoven", latitude: 51.44, longitude: 5.48, radiusKm: 25, enabledSources: ["predicthq"] },
         hotels: [{ id: "hotel-1", latitude: 51.44, longitude: 5.48, demandRadiusKm: 25, holidayRegion: "south" }],
         window: { start: "2026-09-10", end: "2026-12-09" },
+        longRangeAllowed: true,
       }),
       loadDemandTriages: vi.fn().mockResolvedValue({ "phq-major": cachedTriage }),
       loadEvidenceReviews: vi.fn().mockResolvedValue({ "phq-major": cachedEvidence }),
@@ -592,6 +621,7 @@ describe("runCollection", () => {
         area: { id: "area-1", accountId: "account-1", name: "Testhotel", searchLocation: "Eindhoven", latitude: 51.44, longitude: 5.48, radiusKm: 25, enabledSources: ["predicthq"] },
         hotels: [{ id: "hotel-1", latitude: 51.44, longitude: 5.48, demandRadiusKm: 25, holidayRegion: "south" }],
         window: { start: "2026-09-10", end: "2026-12-09" },
+        longRangeAllowed: true,
       }),
     });
     const demandTriageReviewer = vi.fn().mockResolvedValue({
@@ -636,6 +666,7 @@ describe("runCollection", () => {
         area: { id: "area-1", accountId: "account-1", name: "Testhotel", searchLocation: "Eindhoven", latitude: 51.44, longitude: 5.48, radiusKm: 25, enabledSources: ["predicthq"] },
         hotels: [{ id: "hotel-1", latitude: 51.44, longitude: 5.48, demandRadiusKm: 25, holidayRegion: "south" }],
         window: { start: "2026-09-10", end: "2026-12-09" },
+        longRangeAllowed: true,
       }),
     });
     const demandTriageReviewer = vi.fn().mockResolvedValue({
@@ -675,6 +706,7 @@ describe("runCollection", () => {
         area: { id: "area-1", accountId: "account-1", name: "Testhotel", searchLocation: "Eindhoven", latitude: 51.44, longitude: 5.48, radiusKm: 25, enabledSources: ["claude"] },
         hotels: [{ id: "hotel-1", latitude: 51.44, longitude: 5.48, demandRadiusKm: 25, holidayRegion: "south" }],
         window: { start: "2026-09-10", end: "2026-12-09" },
+        longRangeAllowed: true,
       }),
     });
 
@@ -700,6 +732,7 @@ describe("runCollection", () => {
         area: { id: "area-1", accountId: "account-1", name: "Testhotel", searchLocation: "Eindhoven", latitude: 51.44, longitude: 5.48, radiusKm: 25, enabledSources: ["claude"] },
         hotels: [{ id: "hotel-1", latitude: 51.44, longitude: 5.48, demandRadiusKm: 25, holidayRegion: "south" }],
         window: { start: "2026-09-10", end: "2026-12-09" },
+        longRangeAllowed: true,
       }),
     });
 
@@ -710,6 +743,35 @@ describe("runCollection", () => {
 
     expect(shouldRunClaudeDiscovery).toHaveBeenCalledWith(expect.anything(), "manual");
     expect(claude).toHaveBeenCalledOnce();
+  });
+
+  it("never sends a trial account into the search code just to run long-range research", async () => {
+    vi.stubEnv("LONG_RANGE_DISCOVERY", "enabled");
+    try {
+      const contextFor = (longRangeAllowed: boolean) => ({
+        area: { id: "area-1", accountId: "account-1", name: "Testhotel", searchLocation: "Eindhoven", latitude: 51.44, longitude: 5.48, radiusKm: 25, enabledSources: ["claude"] },
+        hotels: [{ id: "hotel-1", latitude: 51.44, longitude: 5.48, demandRadiusKm: 25, holidayRegion: "south" }],
+        window: { start: "2026-09-10", end: "2026-12-09" },
+        longRangeAllowed,
+      });
+      const trialClaude = vi.fn();
+      const trial = await runCollection(
+        { accountId: "account-1", areaId: "area-1", trigger: "cron" },
+        { repository: repository({ shouldRunClaudeDiscovery: vi.fn().mockResolvedValue(false), loadContext: vi.fn().mockResolvedValue(contextFor(false)) }), collectors: { claude: trialClaude } },
+      );
+      expect(trialClaude).not.toHaveBeenCalled();
+      expect(trial.sourceResults.claude).toMatchObject({ state: "skipped" });
+
+      // The same run for a paying account does go in, so the guard is what stopped it above.
+      const paidClaude = vi.fn().mockResolvedValue({ source: "claude", candidates: [], requests: 1, usage: {} });
+      await runCollection(
+        { accountId: "account-1", areaId: "area-1", trigger: "cron" },
+        { repository: repository({ shouldRunClaudeDiscovery: vi.fn().mockResolvedValue(false), loadContext: vi.fn().mockResolvedValue(contextFor(true)) }), collectors: { claude: paidClaude } },
+      );
+      expect(paidClaude).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
 

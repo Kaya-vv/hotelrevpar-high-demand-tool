@@ -10,7 +10,7 @@ const { getCalendarData, viewedAccount } = vi.hoisted(() => ({
   })),
   viewedAccount: {
     accountId: "account", accountName: "Robert", role: "operator" as "operator" | "platform_admin", userId: "user",
-    viewedAccountId: "account", viewedAccountName: "Robert", viewingOtherAccount: false,
+    viewedAccountId: "account", viewedAccountName: "Robert", viewingOtherAccount: false, viewedTrialEndsAt: null as string | null,
   },
 }));
 vi.mock("./query", () => ({ getCalendarData }));
@@ -38,7 +38,7 @@ describe("calendar page", () => {
 
   it("defaults to the full overview and keeps filters in the month calendar link", async () => {
     render(await CalendarPage({ searchParams: Promise.resolve({ month: "2027-05", category: "concert", importance: "High" }) }));
-    expect(getCalendarData).toHaveBeenCalledWith("account", { month: "2027-05", view: "list", period: "all", category: "concert", importance: "High", includeMedium: false });
+    expect(getCalendarData).toHaveBeenCalledWith("account", { month: "2027-05", view: "list", period: "all", category: "concert", importance: "High", includeMedium: false, horizonEnd: null });
     expect(screen.getByRole("link", { name: "Overzicht" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "Maandkalender" })).toHaveAttribute("href", "/calendar?month=2027-05&view=calendar&period=all&category=concert&importance=High");
     expect(screen.getByRole("heading", { name: "Selected hotel" })).toBeInTheDocument();
@@ -47,7 +47,7 @@ describe("calendar page", () => {
 
   it("passes the Medium toggle to the query and keeps it in the links", async () => {
     render(await CalendarPage({ searchParams: Promise.resolve({ month: "2027-05", medium: "1", importance: "Medium" }) }));
-    expect(getCalendarData).toHaveBeenCalledWith("account", { month: "2027-05", view: "list", period: "all", category: undefined, importance: "Medium", includeMedium: true });
+    expect(getCalendarData).toHaveBeenCalledWith("account", { month: "2027-05", view: "list", period: "all", category: undefined, importance: "Medium", includeMedium: true, horizonEnd: null });
     expect(screen.getByLabelText("Ook Medium-events tonen")).toBeChecked();
     expect(screen.getByRole("link", { name: "Maandkalender" })).toHaveAttribute("href", "/calendar?month=2027-05&view=calendar&period=all&importance=Medium&medium=1");
   });
@@ -58,6 +58,21 @@ describe("calendar page", () => {
     expect(screen.getByRole("link", { name: "Maandkalender" })).toHaveAttribute("aria-current", "page");
     expect(screen.queryByLabelText("Periode")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Maand 2027-05")).toBeInTheDocument();
+  });
+
+  it("asks the calendar for no more than 90 days while the account is on a trial", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-02T10:00:00Z"));
+    viewedAccount.viewedTrialEndsAt = "2026-10-20T10:00:00Z";
+    try {
+      render(await CalendarPage({ searchParams: Promise.resolve({ month: "2026-10", period: "12" }) }));
+      expect(getCalendarData).toHaveBeenCalledWith("account", expect.objectContaining({ horizonEnd: "2026-12-31" }));
+      expect(screen.getByText("Van vandaag tot 31 december 2026")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Periode")).not.toBeInTheDocument();
+    } finally {
+      viewedAccount.viewedTrialEndsAt = null;
+      vi.useRealTimers();
+    }
   });
 
   it("says the administrator is only looking along in a subscriber account", async () => {
