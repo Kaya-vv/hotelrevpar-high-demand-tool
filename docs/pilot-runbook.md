@@ -10,8 +10,8 @@ Record the evidence for each gate before calling the data-quality demo ready. De
 | 4 | Freeze the event benchmark below, then run one manual 90-day collection per demo hotel. |  |  |  |  |
 | 5 | Confirm Claude made twelve real web searches: four categories in each of three 30-day slices. Record the four funnel counts from `/admin/source-health`: Namen, Officiële URL's, Geverifieerd, High/Piek. |  |  |  |  |
 | 6 | Require every in-window Peak benchmark and at least 80% of High benchmarks for each city. |  |  |  |  |
-| 7 | Confirm every displayed event is confirmed High/Peak, has a current official page, and has defensible hotel-demand evidence. |  |  |  |  |
-| 8 | Confirm Medium, Low, default-basis, provisional, unsupported, disabled-source-only, conflicted, and duplicate events stay out of subscriber output. |  |  |  |  |
+| 7 | Confirm every displayed event is confirmed and has a current official page. Hoog/Piek must have defensible hotel-demand evidence; Medium must meet the separate shown-Medium rule. |  |  |  |  |
+| 8 | Confirm non-qualifying automatic Medium and Low scores appear as Laag only when “Ook Laag-events tonen” is on. Default-basis, provisional, unsupported, disabled-source-only, conflicted, and duplicate events stay out of subscriber output. |  |  |  |  |
 | 9 | Confirm routine league fixtures remain below High and all-day placeholders receive no duration or late bonus. |  |  |  |  |
 | 10 | Confirm PredictHQ contributes no score, source link, visible event, or export row. |  |  |  |  |
 | 11 | Record the billed Anthropic cost for each hotel run. Steady-state target is no more than €4 per area run; the research ceiling is €8 per market per month, which only binds while a discovery backlog drains, and a steady-state result above €4 is a pass with a cost action (set `ANTHROPIC_DISCOVERY_MODEL` to a Haiku-class model and re-measure). |  |  |  |  |

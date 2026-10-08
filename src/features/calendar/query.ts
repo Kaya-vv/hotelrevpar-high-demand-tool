@@ -7,7 +7,6 @@ import { createServerClient } from "@/lib/supabase/server";
 import {
   gradedDemand,
   hotelCalendarVisibility,
-  isPublishableDemand,
   publishableReviewEventIds,
   type DemandLevel,
 } from "@/features/events/importance";
@@ -24,8 +23,8 @@ export type CalendarFilters = {
   period?: OverviewPeriod;
   category?: string;
   importance?: DemandLevel;
-  /** Show Medium events too; the export and notifications keep the High/Peak threshold. */
-  includeMedium?: boolean;
+  /** Show the hidden-by-default Laag events too. */
+  includeLow?: boolean;
   /** Last date a free trial account may see; `null` means no cap. */
   horizonEnd?: string | null;
 };
@@ -151,11 +150,6 @@ export async function getCalendarData(
           stayPressurePoints: score.stay_pressure_points,
           distanceKm: score.distance_km,
         }));
-      // The publish gate decides visibility. Requiring a graded demand assessment here hid every
-      // event scored from an evidenced proxy, independently of `isPublishableDemand`.
-      const hotelScores = eventScores.filter((score) =>
-        isPublishableDemand(score.importance, score.impactBasis, filters.includeMedium)
-      );
       // Kept even when the publish gate hides the grade: the calendar's manual override
       // updates this row.
       const assessedScore = eventScores[0];
@@ -174,8 +168,9 @@ export async function getCalendarData(
           return Boolean(evidence?.dateText && evidence.locationText);
         }),
         scores: eventScores,
-        includeMedium: filters.includeMedium,
+        includeLow: filters.includeLow,
       });
+      const hotelScores = visibility.visible ? eventScores : [];
       return {
         id: event.id,
         exportedAt: exportedDates.get(event.id),
@@ -191,6 +186,7 @@ export async function getCalendarData(
         sources: publishedSources,
         hotelScores,
         announced: visibility.announced,
+        shownLevel: visibility.shownLevel,
         visible: visibility.visible,
         assessedScore,
         demandAssessment: assessedScore?.assessment,
@@ -211,9 +207,7 @@ export async function getCalendarData(
     .filter(
       (event) =>
         !filters.importance ||
-        event.hotelScores.some(
-          (score) => score.importance === filters.importance
-        )
+        event.shownLevel === filters.importance
     )
     .sort(byDate);
 

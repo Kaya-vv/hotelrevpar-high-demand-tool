@@ -26,7 +26,7 @@ describe("event notification email", () => {
           venue: null,
           startAt: "2027-11-01T10:00:00Z",
           endAt: "2027-11-01T22:00:00Z",
-          level: "Zelf beoordelen",
+          level: "Medium",
           announced: true,
         },
       ],
@@ -41,7 +41,7 @@ describe("event notification email", () => {
     expect(message.html).toContain("10 oktober 2027 tot 13 oktober 2027");
     expect(message.html).toContain("https://app.example/open-calendar/hotel-1");
     expect(message.text).toContain("Locatie: nog niet bekend");
-    expect(message.text).toContain("Zelf beoordelen");
+    expect(message.text).toContain("Medium");
   });
 
   it("accepts the production domain without an explicit protocol", () => {

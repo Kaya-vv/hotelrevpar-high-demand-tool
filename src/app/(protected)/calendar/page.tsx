@@ -49,20 +49,20 @@ export default async function CalendarPage({
       ? rawMonth
       : currentMonth();
   const rawImportance = value(params, "importance");
-  const includeMedium = value(params, "medium") === "1";
+  const includeLow = value(params, "low") === "1";
   const view = value(params, "view") === "calendar" ? "calendar" : "list";
   const rawPeriod = value(params, "period");
   const period = rawPeriod === "3" || rawPeriod === "12" ? rawPeriod : "all";
   const horizonEnd = trialHorizonEnd(viewedTrialEndsAt);
   const bounds = calendarBounds(month, view, period, undefined, horizonEnd);
-  const selectableLevels = includeMedium
-    ? (["Medium", ...publishableDemandLevels] as const)
-    : publishableDemandLevels;
+  const selectableLevels = includeLow
+    ? (["Low", "Medium", ...publishableDemandLevels] as const)
+    : (["Medium", ...publishableDemandLevels] as const);
   const filters: CalendarQueryFilters = {
     month,
     view,
     period,
-    includeMedium,
+    includeLow,
     horizonEnd,
     category: value(params, "category"),
     importance: (selectableLevels as readonly string[]).includes(rawImportance ?? "")
@@ -80,7 +80,7 @@ export default async function CalendarPage({
     next.set("period", period);
     if (filters.category) next.set("category", filters.category);
     if (filters.importance) next.set("importance", filters.importance);
-    if (includeMedium) next.set("medium", "1");
+    if (includeLow) next.set("low", "1");
     Object.entries(changes).forEach(([key, item]) =>
       item ? next.set(key, item) : next.delete(key)
     );
@@ -132,7 +132,7 @@ export default async function CalendarPage({
         horizonEnd={horizonEnd}
         category={filters.category}
         importance={filters.importance}
-        includeMedium={includeMedium}
+        includeLow={includeLow}
         categories={data.categories}
         levels={selectableLevels.map((level) => ({
           value: level,
@@ -169,8 +169,8 @@ export default async function CalendarPage({
         hiddenEvents={data.hiddenEvents}
         latestRun={data.latestRun}
         view={view}
-        includeMedium={includeMedium}
-        mediumHref={href({ medium: "1" })}
+        includeLow={includeLow}
+        lowHref={href({ low: "1" })}
         overrideImportanceAction={
           !viewingOtherAccount
             ? overrideImportance

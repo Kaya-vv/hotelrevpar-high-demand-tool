@@ -23,6 +23,7 @@ function withMediumEvent() {
     events: [{ id: "glow", title: "GLOW", category: "festival", venue: "Eindhoven", startAt: "2027-05-07", endAt: "2027-05-14", sources: [],
       hotelScores: [{ hotelId: "hotel", hotelName: "Selected hotel", total: 69, importance: "Medium", suggestedLevel: "Medium", manualLevel: null,
         impactBasis: "ai_assessment", impactPoints: 45, distancePoints: 23, stayPressurePoints: 15, distanceKm: 2 }],
+      shownLevel: "Medium" as const,
     }], latestRun: null, hotels: [{ id: "hotel", name: "Selected hotel" }], selectedHotelId: "hotel", categories: ["festival"],
   });
 }
@@ -38,18 +39,18 @@ describe("calendar page", () => {
 
   it("defaults to the full overview and keeps filters in the month calendar link", async () => {
     render(await CalendarPage({ searchParams: Promise.resolve({ month: "2027-05", category: "concert", importance: "High" }) }));
-    expect(getCalendarData).toHaveBeenCalledWith("account", { month: "2027-05", view: "list", period: "all", category: "concert", importance: "High", includeMedium: false, horizonEnd: null });
+    expect(getCalendarData).toHaveBeenCalledWith("account", { month: "2027-05", view: "list", period: "all", category: "concert", importance: "High", includeLow: false, horizonEnd: null });
     expect(screen.getByRole("link", { name: "Overzicht" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "Maandkalender" })).toHaveAttribute("href", "/calendar?month=2027-05&view=calendar&period=all&category=concert&importance=High");
     expect(screen.getByRole("heading", { name: "Selected hotel" })).toBeInTheDocument();
     expect(screen.getByLabelText("Periode")).toHaveValue("all");
   });
 
-  it("passes the Medium toggle to the query and keeps it in the links", async () => {
-    render(await CalendarPage({ searchParams: Promise.resolve({ month: "2027-05", medium: "1", importance: "Medium" }) }));
-    expect(getCalendarData).toHaveBeenCalledWith("account", { month: "2027-05", view: "list", period: "all", category: undefined, importance: "Medium", includeMedium: true, horizonEnd: null });
-    expect(screen.getByLabelText("Ook Medium-events tonen")).toBeChecked();
-    expect(screen.getByRole("link", { name: "Maandkalender" })).toHaveAttribute("href", "/calendar?month=2027-05&view=calendar&period=all&importance=Medium&medium=1");
+  it("passes the Laag toggle to the query and keeps it in the links", async () => {
+    render(await CalendarPage({ searchParams: Promise.resolve({ month: "2027-05", low: "1", importance: "Low" }) }));
+    expect(getCalendarData).toHaveBeenCalledWith("account", { month: "2027-05", view: "list", period: "all", category: undefined, importance: "Low", includeLow: true, horizonEnd: null });
+    expect(screen.getByLabelText("Ook Laag-events tonen")).toBeChecked();
+    expect(screen.getByRole("link", { name: "Maandkalender" })).toHaveAttribute("href", "/calendar?month=2027-05&view=calendar&period=all&importance=Low&low=1");
   });
 
   it("retains the overview period when viewing a particular calendar month", async () => {
@@ -80,7 +81,7 @@ describe("calendar page", () => {
       role: "platform_admin", viewedAccountId: "subscriber", viewedAccountName: "Sandton Eindhoven", viewingOtherAccount: true,
     });
     withMediumEvent();
-    render(await CalendarPage({ searchParams: Promise.resolve({ month: "2027-05", medium: "1" }) }));
+    render(await CalendarPage({ searchParams: Promise.resolve({ month: "2027-05" }) }));
 
     expect(getCalendarData).toHaveBeenCalledWith("subscriber", expect.anything());
     expect(screen.getByRole("status")).toHaveTextContent("Je kijkt mee in het account van Sandton Eindhoven");

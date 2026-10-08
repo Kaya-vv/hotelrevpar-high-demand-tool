@@ -10,38 +10,23 @@ export const demandLabels: Record<DemandLevel, string> = {
   Peak: "Piek",
 };
 
-/** Label for an event shown without a High or Peak grade; see `isAnnouncedDemand`. */
-export const announcedDemandLabel = "Zelf beoordelen";
 
 export const demandLevels = Object.keys(demandLabels) as DemandLevel[];
 
 export const publishableDemandLevels = ["High", "Peak"] as const;
 
-/**
- * Levels the calendar shows when an operator asks to see Medium as well. Exports, notifications
- * and the database export guard never widen: Medium stays out of what a hotel pays for.
- */
-const calendarMediumLevels = ["Medium", "High", "Peak"] as const;
 
 /**
- * A grade earns publication whichever way it was reached: quoted demand evidence
- * (`demand_rule`) or an evidenced proxy such as an assessed audience, a measured attendance or a
- * marquee competition. `default` means nothing at all is known about the event's pull, so it
- * stays hidden. The scorer has already demoted anything a source argues against, which is why
- * the absence of a demand quote cannot hide an otherwise evidenced event here.
- *
- * `includeMedium` is the calendar's "ook Medium tonen" view only. Remote hotels can have no
- * High or Peak event at all, which left them staring at an empty calendar.
+ * A High or Peak grade earns automatic publication whichever way it was reached: quoted demand
+ * evidence (`demand_rule`) or an evidenced proxy such as an assessed audience, measured
+ * attendance, or marquee competition. `default` means nothing is known about the event's pull.
  */
 export function isPublishableDemand(
   importance: DemandLevel,
   impactBasis: string,
-  includeMedium = false,
 ) {
-  const levels: readonly DemandLevel[] = includeMedium
-    ? calendarMediumLevels
-    : publishableDemandLevels;
-  return levels.includes(importance) && impactBasis !== "default";
+  return publishableDemandLevels.includes(importance as "High" | "Peak")
+    && impactBasis !== "default";
 }
 
 /**
@@ -93,43 +78,27 @@ export function continuousRunCategory(category: string) {
 }
 
 /**
- * "Zelf beoordelen" (formerly "Hotelvraag"): an event worth showing without a High or Peak grade. Two kinds qualify.
+ * Whether an event belongs to the shown Medium tier: likely hotel demand without a High or Peak
+ * grade. These events appear in the normal calendar and email, but only enter an export when the
+ * manager selects them.
  *
- * Beyond the near-term horizon a demand grade cannot be earned yet: a future edition has no
- * attendance of its own and organisers rarely publish audience information a year ahead. Inside
- * the horizon the grade can be earned but often is not: GLOW and the ASML Marathon were graded
- * Medium, so the normal calendar hid them unless an operator set a level by hand. Both periods
- * use the same two rules; inside the horizon the destination rule is capped at
+ * Beyond the near-term horizon a demand grade often cannot be earned yet: a future edition has
+ * no attendance of its own and organisers rarely publish audience information a year ahead.
+ * Inside the horizon the grade can be earned, but destination events may still lack a known
+ * size. Both periods use the same rules; inside the horizon the destination rule is capped at
  * `nearTermDestinationMaxDays`.
  *
- * An event whose grade already publishes it is shown with that grade instead, never twice.
+ * The first qualifying kind carries real hotel-demand evidence — a quoted room block, package,
+ * or travelling audience — whose scale is not yet gradeable. The second is a multi-day edition
+ * whose official organiser page confirms its date and location. Per-performance categories are
+ * excluded because their span describes a series of separate shows rather than a stay.
  *
- * The first is an edition carrying real hotel-demand evidence — a quoted room block, package or
- * travelling audience — whose scale is not yet gradeable. The second is a multi-day edition whose
- * official organiser page already confirms both its date and its location: a three-day-or-longer
- * continuous run committed to a year ahead is a destination event by construction, and requiring
- * attendance evidence for it is structurally unachievable. Per-performance categories are excluded
- * from that second rule: their "duration" is a series span, not a stay. (Stadium concerts are
- * graded High by the scorer, see `stadiumConcertCapacity`; arena concerts need real evidence.)
+ * A model-assigned proxy grade alone is deliberately not a trigger. Duration plus confirmed
+ * primary-source evidence keeps league fixtures and short open days out. A size-check result also
+ * settles the unknown size: below High, it belongs in the hidden Laag tier.
  *
- * A model-assigned proxy grade is deliberately NOT a trigger. `impactPoints: 35` means the
- * model found no applicable demand signal, and the scorer then placed the event below High. Such
- * an event is not ungradeable, it is graded and judged insufficient; announcing it anyway
- * contradicted both and made visibility depend on the calendar date rather than the event. On
- * 2026-09-09 that admitted 45 unlevelled events across eight hotels — one-night tribute acts,
- * a children's museum evening, university open days — each demanding a manual export level.
- *
- * Duration plus confirmed primary-source evidence is what keeps league fixtures and open days
- * hidden: fixtures come from feeds and never carry verbatim organiser evidence, and open days run
- * one or two days. Three is the threshold rather than two because at two the rule admits
- * `Bachelor Open Day 2026`, `Master Open Day 2027` and `Liquicity Winterfestival`.
- *
- * A hand-set level outranks all of it. An operator who grades an announcement Low or Medium has
- * judged the event not worth a room-rate decision, so announcing it anyway is the calendar
- * contradicting the person using it.
- *
- * So does the size check: below High, a `size_check` basis means "known to be small or mainly
- * local", which the scorer records only when no quoted evidence proves overnight visitors.
+ * A hand-set level always wins. Medium means show in this tier; Low means hide by default; High
+ * and Peak are handled by `isPublishableDemand`.
  */
 export function isAnnouncedDemand(input: {
   startDate: string;
@@ -140,10 +109,10 @@ export function isAnnouncedDemand(input: {
   hasConfirmedDateAndLocation: boolean;
   scores: { importance: DemandLevel; impactBasis: string; distanceKm: number | null; assessment?: unknown;
     manualLevel?: DemandLevel | null }[];
-  includeMedium?: boolean;
 }) {
-  if (input.scores.some((score) => isPublishableDemand(score.importance, score.impactBasis, input.includeMedium))) return false;
-  if (input.scores.some((score) => score.manualLevel)) return false;
+  if (input.scores.some((score) => isPublishableDemand(score.importance, score.impactBasis))) return false;
+  const manual = input.scores.find((score) => score.manualLevel)?.manualLevel;
+  if (manual) return manual === "Medium";
   if (input.scores.some((score) => score.impactBasis === "size_check")) return false;
   const withinRadius = input.scores.some((score) =>
     score.distanceKm !== null && input.demandRadiusKm !== null && score.distanceKm <= input.demandRadiusKm);
@@ -167,7 +136,11 @@ export type HotelCalendarVisibilityScore = {
   manualLevel?: DemandLevel | null;
 };
 
-/** One policy for the customer calendar, exports, and new-event notifications. */
+/**
+ * One policy for the customer calendar, export selection, and new-event notifications.
+ * `shownLevel` is the label every UI reader must render. `announced` means shown as Medium and
+ * exported only by manager choice.
+ */
 export function hotelCalendarVisibility(input: {
   active: boolean;
   confirmed: boolean;
@@ -179,21 +152,31 @@ export function hotelCalendarVisibility(input: {
   category: string;
   hasConfirmedDateAndLocation: boolean;
   scores: HotelCalendarVisibilityScore[];
-  /** Calendar-only widening; see `isPublishableDemand`. */
-  includeMedium?: boolean;
+  /** Show the hidden-by-default Laag tier. */
+  includeLow?: boolean;
 }) {
   if (!input.active || !input.confirmed || !input.supported) {
-    return { visible: false, announced: false };
+    return { visible: false, announced: false, shownLevel: null };
   }
-  if (
-    input.scores.some((score) =>
-      isPublishableDemand(score.importance, score.impactBasis, input.includeMedium)
-    )
-  ) {
-    return { visible: true, announced: false };
+  const publishable = input.scores.find((score) =>
+    isPublishableDemand(score.importance, score.impactBasis)
+  );
+  if (publishable) {
+    return { visible: true, announced: false, shownLevel: publishable.importance };
   }
   const announced = isAnnouncedDemand(input);
-  return { visible: announced, announced };
+  if (announced) {
+    return { visible: true, announced: true, shownLevel: "Medium" as const };
+  }
+  const low = input.scores.some((score) =>
+    (score.importance === "Low" || score.importance === "Medium")
+    && score.impactBasis !== "default"
+  );
+  return {
+    visible: Boolean(input.includeLow && low),
+    announced: false,
+    shownLevel: low ? "Low" as const : null,
+  };
 }
 
 export function publishableReviewEventIds(

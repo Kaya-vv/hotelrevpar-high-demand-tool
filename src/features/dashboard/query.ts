@@ -1,7 +1,7 @@
 import { createServerClient } from "@/lib/supabase/server";
 import { fetchAllRows, fetchInBatches, fetchPagedInBatches } from "@/lib/supabase/fetch-in-batches";
 import { trialHorizonEnd } from "@/features/accounts/trial";
-import { publishableReviewEventIds } from "@/features/events/importance";
+import { gradedDemand, isPublishableDemand, publishableReviewEventIds } from "@/features/events/importance";
 import { eventLocalDate } from "@/features/events/normalize";
 
 export type DashboardHotel = {
@@ -82,8 +82,8 @@ export async function getDashboardData(accountId: string): Promise<DashboardHote
     const reviewableIds = publishableReviewEventIds(decisions, hotelScores);
     const nextScore = hotelScores
       .filter((score) => linkedIds.has(score.event_id) && eventById.has(score.event_id))
-      .map((score) => ({ ...score, importance: score.importance_override ?? score.suggested_importance }))
-      .filter((score) => score.importance === "High" || score.importance === "Peak")
+      .map((score) => ({ ...score, ...gradedDemand(score) }))
+      .filter((score) => isPublishableDemand(score.importance, score.impactBasis))
       .sort((left, right) => eventById.get(left.event_id)!.start_at.localeCompare(eventById.get(right.event_id)!.start_at))[0];
     const nextEvent = nextScore ? eventById.get(nextScore.event_id)! : null;
     const latestRun = areaId ? runs.find((run) => run.collection_area_id === areaId) : null;

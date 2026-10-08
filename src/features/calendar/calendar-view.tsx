@@ -8,7 +8,6 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import {
-  announcedDemandLabel,
   demandLabels,
   publishableDemandLevels,
   type DemandLevel,
@@ -52,12 +51,11 @@ export type CalendarEvent = {
   endAt: string;
   sources: CalendarSource[];
   hotelScores: CalendarHotelScore[];
-  /**
-   * Score row backing `demandAssessment`, including grades the publish gate keeps out of
-   * `hotelScores`. A manual override targets this row.
-   */
+  /** Score row backing the explanation and manual override. */
   assessedScore?: CalendarHotelScore;
-  /** "Zelf beoordelen": likely hotel demand without a High or Peak grade; see `isAnnouncedDemand`. */
+  /** Label chosen by the shared visibility policy; null when no quality-backed level exists. */
+  shownLevel?: DemandLevel | null;
+  /** Shown as Medium and exported only when the manager selects it. */
   announced?: boolean;
   /** Internal result of the shared calendar publication rule. */
   visible?: boolean;
@@ -111,10 +109,8 @@ function EventDetails({
   event: CalendarEvent;
   overrideImportanceAction?: ManualLevelAction;
 }) {
-  const score = event.hotelScores[0];
-  // Announced events show an assessment without a publishable grade; the manual level
-  // still targets their hidden score row.
-  const overrideTarget = score ?? event.assessedScore;
+  const score = event.assessedScore ?? event.hotelScores[0];
+  const overrideTarget = score;
   const primarySource = event.sources.find(
     (source) => source.primarySourceConfirmed && source.url
   );
@@ -126,20 +122,17 @@ function EventDetails({
           <h2>{event.title}</h2>
           {event.exportedAt && <p className="muted">Geëxporteerd {dateLabel(event.exportedAt, true)} · <a href="/export#export-history">Exportgeschiedenis</a></p>}
         </div>
-        {score && (
-          <span className={`importance ${score.importance.toLowerCase()}`}>
-            {demandLabels[score.importance]}
+        {event.shownLevel && (
+          <span className={`importance ${event.shownLevel.toLowerCase()}`}>
+            {demandLabels[event.shownLevel]}
           </span>
-        )}
-        {!score && event.announced && (
-          <span className="importance announced">{announcedDemandLabel}</span>
         )}
       </header>
       <p className="event-date">
         {dateLabel(event.startAt, true)} tot {dateLabel(event.endAt, true)}
       </p>
       {event.venue && <p>{event.venue}</p>}
-      {score && (
+      {score && !event.announced && (
         <div className="demand-summary">
           <strong>{event.demandAssessment?.relevance === "supported" ? "Onderbouwde hotelvraag" : "Waarschijnlijke hotelvraag"}</strong>
           <span>
@@ -149,10 +142,11 @@ function EventDetails({
           </span>
         </div>
       )}
-      {!score && event.announced && (
+      {event.announced && (
         <p className="demand-pending">
-          Dit evenement trekt waarschijnlijk extra hotelgasten, maar hoeveel weten we
-          nog niet. Kies hieronder zelf een niveau; dan kan het ook mee in de export.
+          Dit evenement trekt waarschijnlijk extra hotelgasten, maar hoeveel weten we nog
+          niet. Het gaat alleen mee in de export als je het daar selecteert. Je kunt het
+          niveau hieronder aanpassen.
         </p>
       )}
       {primarySource && (
@@ -170,8 +164,7 @@ function EventDetails({
           eventId={event.id}
           hotelId={overrideTarget.hotelId}
           manualLevel={overrideTarget.manualLevel}
-          suggestedLevel={overrideTarget.suggestedLevel}
-          announced={event.announced}
+          automaticLevel={event.shownLevel ?? overrideTarget.suggestedLevel}
           action={overrideImportanceAction}
         />
       )}
@@ -206,31 +199,30 @@ function EventOverview({
   hiddenEvents,
   rangeStart,
   monthHrefs,
-  includeMedium,
-  mediumHref,
+  includeLow,
+  lowHref,
   overrideImportanceAction,
 }: {
   events: CalendarEvent[];
   hiddenEvents?: CalendarEvent[];
   rangeStart?: string;
   monthHrefs?: Record<string, string>;
-  includeMedium?: boolean;
-  mediumHref?: string;
+  includeLow?: boolean;
+  lowHref?: string;
   overrideImportanceAction?: ManualLevelAction;
 }) {
-  const shownLevels: DemandLevel[] = includeMedium
-    ? ["Medium", ...publishableDemandLevels]
-    : [...publishableDemandLevels];
+  const shownLevels: DemandLevel[] = includeLow
+    ? ["Low", "Medium", ...publishableDemandLevels]
+    : ["Medium", ...publishableDemandLevels];
   const counts = Object.fromEntries(
     shownLevels.map((level) => [
       level,
-      events.filter((event) => event.hotelScores[0]?.importance === level)
-        .length,
+      events.filter((event) => event.shownLevel === level).length,
     ])
   ) as Record<DemandLevel, number>;
   const rows = (items: CalendarEvent[]) =>
     items.map((event) => {
-      const score = event.hotelScores[0];
+      const score = event.assessedScore ?? event.hotelScores[0];
       return (
         <details className="event-overview-item" key={event.id}>
           <summary>
@@ -252,13 +244,10 @@ function EventOverview({
                 {event.locationApproximate ? "ca. " : ""}{score.distanceKm.toFixed(1)} km
               </span>
             )}
-            {score && (
-              <span className={`importance ${score.importance.toLowerCase()}`}>
-                {demandLabels[score.importance]}
+            {event.shownLevel && (
+              <span className={`importance ${event.shownLevel.toLowerCase()}`}>
+                {demandLabels[event.shownLevel]}
               </span>
-            )}
-            {!score && event.announced && (
-              <span className="importance announced">{announcedDemandLabel}</span>
             )}
             {score && (
               <strong className="event-overview-score">
@@ -290,21 +279,15 @@ function EventOverview({
             <span>{demandLabels[level]}</span>
           </div>
         ))}
-        {events.some((event) => event.announced) && (
-          <div>
-            <strong>{events.filter((event) => event.announced).length}</strong>
-            <span>{announcedDemandLabel}</span>
-          </div>
-        )}
       </div>
       {!events.length && (
         <p className="empty-state">
           Geen bevestigde vraagmomenten voor deze filters.
-          {!includeMedium && mediumHref && (
+          {!includeLow && lowHref && (
             <>
               {" "}
               Dit hotel staat misschien in een rustiger omgeving:{" "}
-              <Link href={mediumHref}>bekijk ook de Medium-events</Link>.
+              <Link href={lowHref}>bekijk ook de Laag-events</Link>.
             </>
           )}
         </p>
@@ -322,8 +305,8 @@ function EventOverview({
             Handmatig uit de kalender gehaald ({hiddenEvents.length})
           </summary>
           <p className="muted">
-            Deze evenementen staan op Laag of Medium. Zet ze op Hoog of Piek om
-            ze terug in de kalender te zetten.
+            Deze evenementen staan op Laag. Zet ze op Medium, Hoog of Piek om ze
+            terug in de kalender te zetten.
           </p>
           <div className="event-overview-list">{rows(hiddenEvents)}</div>
         </details>
@@ -340,8 +323,8 @@ export function CalendarView({
   hiddenEvents,
   latestRun,
   view = "list",
-  includeMedium,
-  mediumHref,
+  includeLow,
+  lowHref,
   overrideImportanceAction,
 }: {
   month: string;
@@ -351,8 +334,8 @@ export function CalendarView({
   hiddenEvents?: CalendarEvent[];
   latestRun?: LatestRun | null;
   view?: "list" | "calendar";
-  includeMedium?: boolean;
-  mediumHref?: string;
+  includeLow?: boolean;
+  lowHref?: string;
   overrideImportanceAction?: ManualLevelAction;
 }) {
   const [selectedId, setSelectedId] = useState(events[0]?.id ?? null);
@@ -372,8 +355,8 @@ export function CalendarView({
           monthHrefs={monthHrefs}
           events={events}
           hiddenEvents={hiddenEvents}
-          includeMedium={includeMedium}
-          mediumHref={mediumHref}
+          includeLow={includeLow}
+          lowHref={lowHref}
           overrideImportanceAction={overrideImportanceAction}
         />
       </>
@@ -412,12 +395,11 @@ export function CalendarView({
                         eventLocalDate(event.endAt) >= date
                     )
                     .map((event) => {
-                      const score = event.hotelScores[0];
+                      const level = event.shownLevel;
                       return (
                         <button
                           className={`calendar-chip ${
-                            score?.importance.toLowerCase() ??
-                            (event.announced ? "announced" : "")
+                            level?.toLowerCase() ?? ""
                           } ${
                             event.id === selectedEvent?.id ? "selected" : ""
                           }`}
@@ -445,7 +427,7 @@ export function CalendarView({
               aria-label="Gebeurtenissen deze maand"
             >
               {events.map((event) => {
-                const score = event.hotelScores[0];
+                const level = event.shownLevel;
                 return (
                   <button
                     className={
@@ -461,17 +443,12 @@ export function CalendarView({
                       {dateLabel(event.startAt)}
                     </time>
                     <span>{event.title}{event.exportedAt && <small> · Geëxporteerd {dateLabel(event.exportedAt, true)}</small>}</span>
-                    {score && (
-                      <>
-                        <span
-                          className={`importance ${score.importance.toLowerCase()}`}
-                        >
-                          {demandLabels[score.importance]}
-                        </span>
-                      </>
-                    )}
-                    {!score && event.announced && (
-                      <span className="importance announced">{announcedDemandLabel}</span>
+                    {level && (
+                      <span
+                        className={`importance ${level.toLowerCase()}`}
+                      >
+                        {demandLabels[level]}
+                      </span>
                     )}
                   </button>
                 );

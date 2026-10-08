@@ -71,4 +71,42 @@ describe("calendar query periods", () => {
     expect(result.events).toHaveLength(497);
     expect(result.events.some((event) => event.id === "event-500")).toBe(true);
   });
+
+  it("filters by the shown level and exposes automatic Medium as Laag only with the toggle", async () => {
+    addEvent("manual-medium", "2027-01-01");
+    addEvent("automatic-medium", "2027-01-02");
+    Object.assign(tables.hotel_event_scores[0], {
+      suggested_importance: "High",
+      importance_override: "Medium",
+      impact_basis: "demand_rule",
+    });
+    Object.assign(tables.hotel_event_scores[1], {
+      suggested_importance: "Medium",
+      importance_override: null,
+      impact_basis: "ai_assessment",
+      demand_assessment: null,
+    });
+
+    const normal = await getCalendarData("account", { month: "2026-09", view: "list" });
+    expect(normal.events.map((event) => [event.id, event.shownLevel])).toEqual([
+      ["manual-medium", "Medium"],
+    ]);
+
+    const widened = await getCalendarData("account", {
+      month: "2026-09",
+      view: "list",
+      includeLow: true,
+    });
+    expect(widened.events.map((event) => [event.id, event.shownLevel])).toEqual([
+      ["manual-medium", "Medium"],
+      ["automatic-medium", "Low"],
+    ]);
+    const lowOnly = await getCalendarData("account", {
+      month: "2026-09",
+      view: "list",
+      includeLow: true,
+      importance: "Low",
+    });
+    expect(lowOnly.events.map((event) => event.id)).toEqual(["automatic-medium"]);
+  });
 });

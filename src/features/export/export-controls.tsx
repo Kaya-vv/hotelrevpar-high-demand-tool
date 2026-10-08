@@ -26,7 +26,7 @@ export function ExportControls({ events, hotelIds, hotelNames, from, to, reexpor
   const ready = rows.filter(({ hotel }) => !hotel.announced);
   const announcements = rows.filter(({ hotel }) => hotel.announced);
   const effectivePairs = selected.filter((key) => rows.some((row) => row.key === key));
-  const choices = announcements.filter(({ key }) => effectivePairs.includes(key) && levels[key]).map(({ event, hotel, key }) => ({ eventId: event.id, hotelId: hotel.id, importance: levels[key] }));
+  const choices = announcements.filter(({ key }) => effectivePairs.includes(key)).map(({ event, hotel, key }) => ({ eventId: event.id, hotelId: hotel.id, importance: levels[key] ?? "Medium" as DemandLevel }));
   const preview = selectExportEvents(events, mode, effectivePairs, choices);
   const workbookRows = mapRevControlRows(preview, hotelIds);
   const locked = busy || refreshing;
@@ -74,7 +74,7 @@ export function ExportControls({ events, hotelIds, hotelNames, from, to, reexpor
             <tr>
               <td>{reexport && !optional ? <label className="export-row-toggle"><input aria-label={`Selecteer ${event.title} voor ${hotelNames[hotel.id]}`} type="checkbox" checked={selected.includes(key)} onChange={(e) => setSelected(e.target.checked ? [...selected, key] : selected.filter((item) => item !== key))} />{event.title}</label> : event.title}</td>
               <td className="export-event-date">{exportPeriod(event.startAt, event.endAt)}</td>
-              <td>{optional ? <select aria-label={`Exportniveau ${event.title} voor ${hotelNames[hotel.id]}`} value={selected.includes(key) ? levels[key] ?? "" : ""} onChange={(e) => choose(key, e.target.value)}><option value="">Niet meenemen</option>{demandLevels.map((level) => <option key={level} value={level}>Toevoegen als {demandLabels[level].toLowerCase()}</option>)}</select> : <span className={`export-level export-level-${hotel.importance.toLowerCase()}`}>{demandLabels[hotel.importance]}</span>}</td>
+              <td>{optional ? <select aria-label={`Exportniveau ${event.title} voor ${hotelNames[hotel.id]}`} value={selected.includes(key) ? levels[key] ?? "Medium" : ""} onChange={(e) => choose(key, e.target.value)}><option value="">Niet meenemen</option>{demandLevels.map((level) => <option key={level} value={level}>Toevoegen als {demandLabels[level].toLowerCase()}</option>)}</select> : <span className={`export-level export-level-${hotel.importance.toLowerCase()}`}>{demandLabels[hotel.importance]}</span>}</td>
             </tr>
           </Fragment>)}
         </tbody></table></div>
@@ -89,7 +89,7 @@ export function ExportControls({ events, hotelIds, hotelNames, from, to, reexpor
       {reexport && ready.length > 0 && <label className="export-row-toggle export-select-all"><input type="checkbox" checked={ready.every(({ key }) => selected.includes(key))} onChange={(e) => setSelected(e.target.checked ? [...new Set([...selected, ...ready.map(({ key }) => key)])] : selected.filter((key) => !ready.some((row) => row.key === key)))} />Alle {ready.length} events selecteren</label>}
       {eventTable(ready)}
       {!ready.length && <div className="export-empty"><h3>{reexport ? "Geen beschikbare events" : "Je bent bij"}</h3><p className="muted">{reexport ? "Kies een ander hotel of een ruimere periode." : "Er staan geen nieuwe events klaar voor deze hotels en periode."}</p></div>}
-      {announcements.length > 0 && <details className="export-disclosure export-optional"><summary>Optioneel toevoegen <span className="muted">· {announcements.length} {announcements.length === 1 ? "aankondiging" : "aankondigingen"}{choices.length > 0 ? ` · ${choices.length} toegevoegd` : ""}</span></summary><p className="muted">Deze events hebben nog geen onderbouwd vraagniveau. Kies zelf een niveau om ze mee te nemen. Dit verandert onze vraaginschatting niet.</p>{eventTable(announcements, true)}</details>}
+      {announcements.length > 0 && <details className="export-disclosure export-optional"><summary>Optioneel toevoegen <span className="muted">· {announcements.length} Medium-event{announcements.length === 1 ? "" : "s"}{choices.length > 0 ? ` · ${choices.length} toegevoegd` : ""}</span></summary><p className="muted">Deze events gaan alleen mee als je ze selecteert. Medium is de standaard; je kunt het exportniveau aanpassen.</p>{eventTable(announcements, true)}</details>}
     </fieldset>
     {workbookRows.length > 0 && <details className="export-disclosure export-file-details">
       <summary>Bekijk bestandsdetails</summary>

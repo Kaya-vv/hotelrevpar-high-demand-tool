@@ -877,7 +877,7 @@ export async function runCollection(
     const settled = await Promise.allSettled(sourcesToRun.map((source) => collectSource(source)));
     for (const outcome of settled) if (outcome.status === "rejected") throw outcome.reason;
     let publication = await repository.recalculateScores(context);
-    // Asked after scoring, because only the scores say which events are "Zelf beoordelen".
+    // Asked after scoring, because only the scores say which events belong to shown Medium.
     const sizeChecker = dependencies ? dependencies.sizeChecker : defaultSizeChecker(observeUsage);
     if (sizeChecker) {
       try {

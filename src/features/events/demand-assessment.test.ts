@@ -156,14 +156,14 @@ describe("stadium concerts", () => {
     const score = scoreHotelEvent({ candidate: show("Johan Cruijff ArenA"), hotel: schiphol, overlaps: [] });
     expect(score).toMatchObject({ suggestedImportance: "High", impactBasis: "stadium_concert" });
     expect(score.assessment.reasons.join(" ")).toContain("stadion");
-    expect(visibility(score)).toEqual({ visible: true, announced: false });
+    expect(visibility(score)).toEqual({ visible: true, announced: false, shownLevel: "High" });
   });
 
   it("keeps an arena concert without evidence off the calendar", () => {
     // Owner's review of the Ziggo Dome agenda: only about a quarter of the shows draw overnight fans.
     const score = scoreHotelEvent({ candidate: show("Ziggo Dome"), hotel: schiphol, overlaps: [] });
     expect(score.suggestedImportance).not.toBe("High");
-    expect(visibility(score)).toEqual({ visible: false, announced: false });
+    expect(visibility(score)).toEqual({ visible: false, announced: false, shownLevel: "Low" });
   });
 
   it.each([
@@ -186,21 +186,21 @@ describe("stadium concerts", () => {
 });
 
 describe("size check", () => {
-  // A three-day festival with confirmed dates and place but no size: a "Zelf beoordelen" event.
+  // A three-day festival with confirmed dates and place but no size: a shown Medium event.
   const festival = (overrides: Partial<EventCandidate> = {}): EventCandidate => ({ ...base, title: "Film Festival", category: "festival",
     localRank: null, venueCapacity: null, aiImpactPoints: 35, evidence: evidence(), ...overrides });
   const check = (verdict: "big" | "small" | "unsure") => ({ version: 1 as const, verdict, visitors: "circa 300.000",
     reason: "Internationaal filmfestival met veel bezoekers van buiten de regio.", model: "claude-sonnet-5", checkedAt: "2026-09-29T09:00:00Z" });
-  const visibility = (score: DemandScore, includeMedium = false) => hotelCalendarVisibility({
+  const visibility = (score: DemandScore, includeLow = false) => hotelCalendarVisibility({
     active: true, confirmed: true, supported: true, startDate: "2027-01-01", endDate: "2027-01-03", nearTermHorizon: "2026-12-28",
-    demandRadiusKm: 25, category: "festival", hasConfirmedDateAndLocation: true, includeMedium,
+    demandRadiusKm: 25, category: "festival", hasConfirmedDateAndLocation: true, includeLow,
     scores: [{ importance: score.suggestedImportance, impactBasis: score.impactBasis, distanceKm: score.distanceKm, assessment: score.assessment }] });
 
   it("leaves an unchecked or unknown event to the operator", () => {
     for (const sizeCheck of [undefined, check("unsure")]) {
       const score = scoreHotelEvent({ candidate: festival({ sizeCheck }), hotel, overlaps: [] });
       expect(score.suggestedImportance).not.toBe("High");
-      expect(visibility(score)).toEqual({ visible: true, announced: true });
+      expect(visibility(score)).toEqual({ visible: true, announced: true, shownLevel: "Medium" });
     }
   });
 
@@ -208,34 +208,34 @@ describe("size check", () => {
     const score = scoreHotelEvent({ candidate: festival({ sizeCheck: check("big") }), hotel, overlaps: [] });
     expect(score).toMatchObject({ suggestedImportance: "High", impactBasis: "size_check" });
     expect(score.assessment.reasons.join(" ")).toContain("circa 300.000");
-    expect(visibility(score)).toEqual({ visible: true, announced: false });
+    expect(visibility(score)).toEqual({ visible: true, announced: false, shownLevel: "High" });
   });
 
-  it("moves a small event behind the Medium toggle unless its organiser proves travelling visitors", () => {
+  it("moves a small event behind the Laag toggle unless its organiser proves travelling visitors", () => {
     const small = scoreHotelEvent({ candidate: festival({ sizeCheck: check("small") }), hotel, overlaps: [] });
     expect(small.suggestedImportance).not.toBe("High");
-    expect(visibility(small)).toEqual({ visible: false, announced: false });
-    expect(visibility(small, true)).toEqual({ visible: true, announced: false });
+    expect(visibility(small)).toEqual({ visible: false, announced: false, shownLevel: "Low" });
+    expect(visibility(small, true)).toEqual({ visible: true, announced: false, shownLevel: "Low" });
     // Anastacia at AFAS Live: the model called it small, the organiser's page quoted travelling fans.
     const evidenced = scoreHotelEvent({ candidate: festival({ sizeCheck: check("small"),
       evidence: evidence("travelling_audience", "Fans travel from abroad for this festival.") }), hotel, overlaps: [] });
-    expect(visibility(evidenced)).toEqual({ visible: true, announced: true });
+    expect(visibility(evidenced)).toEqual({ visible: true, announced: true, shownLevel: "Medium" });
   });
 
-  it("keeps a small event reachable through the Medium toggle when its own grade was Low", () => {
+  it("keeps a small event reachable through the Laag toggle when its own grade was Low", () => {
     const low = festival({ aiImpactPoints: 0 });
     expect(scoreHotelEvent({ candidate: low, hotel, overlaps: [] }).suggestedImportance).toBe("Low");
     const small = scoreHotelEvent({ candidate: { ...low, sizeCheck: check("small") }, hotel, overlaps: [] });
-    expect(visibility(small)).toEqual({ visible: false, announced: false });
-    expect(visibility(small, true)).toEqual({ visible: true, announced: false });
+    expect(visibility(small)).toEqual({ visible: false, announced: false, shownLevel: "Low" });
+    expect(visibility(small, true)).toEqual({ visible: true, announced: false, shownLevel: "Low" });
   });
 
   it("applies a small answer to an event whose organiser describes a local audience, but never a big one", () => {
     const local = festival({ evidence: evidence("local_audience", "Een feest voor de bewoners van de wijk.") });
-    expect(visibility(scoreHotelEvent({ candidate: local, hotel, overlaps: [] }))).toEqual({ visible: true, announced: true });
+    expect(visibility(scoreHotelEvent({ candidate: local, hotel, overlaps: [] }))).toEqual({ visible: true, announced: true, shownLevel: "Medium" });
     const small = scoreHotelEvent({ candidate: { ...local, sizeCheck: check("small") }, hotel, overlaps: [] });
-    expect(visibility(small)).toEqual({ visible: false, announced: false });
-    expect(visibility(small, true)).toEqual({ visible: true, announced: false });
+    expect(visibility(small)).toEqual({ visible: false, announced: false, shownLevel: "Low" });
+    expect(visibility(small, true)).toEqual({ visible: true, announced: false, shownLevel: "Low" });
     const big = scoreHotelEvent({ candidate: { ...local, sizeCheck: check("big") }, hotel, overlaps: [] });
     expect(big.suggestedImportance).not.toBe("High");
   });

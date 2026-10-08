@@ -11,6 +11,7 @@ export type ExportEvent = {
     code: string;
     importance: DemandLevel;
     impactBasis: string;
+    /** Shown as Medium; export only after manager selection. */
     announced?: boolean;
     available?: boolean;
     exportLevel?: DemandLevel | null;

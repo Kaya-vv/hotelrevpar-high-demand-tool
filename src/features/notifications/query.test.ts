@@ -211,10 +211,10 @@ describe("notification calendar parity", () => {
       "override-announced",
     ]);
     expect(notification?.events.map((event) => event.level)).toEqual([
-      "Zelf beoordelen",
+      "Medium",
       "Hoog",
       "Piek",
-      "Zelf beoordelen",
+      "Medium",
     ]);
   });
 

@@ -13,9 +13,9 @@ import type { CollectionContext } from "./run";
 import { usageEvent, type ClaudeUsageEvent } from "./sources/claude";
 
 /**
- * The model the owner reviewed on 29 September 2026: of 85 "Zelf beoordelen" events it called
- * 28 big, 31 small and 26 unknown, with one disputed answer (Anastacia, called small; the
- * scorer now lets quoted travelling-audience evidence overrule a "small").
+ * The model the owner reviewed on 29 September 2026: of 85 shown Medium events it called 28 big,
+ * 31 small and 26 unknown, with one disputed answer (Anastacia, called small; the scorer now lets
+ * quoted travelling-audience evidence overrule a "small").
  */
 export const SIZE_CHECK_MODEL = "claude-sonnet-5";
 
@@ -96,7 +96,7 @@ export async function checkEventSizes(events: SizeCheckEvent[], options: {
   return { checks, failed, requests: events.length };
 }
 
-/** Events this area's hotels see as "Zelf beoordelen" that have never been size-checked. */
+/** Shown Medium events for this area's hotels that have never been size-checked. */
 async function dueSizeChecks(admin: AdminClient, context: CollectionContext): Promise<SizeCheckEvent[]> {
   const announced = new Set<string>();
   for (const hotel of context.hotels) {

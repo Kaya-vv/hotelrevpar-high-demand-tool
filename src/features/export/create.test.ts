@@ -20,12 +20,13 @@ describe("incremental hotel exports", () => {
     expect(mapRevControlRows(result, [hotelA, hotelB]).filter((row) => row.hotels === "B")).toHaveLength(40);
     expect(mapRevControlRows(result, [hotelA, hotelB]).filter((row) => row.hotels === "A, B")).toHaveLength(1);
   });
-  it("requires selection and a manual level for announcements; never changes AI scores", () => {
+  it("requires selection for shown Medium, defaults its export to Medium, and never changes AI scores", () => {
     const event = makeEvent();
     event.hotels = [{ ...event.hotels[0], importance: "Medium", announced: true, exportLevel: "Low" }];
     const key = pairKey(event.id, hotelA);
     expect(selectExportEvents([event], "all", [], [])).toEqual([]);
-    expect(selectExportEvents([event], "new", [key], [])).toEqual([]);
+    const defaulted = selectExportEvents([event], "new", [key], []);
+    expect(mapRevControlRows(defaulted, [hotelA])[0].importance).toBe("Medium");
     const selected = selectExportEvents([event], "new", [key], [{ eventId: event.id, hotelId: hotelA, importance: "Low" }]);
     expect(mapRevControlRows(selected, [hotelA])[0].importance).toBe("Low");
     expect(event.hotels[0].importance).toBe("Medium");

@@ -258,10 +258,10 @@ export function scoreHotelEvent({
       return { ...proxy, assessment: { ...assessment, reasons }, impactPoints: 75, impactBasis: "size_check", total: 75, suggestedImportance: "High" };
     }
   }
-  // A "small" answer takes the event off the "Zelf beoordelen" list (see `isAnnouncedDemand`) and
-  // leaves it at Medium, the level "Ook Medium tonen" shows; a Low grade would hide it outright.
-  // Quoted overnight or travelling visitors outrank the model's memory (Anastacia at AFAS Live,
-  // September 2026), so such an event stays on the list.
+  // A "small" answer takes the event out of the shown Medium tier (see `isAnnouncedDemand`) and
+  // leaves its stored grade at Medium, which the presentation policy shows as Laag. Quoted
+  // overnight or travelling visitors outrank the model's memory (Anastacia at AFAS Live,
+  // September 2026), so such an event stays Medium.
   if (size?.verdict === "small" && !hasHotelDemand(assessment)) {
     const reasons = [...assessment.reasons, `Klein of vooral lokaal evenement volgens algemene kennis: ${size.reason}`];
     return { ...proxy, assessment: { ...assessment, reasons }, impactBasis: "size_check", suggestedImportance: "Medium" };

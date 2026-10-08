@@ -20,15 +20,13 @@ export function ManualLevelForm({
   eventId,
   hotelId,
   manualLevel,
-  suggestedLevel,
-  announced,
+  automaticLevel,
   action,
 }: {
   eventId: string;
   hotelId: string;
   manualLevel: DemandLevel | null;
-  suggestedLevel: DemandLevel;
-  announced?: boolean;
+  automaticLevel: DemandLevel;
   action: ManualLevelAction;
 }) {
   const [result, save, saving] = useActionState(action, null);
@@ -36,10 +34,9 @@ export function ManualLevelForm({
     <section className="manual-level">
       <h3>Inschatting aanpassen</h3>
       <p className="muted">
-        {announced ? "Dit evenement heeft nog geen niveau. " : ""}
-        Hoog en Piek staan in de kalender en gaan mee in de export. Laag en
-        Medium gaan niet mee; Medium-events zie je alleen als “Ook
-        Medium-events tonen” aan staat.
+        Hoog en Piek gaan automatisch mee in de export. Medium gaat alleen mee als
+        je het op de exportpagina selecteert. Laag zie je alleen als “Ook
+        Laag-events tonen” aan staat.
       </p>
       <form action={save}>
         <input type="hidden" name="eventId" value={eventId} />
@@ -50,7 +47,7 @@ export function ManualLevelForm({
           <select
             key={manualLevel ?? "automatic"}
             name="importance"
-            defaultValue={manualLevel ?? suggestedLevel}
+            defaultValue={manualLevel ?? automaticLevel}
           >
             {demandLevels.map((level) => (
               <option key={level} value={level}>

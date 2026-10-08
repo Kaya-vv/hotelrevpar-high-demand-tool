@@ -1,6 +1,6 @@
-// Read-only audit of what a hotel's calendar actually shows, split by how each event earned its
-// place: a publishable grade, or the unlevelled "Hotelvraag" announcement band. No writes, no
-// provider calls. Usage: node scripts/calendar-audit.mjs [hotelNameSubstring]
+// Read-only audit of what a hotel's calendar shows, split by automatically publishable grades
+// and the shown Medium tier. No writes, no provider calls.
+// Usage: node scripts/calendar-audit.mjs [hotelNameSubstring]
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createServer } from "vite";
@@ -72,12 +72,12 @@ for (const area of areas) {
     announced.push({ event, start, days, evidenced, destination, scores: eventScores });
   }
 
-  console.log(`\n=== ${area.name} — ${graded.length} graded, ${announced.length} announced (Zelf beoordelen) ===`);
+  console.log(`\n=== ${area.name} — ${graded.length} graded, ${announced.length} shown Medium ===`);
   console.log(`horizon ${nearTermHorizon}, radius ${hotel.demand_radius_km} km\n`);
   console.log("-- graded (High/Peak, exportable automatically) --");
   for (const row of graded.sort((a, b) => a.start.localeCompare(b.start)))
     console.log(`  ${row.start} ${String(row.days).padStart(2)}d ${String(row.score.total).padStart(3)}/${row.score.importance.padEnd(5)} ${row.score.impactBasis.padEnd(14)} ${row.event.title.slice(0, 48)}`);
-  console.log("\n-- announced, no level (hotel must set export level by hand) --");
+  console.log("\n-- Medium (hotel must select it before export) --");
   for (const row of announced.sort((a, b) => a.start.localeCompare(b.start)))
     console.log(`  ${row.start} ${String(row.days).padStart(2)}d ${[row.evidenced && "evidence", row.destination && "destination"].filter(Boolean).join("+").padEnd(20)} tot=${String(row.scores[0]?.total ?? "-").padStart(3)} ${row.event.title.slice(0, 46)}`);
   const byBranch = announced.reduce((acc, row) => {

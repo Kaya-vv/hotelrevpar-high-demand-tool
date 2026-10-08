@@ -687,7 +687,7 @@ export function createCollectionRepository(): CollectionRepository {
         eventId = data.id;
       } else {
         // A collector never carries the size check; without the stored one a big event would drop
-        // back to "Zelf beoordelen" until the end-of-run recalculation.
+        // back to the shown Medium tier until the end-of-run recalculation.
         const stored = preserveCanonical
           ? await supabase.from("events").select("size_check").eq("id", eventId).single()
           : await supabase.from("events").update(eventRow).eq("id", eventId).select("size_check").single();

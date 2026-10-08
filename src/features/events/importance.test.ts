@@ -21,82 +21,121 @@ const base = {
   ],
 };
 
+const hidden = { visible: false, announced: false, shownLevel: null };
+
+function manual(level: "Low" | "Medium" | "High" | "Peak" | null) {
+  const score = gradedDemand({
+    suggested_importance: "Medium",
+    importance_override: level,
+    impact_basis: "ai_assessment",
+  });
+  return hotelCalendarVisibility({ ...base, scores: [{ ...score, distanceKm: 4 }] });
+}
+
 describe("hotel calendar visibility", () => {
-  it("publishes a supported High event", () => {
-    expect(
-      hotelCalendarVisibility({
-        ...base,
-        scores: [{ importance: "High", impactBasis: "demand_rule", distanceKm: 4 }],
-      }),
-    ).toEqual({ visible: true, announced: false });
+  it("publishes a supported High event with its shown level", () => {
+    expect(hotelCalendarVisibility({
+      ...base,
+      scores: [{ importance: "High", impactBasis: "demand_rule", distanceKm: 4 }],
+    })).toEqual({ visible: true, announced: false, shownLevel: "High" });
   });
 
-  it("publishes a confirmed long-range destination as announced", () => {
-    expect(hotelCalendarVisibility(base)).toEqual({ visible: true, announced: true });
+  it("shows an announced event as Medium with and without the Laag toggle", () => {
+    expect(hotelCalendarVisibility(base)).toEqual({
+      visible: true,
+      announced: true,
+      shownLevel: "Medium",
+    });
+    expect(hotelCalendarVisibility({ ...base, includeLow: true })).toEqual({
+      visible: true,
+      announced: true,
+      shownLevel: "Medium",
+    });
   });
 
-  it("shows Medium only for the calendar view that asks for it", () => {
-    const graded = gradedDemand({
+  it("hides a non-announced automatic Medium by default and shows it as Laag with the toggle", () => {
+    const input = {
+      ...base,
+      startDate: "2026-10-01",
+      endDate: "2026-10-02",
+      scores: [{ importance: "Medium" as const, impactBasis: "ai_assessment", distanceKm: 4 }],
+    };
+    expect(hotelCalendarVisibility(input)).toEqual({
+      visible: false,
+      announced: false,
+      shownLevel: "Low",
+    });
+    expect(hotelCalendarVisibility({ ...input, includeLow: true })).toEqual({
+      visible: true,
+      announced: false,
+      shownLevel: "Low",
+    });
+  });
+
+  it("keeps a default-basis score hidden even with the Laag toggle", () => {
+    expect(hotelCalendarVisibility({
+      ...base,
+      includeLow: true,
+      startDate: "2026-10-01",
+      endDate: "2026-10-02",
+    })).toEqual(hidden);
+  });
+
+  it("shows a hand-set Medium as Medium", () => {
+    expect(manual("Medium")).toEqual({
+      visible: true,
+      announced: true,
+      shownLevel: "Medium",
+    });
+  });
+
+  it("hides a hand-set Low by default and exposes it as Laag only under the toggle", () => {
+    expect(manual("Low")).toEqual({
+      visible: false,
+      announced: false,
+      shownLevel: "Low",
+    });
+    const score = gradedDemand({
       suggested_importance: "Medium",
-      importance_override: null,
+      importance_override: "Low",
       impact_basis: "ai_assessment",
     });
-    const scores = [{ ...graded, distanceKm: 4 }];
-    // Default: the export, the notifications and the normal calendar keep High and Peak.
-    expect(hotelCalendarVisibility({ ...base, scores })).toEqual({ visible: true, announced: true });
-    expect(hotelCalendarVisibility({ ...base, scores, startDate: "2026-10-01", endDate: "2026-10-02" }))
-      .toEqual({ visible: false, announced: false });
-    // With the toggle on, the same near-term event shows with its Medium grade.
-    expect(hotelCalendarVisibility({ ...base, scores, includeMedium: true, startDate: "2026-10-01", endDate: "2026-10-02" }))
-      .toEqual({ visible: true, announced: false });
-    // An event the scorer knew nothing about stays out either way.
-    expect(hotelCalendarVisibility({ ...base, includeMedium: true, startDate: "2026-10-01", endDate: "2026-10-02",
-      scores: [{ importance: "Medium", impactBasis: "default", distanceKm: 4 }] }))
-      .toEqual({ visible: false, announced: false });
+    expect(hotelCalendarVisibility({
+      ...base,
+      includeLow: true,
+      scores: [{ ...score, distanceKm: 4 }],
+    })).toEqual({ visible: true, announced: false, shownLevel: "Low" });
+  });
+
+  it("keeps hand-set High and Peak automatically publishable", () => {
+    expect(manual("High")).toEqual({ visible: true, announced: false, shownLevel: "High" });
+    expect(manual("Peak")).toEqual({ visible: true, announced: false, shownLevel: "Peak" });
   });
 
   it("announces a confirmed multi-day event inside 90 days only up to 14 days long", () => {
-    const near = (endDate: string) => hotelCalendarVisibility({ ...base, startDate: "2026-11-06", endDate });
-    // GLOW: nine days, graded Medium, previously hidden without a hand-set level.
-    expect(near("2026-11-14")).toEqual({ visible: true, announced: true });
-    expect(near("2026-11-19")).toEqual({ visible: true, announced: true });
-    // A months-long exhibition is not a stay.
-    expect(near("2026-11-20")).toEqual({ visible: false, announced: false });
-    // Beyond the horizon the same span is still announced; the cap is near-term only.
-    expect(hotelCalendarVisibility({ ...base, startDate: "2027-10-10", endDate: "2028-02-14" }))
-      .toEqual({ visible: true, announced: true });
+    const near = (endDate: string) => hotelCalendarVisibility({
+      ...base,
+      startDate: "2026-11-06",
+      endDate,
+    });
+    expect(near("2026-11-14")).toEqual({ visible: true, announced: true, shownLevel: "Medium" });
+    expect(near("2026-11-19")).toEqual({ visible: true, announced: true, shownLevel: "Medium" });
+    expect(near("2026-11-20")).toEqual(hidden);
+    expect(hotelCalendarVisibility({
+      ...base,
+      startDate: "2027-10-10",
+      endDate: "2028-02-14",
+    })).toEqual({ visible: true, announced: true, shownLevel: "Medium" });
   });
 
-  it("lets a hand-set level decide a long-range announcement", () => {
-    // The stored row the calendar's "Handmatige inschatting" writes, with nothing but a
-    // model guess behind the automatic grade.
-    const row = {
-      suggested_importance: "Medium",
-      importance_override: null as string | null,
-      impact_basis: "ai_assessment",
-    };
-    const withLevel = (level: string | null) => {
-      const score = { ...gradedDemand({ ...row, importance_override: level }), distanceKm: 4 };
-      return hotelCalendarVisibility({ ...base, scores: [score] });
-    };
-    expect(withLevel(null)).toEqual({ visible: true, announced: true });
-    // Hoog and Piek put the event in the calendar with that grade.
-    expect(withLevel("High")).toEqual({ visible: true, announced: false });
-    expect(withLevel("Peak")).toEqual({ visible: true, announced: false });
-    // Laag and Verhoogd take it out instead of leaving the announcement untouched.
-    expect(withLevel("Low")).toEqual({ visible: false, announced: false });
-    expect(withLevel("Medium")).toEqual({ visible: false, announced: false });
-  });
-
-  it("publishes a hand-set grade the automatic scorer had no basis for", () => {
-    const graded = gradedDemand({
+  it("publishes a hand-set grade when the automatic scorer had no basis", () => {
+    const score = gradedDemand({
       suggested_importance: "Medium",
       importance_override: "High",
       impact_basis: "default",
     });
-    expect(graded.importance).toBe("High");
-    expect(hotelCalendarVisibility({ ...base, scores: [{ ...graded, distanceKm: 4 }] }))
-      .toEqual({ visible: true, announced: false });
+    expect(hotelCalendarVisibility({ ...base, scores: [{ ...score, distanceKm: 4 }] }))
+      .toEqual({ visible: true, announced: false, shownLevel: "High" });
   });
 
   it.each([
@@ -104,6 +143,6 @@ describe("hotel calendar visibility", () => {
     { confirmed: false },
     { supported: false },
   ])("keeps events outside the common publication gates hidden: %j", (change) => {
-    expect(hotelCalendarVisibility({ ...base, ...change }).visible).toBe(false);
+    expect(hotelCalendarVisibility({ ...base, ...change })).toEqual(hidden);
   });
 });

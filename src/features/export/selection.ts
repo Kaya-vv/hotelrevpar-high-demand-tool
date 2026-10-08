@@ -11,9 +11,9 @@ export function selectExportEvents(events: ExportEvent[], mode: ExportMode, sele
     if (hotel.available === false || (mode === "new" && hotel.exportedAt) || (mode === "selected" && !selected.has(key))) return [];
     if (isPublishableDemand(hotel.importance, hotel.impactBasis)) return [hotel];
     const choice = choices.find((choice) => choice.eventId === event.id && choice.hotelId === hotel.id);
-    // Remembering a value never implies consent to export an announcement.
-    if (!hotel.announced || !selected.has(key) || !choice) return [];
-    return [{ ...hotel, exportLevel: choice.importance, manuallySelected: true }];
+    // Selecting a shown Medium event is consent to export it; Medium is the default level.
+    if (!hotel.announced || !selected.has(key)) return [];
+    return [{ ...hotel, exportLevel: choice?.importance ?? "Medium", manuallySelected: true }];
   }) })).filter((event) => event.hotels.length);
 }
 

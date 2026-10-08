@@ -1,11 +1,9 @@
 import { trialHorizonEnd } from "@/features/accounts/trial";
 import { readEventEvidence } from "@/features/events/evidence";
 import {
-  announcedDemandLabel,
   demandLabels,
   gradedDemand,
   hotelCalendarVisibility,
-  isPublishableDemand,
 } from "@/features/events/importance";
 import { eventLocalDate } from "@/features/events/normalize";
 import { isEnabledPrimarySource } from "@/features/events/source-evidence";
@@ -19,7 +17,7 @@ export type NotificationEvent = {
   startAt: string;
   endAt: string;
   level: string;
-  /** Shown as "Zelf beoordelen": no High or Peak grade; see `isAnnouncedDemand`. */
+  /** Shown as Medium; exported only when the manager chooses it. */
   announced: boolean;
 };
 
@@ -158,10 +156,7 @@ export async function loadVisibleNotificationEvents(
       }),
       scores: eventScores,
     });
-    if (!visibility.visible) return [];
-    const graded = eventScores.find((score) =>
-      isPublishableDemand(score.importance, score.impactBasis),
-    );
+    if (!visibility.visible || !visibility.shownLevel) return [];
     return [
       {
         id: event.id,
@@ -177,7 +172,7 @@ export async function loadVisibleNotificationEvents(
           null,
         startAt,
         endAt,
-        level: graded ? demandLabels[graded.importance] : announcedDemandLabel,
+        level: demandLabels[visibility.shownLevel],
         announced: visibility.announced,
       },
     ];

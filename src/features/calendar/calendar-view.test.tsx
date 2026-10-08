@@ -52,6 +52,7 @@ const events: CalendarEvent[] = [
         distanceKm: 19,
       },
     ],
+    shownLevel: "High",
   },
 ];
 
@@ -91,7 +92,7 @@ describe("CalendarView", () => {
       screen.getByRole("link", { name: /bekijk evenement/i })
     ).toHaveAttribute("href", "https://example.com/ddw");
     expect(screen.queryByText("60 punten")).not.toBeInTheDocument();
-    expect(screen.queryByText("Medium")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Medium").length).toBeGreaterThan(0);
     expect(screen.queryByText("Laag")).not.toBeInTheDocument();
     expect(screen.queryByText("Handmatige inschatting")).not.toBeInTheDocument();
   });
@@ -118,11 +119,12 @@ describe("CalendarView", () => {
           {
             ...events[0],
             announced: true,
+            shownLevel: "Medium",
             hotelScores: [],
             assessedScore: {
               ...events[0].hotelScores[0],
-              importance: "Low",
-              manualLevel: "Low",
+              importance: "Medium",
+              manualLevel: null,
               suggestedLevel: "Medium",
             },
           },
@@ -136,7 +138,7 @@ describe("CalendarView", () => {
     // inschatting?", one click deeper than the event itself.
     expect(select.closest("details.score-explanation")).toBeNull();
     expect(document.querySelector("input[name='hotelId']")).toHaveValue("hotel-1");
-    expect(select).toHaveValue("Low");
+    expect(select).toHaveValue("Medium");
     expect(screen.queryByRole("option", { name: /Automatisch/ })).not.toBeInTheDocument();
     expect(screen.getAllByRole("option").map((option) => option.textContent))
       .toEqual(["Laag", "Medium", "Hoog", "Piek"]);
@@ -170,6 +172,7 @@ describe("CalendarView", () => {
       title: "Handmatig verlaagd congres",
       hotelScores: [],
       visible: false,
+      shownLevel: "Low",
       assessedScore: {
         ...events[0].hotelScores[0],
         importance: "Low",
@@ -196,40 +199,43 @@ describe("CalendarView", () => {
       <CalendarView
         month="2027-10"
         events={events}
-        hiddenEvents={[{ ...events[0], id: "hidden-1", hotelScores: [], visible: false }]}
+        hiddenEvents={[{ ...events[0], id: "hidden-1", shownLevel: "Low", hotelScores: [], visible: false }]}
       />,
     );
 
     expect(screen.queryByText(/Handmatig uit de kalender gehaald/)).not.toBeInTheDocument();
   });
 
-  it("points an empty calendar at the Medium events and counts them once shown", () => {
+  it("points an empty calendar at the Laag events and counts them once shown", () => {
     const { rerender } = render(
-      <CalendarView month="2027-10" events={[]} mediumHref="/calendar?medium=1" />,
+      <CalendarView month="2027-10" events={[]} lowHref="/calendar?low=1" />,
     );
-    // A remote hotel can have no High or Peak event at all.
-    expect(screen.getByRole("link", { name: /Medium-events/ })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /Laag-events/ })).toHaveAttribute(
       "href",
-      "/calendar?medium=1",
+      "/calendar?low=1",
     );
 
     rerender(
       <CalendarView
         month="2027-10"
-        includeMedium
-        mediumHref="/calendar?medium=1"
+        includeLow
+        lowHref="/calendar?low=1"
+        overrideImportanceAction={vi.fn()}
         events={[
           {
             ...events[0],
+            shownLevel: "Low",
             hotelScores: [{ ...events[0].hotelScores[1], importance: "Medium" }],
+            assessedScore: { ...events[0].hotelScores[1], importance: "Medium" },
           },
         ]}
       />,
     );
     const tiles = [...document.querySelectorAll(".event-overview-summary > div")]
       .map((tile) => tile.textContent);
-    expect(tiles).toEqual(["1bevestigde vraagmomenten", "1Medium", "0Hoog", "0Piek"]);
-    expect(screen.queryByRole("link", { name: /Medium-events/ })).not.toBeInTheDocument();
+    expect(tiles).toEqual(["1bevestigde vraagmomenten", "1Laag", "0Medium", "0Hoog", "0Piek"]);
+    expect(screen.getAllByLabelText(/Handmatige inschatting/)[0]).toHaveValue("Low");
+    expect(screen.queryByRole("link", { name: /Laag-events/ })).not.toBeInTheDocument();
   });
 
   it("keeps the month calendar as an alternate view with scores in the agenda", () => {

@@ -119,7 +119,8 @@ export async function loadExportEvents(accountId: string, range: ExportRange, se
           scores: [{ importance, impactBasis, manualLevel, distanceKm: score.distance_km, assessment: score.demand_assessment }],
         });
         const claim = claims.find((claim) => claim.event_id === event.id && claim.hotel_id === hotel.id);
-        return { id: hotel.id, code: hotelCodes.get(hotel.id)!, importance, impactBasis,
+        return { id: hotel.id, code: hotelCodes.get(hotel.id)!,
+          importance: visibility.shownLevel ?? importance, impactBasis,
           available: visibility.visible, announced: visibility.announced,
           exportLevel: (choices.find((choice) => choice.event_id === event.id && choice.hotel_id === hotel.id)?.importance as DemandLevel | undefined) ?? null,
           exportedAt: batches.find((batch) => batch.id === claim?.latest_batch_id)?.created_at ?? null,
