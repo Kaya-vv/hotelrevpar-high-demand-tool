@@ -61,6 +61,14 @@ export type CalendarEvent = {
   visible?: boolean;
 };
 
+export type CalendarContextMarker = {
+  id: string;
+  title: string;
+  category: "public_holiday" | "school_holiday";
+  startAt: string;
+  endAt: string;
+};
+
 export type LatestRun = {
   researchPending?: boolean;
   startedAt: string;
@@ -100,6 +108,32 @@ function dayOfMonth(value: string) {
 
 function categoryLabel(value: string) {
   return value.replaceAll("_", " ");
+}
+
+const contextLabels: Record<CalendarContextMarker["category"], string> = {
+  public_holiday: "Feestdag",
+  school_holiday: "Schoolvakantie",
+};
+
+function ContextMarkerList({ markers }: { markers: CalendarContextMarker[] }) {
+  return (
+    <div className="calendar-context-list">
+      {markers.map((marker) => (
+        <div className="calendar-context-row" key={marker.id}>
+          <time dateTime={marker.startAt}>
+            {dateLabel(marker.startAt)}
+            {eventLocalDate(marker.endAt) !== eventLocalDate(marker.startAt)
+              ? ` – ${dateLabel(marker.endAt)}`
+              : ""}
+          </time>
+          <span className={`calendar-context-kind ${marker.category}`}>
+            {contextLabels[marker.category]}
+          </span>
+          <strong>{marker.title}</strong>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function EventDetails({
@@ -315,11 +349,53 @@ function EventOverview({
   );
 }
 
+function ContextOverview({
+  markers,
+  rangeStart,
+  monthHrefs,
+}: {
+  markers: CalendarContextMarker[];
+  rangeStart?: string;
+  monthHrefs?: Record<string, string>;
+}) {
+  if (!markers.length) return null;
+  const months = [...new Set(markers.map((marker) => overviewMonth(marker.startAt, rangeStart)))].sort();
+  return (
+    <section className="calendar-context-overview" aria-label="Kalendercontext">
+      <header>
+        <div>
+          <span className="eyebrow">Kalendercontext</span>
+          <h2>Feestdagen en schoolvakanties</h2>
+        </div>
+        <p>
+          Deze markers blijven naast de vraagfilters zichtbaar en tellen niet mee als
+          vraagmoment.
+        </p>
+      </header>
+      {months.map((month) => {
+        const items = markers.filter((marker) => overviewMonth(marker.startAt, rangeStart) === month);
+        return (
+          <section className="calendar-context-month" key={month}>
+            <h3>
+              <Link href={monthHrefs?.[month] ?? `/calendar?view=calendar&month=${month}`}>
+                {monthLabel(month)} <span aria-hidden="true">›</span>
+              </Link>
+            </h3>
+            <ContextMarkerList markers={items} />
+          </section>
+        );
+      })}
+    </section>
+  );
+}
+
+
 export function CalendarView({
   month,
   rangeStart,
   monthHrefs,
   events,
+  contextMarkers = [],
   hiddenEvents,
   latestRun,
   view = "list",
@@ -331,6 +407,7 @@ export function CalendarView({
   rangeStart?: string;
   monthHrefs?: Record<string, string>;
   events: CalendarEvent[];
+  contextMarkers?: CalendarContextMarker[];
   hiddenEvents?: CalendarEvent[];
   latestRun?: LatestRun | null;
   view?: "list" | "calendar";
@@ -350,6 +427,11 @@ export function CalendarView({
     return (
       <>
         {latestRun && <RunStatus latestRun={latestRun} pollExpired={pollExpired} />}
+        <ContextOverview
+          markers={contextMarkers}
+          rangeStart={rangeStart}
+          monthHrefs={monthHrefs}
+        />
         <EventOverview
           rangeStart={rangeStart}
           monthHrefs={monthHrefs}
@@ -388,6 +470,23 @@ export function CalendarView({
               >
                 {date && <time dateTime={date}>{Number(date.slice(-2))}</time>}
                 {date &&
+                  contextMarkers
+                    .filter(
+                      (marker) =>
+                        eventLocalDate(marker.startAt) <= date &&
+                        eventLocalDate(marker.endAt) >= date
+                    )
+                    .map((marker) => (
+                      <span
+                        className={`calendar-context-marker ${marker.category}`}
+                        key={marker.id}
+                        title={`${contextLabels[marker.category]}: ${marker.title}`}
+                      >
+                        <strong>{contextLabels[marker.category]}</strong>
+                        {" · "}{marker.title}
+                      </span>
+                    ))}
+                {date &&
                   events
                     .filter(
                       (event) =>
@@ -416,9 +515,15 @@ export function CalendarView({
           </div>
         </section>
         <aside className="event-sidebar" aria-label="Agenda en eventdetails">
+          {contextMarkers.length > 0 && (
+            <section className="calendar-context-sidebar" aria-label="Kalendercontext deze maand">
+              <h2>Kalendercontext</h2>
+              <ContextMarkerList markers={contextMarkers} />
+            </section>
+          )}
           {!events.length && (
             <p className="empty-state">
-              Geen gebeurtenissen voor deze filters.
+              Geen vraagmomenten voor deze filters.
             </p>
           )}
           {events.length > 0 && (

@@ -36,6 +36,69 @@ it("fetches linked pages in code and accepts only supplied page evidence, withou
   expect(pageFetcher).toHaveBeenCalledTimes(2);
 });
 
+// North Sea Jazz, Rotterdam: the saved lead pointed at a 2026 news item while the language
+// homepage already announced 9-11 July 2027.
+it("reads the homepage before a stored past-year news page and finds the next edition", async () => {
+  const now = new Date("2026-10-05T12:00:00Z");
+  const article = "https://www.northseajazz.com/en/news/programme-2026";
+  const homepage = "https://www.northseajazz.com/en/";
+  const dateText = "NN North Sea Jazz 2027 09 10 11 July";
+  const locationText = "North Sea Jazz takes place at Rotterdam Ahoy in Rotterdam.";
+  const demandText = "Festival visitors can book their stay through the official hotel partner.";
+  let state: LongRangeState = { version: 2003, discoveredAt: now.toISOString(), leads: [{
+    key: "nsj", title: "North Sea Jazz Festival", url: article, officialPages: [article, "https://www.northseajazz.com/en/tickets"],
+    kind: "event", group: 4, attempts: 5, outcome: "unannounced", nextCheck: now.toISOString(),
+    checkedAt: "2026-09-05T12:00:00Z", editions: [], notes: ["No published future dates"],
+  }] };
+  const store: LongRangeStore = { acquire: async () => true, release: async () => {}, load: async () => state,
+    save: async (_key, value) => { state = structuredClone(value); } };
+  const pageFetcher = vi.fn(async (requested: string) => parseOfficialPage(
+    requested === homepage ? `${dateText}\n${locationText}\n${demandText}` : "North Sea Jazz information.",
+    requested,
+  ));
+  const edition = {
+    sourceUrl: homepage, title: "North Sea Jazz Festival", category: "festival", venue: "Rotterdam Ahoy",
+    startAt: "2027-07-09", endAt: "2027-07-11", status: "active", ownerType: "organizer",
+    attendance: null, venueCapacity: null, impactPoints: 60, overnightAudience: "international",
+    titleConfirmed: true, dateConfirmed: true, locationConfirmed: true,
+    facts: { dateText, locationText, venueAddress: "Rotterdam Ahoy", hostCity: "Rotterdam", locationScope: "venue", continuous: true, majorCompetition: false,
+      demand: [{ sourceUrl: homepage, kind: "hotel_stay", text: demandText, scope: "series", year: null, comparable: true, applicability: "Official accommodation offer for the same continuing festival series." }] },
+  };
+  const create = vi.fn(async () => ({ stop_reason: "end_turn", usage: { input_tokens: 10, output_tokens: 10 },
+    content: [{ type: "text", text: JSON.stringify({ events: [edition], reason: "The homepage announces 2027", more: false }) }] }));
+  const result = await collectLongRange({ start: "2027-01-01", end: "2027-12-31", location: "Rotterdam", radiusKm: 25,
+    now, model: "claude-sonnet-5", client: { messages: { create } } as unknown as Anthropic, batching: { enabled: false },
+    pageFetcher, store, geocode: async () => ({ latitude: 51.882, longitude: 4.488 }) });
+  expect(pageFetcher.mock.calls.map(([requested]) => requested)).toEqual([homepage, "https://www.northseajazz.com/"]);
+  expect(result.candidates).toMatchObject([{ title: "North Sea Jazz Festival", venue: "Rotterdam Ahoy", primarySourceConfirmed: true }]);
+  expect(state.leads[0]).toMatchObject({ outcome: "confirmed", officialPage: homepage });
+});
+
+it("does not call a next edition unannounced from only a past-year article", async () => {
+  const now = new Date("2026-10-05T12:00:00Z");
+  const article = "https://organizer.example/news/programme-2026";
+  let state: LongRangeState = { version: 2003, discoveredAt: now.toISOString(), leads: [{
+    key: "festival", title: "Annual Festival", url: article, kind: "event", group: 4,
+    outcome: "pending", nextCheck: now.toISOString(), checkedAt: null, editions: [], notes: [],
+  }] };
+  const store: LongRangeStore = { acquire: async () => true, release: async () => {}, load: async () => state,
+    save: async (_key, value) => { state = structuredClone(value); } };
+  const pageFetcher = vi.fn(async (requested: string) => {
+    if (requested === "https://organizer.example/") throw new Error("Homepage unavailable");
+    return parseOfficialPage("<title>Annual Festival 2026 programme</title>Past edition dates", requested);
+  });
+  const create = vi.fn(async (request: { tools: { name: string }[] }) => {
+    const body = request.tools.some((tool) => tool.name === "web_search")
+      ? { url: null, reason: "No later official page found" }
+      : { events: [], reason: "Only the 2026 edition is present", more: false };
+    return { stop_reason: "end_turn", usage: { input_tokens: 10, output_tokens: 10 }, content: [{ type: "text", text: JSON.stringify(body) }] };
+  });
+  await collectLongRange({ start: "2027-01-01", end: "2027-12-31", location: "Rotterdam", radiusKm: 25,
+    now, model: "claude-sonnet-5", client: { messages: { create } } as unknown as Anthropic, batching: { enabled: false },
+    pageFetcher, store });
+  expect(state.leads[0]).toMatchObject({ outcome: "pending", pendingStage: "retrieval" });
+});
+
 // Concert at SEA, Burgh-Haamstede, 2026-09-14: the lead was pinned to a tourist page that reset
 // the connection on all four attempts. Its own organiser pages downloaded fine and were cached,
 // but the cache marked them fully extracted, so the lead was finalized with no edition and the

@@ -383,9 +383,12 @@ function defaultCollectors(
         // Dynamic: market-research.ts imports this module, so a static import here is a cycle.
       }, undefined, async () => (await import("./market-research")).readAndEnqueueResearch(context, runId));
     },
+    // The whole season arrives in one request. Cutting it at 90 days hid a January home
+    // tie (Feyenoord - RB Leipzig, 2027-01-27) for weeks; a trial still stops at 90 days.
     footballdata: (context) =>
       collectFootballdata({
-        ...context.window,
+        start: context.window.start,
+        end: context.longRangeAllowed ? longRangeWindow(context.window).end : context.window.end,
         apiKey: configured(process.env.FOOTBALLDATA_API_KEY, "Football Data"),
       }),
     uefa: () => Promise.resolve({ source: "uefa", candidates: [], requests: 0, usage: {} }),

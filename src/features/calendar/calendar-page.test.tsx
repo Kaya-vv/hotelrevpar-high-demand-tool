@@ -6,7 +6,7 @@ import { overrideImportance } from "@/features/review/actions";
 
 const { getCalendarData, viewedAccount } = vi.hoisted(() => ({
   getCalendarData: vi.fn(async () => ({
-    events: [] as CalendarEvent[], latestRun: null, hotels: [{ id: "hotel", name: "Selected hotel" }], selectedHotelId: "hotel", categories: ["concert"],
+    events: [] as CalendarEvent[], contextMarkers: [], latestRun: null, hotels: [{ id: "hotel", name: "Selected hotel" }], selectedHotelId: "hotel", categories: ["concert"],
   })),
   viewedAccount: {
     accountId: "account", accountName: "Robert", role: "operator" as "operator" | "platform_admin", userId: "user",
@@ -24,7 +24,7 @@ function withMediumEvent() {
       hotelScores: [{ hotelId: "hotel", hotelName: "Selected hotel", total: 69, importance: "Medium", suggestedLevel: "Medium", manualLevel: null,
         impactBasis: "ai_assessment", impactPoints: 45, distancePoints: 23, stayPressurePoints: 15, distanceKm: 2 }],
       shownLevel: "Medium" as const,
-    }], latestRun: null, hotels: [{ id: "hotel", name: "Selected hotel" }], selectedHotelId: "hotel", categories: ["festival"],
+    }], contextMarkers: [], latestRun: null, hotels: [{ id: "hotel", name: "Selected hotel" }], selectedHotelId: "hotel", categories: ["festival"],
   });
 }
 

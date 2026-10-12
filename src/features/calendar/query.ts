@@ -14,7 +14,7 @@ import { getHotelScope } from "@/features/workspace/hotel-context";
 import { fetchAllRows, fetchInBatches, fetchPagedInBatches } from "@/lib/supabase/fetch-in-batches";
 import { isEnabledPrimarySource } from "@/features/events/source-evidence";
 
-import type { CalendarEvent, LatestRun } from "./calendar-view";
+import type { CalendarContextMarker, CalendarEvent, LatestRun } from "./calendar-view";
 import type { ReviewEvent } from "@/features/review/review-list";
 
 export type CalendarFilters = {
@@ -42,7 +42,7 @@ async function loadAccountEvents(
     .eq("account_id", accountId).eq("state", state).in("event_id", ids));
   const eventIds = decisions.map(decision => decision.event_id);
   const candidates = await fetchInBatches(eventIds, ids => supabase.from("events")
-    .select("id, title, category, venue, start_at, end_at, certainty, latitude, longitude").in("id", ids));
+    .select("id, title, category, venue, start_at, end_at, certainty, latitude, longitude, region_scope").in("id", ids));
   const byId = new Map(decisions.map(decision => [decision.event_id, decision]));
   // Override dates can move an event into the window. Filter effective dates before
   // loading its much larger evidence and score rows, never on original dates alone.
@@ -95,7 +95,31 @@ export async function getCalendarData(
   if (runResult.error) throw runResult.error;
 
   const scopedEvents = events.filter((event) => linkedIds.has(event.id));
-  const eventIds = scopedEvents.map((event) => event.id);
+  const decisionsByEvent = new Map(
+    decisions.map((decision) => [decision.event_id, decision])
+  );
+  const selectedHotel = hotels.find((hotel) => hotel.id === selectedHotelId);
+  const contextMarkers: CalendarContextMarker[] = scopedEvents
+    .filter((event) =>
+      event.category === "public_holiday"
+      || (event.category === "school_holiday"
+        && Boolean(selectedHotel?.holiday_region)
+        && event.region_scope === selectedHotel?.holiday_region))
+    .filter((event) => event.certainty === "confirmed" && !decisionsByEvent.get(event.id)?.merged_into_event_id)
+    .map((event) => {
+      const decision = decisionsByEvent.get(event.id);
+      return {
+        id: event.id,
+        title: decision?.override_title ?? event.title,
+        category: event.category as CalendarContextMarker["category"],
+        startAt: decision?.override_start_at ?? event.start_at,
+        endAt: decision?.override_end_at ?? event.end_at,
+      };
+    });
+  const demandEvents = scopedEvents.filter(
+    (event) => event.category !== "public_holiday" && event.category !== "school_holiday",
+  );
+  const eventIds = demandEvents.map((event) => event.id);
   const scores =
     eventIds.length && selectedHotelId
       ? await fetchInBatches(eventIds, (ids) =>
@@ -107,19 +131,14 @@ export async function getCalendarData(
         )
       : [];
 
-  const decisionsByEvent = new Map(
-    decisions.map((decision) => [decision.event_id, decision])
-  );
-  const selectedHotelName =
-    hotels.find((hotel) => hotel.id === selectedHotelId)?.name ?? "Hotel";
+  const selectedHotelName = selectedHotel?.name ?? "Hotel";
   // Same boundary the collector uses to split near-term verification from long-range research.
   const nearTermHorizon = new Date(Date.now() + 90 * 86_400_000)
     .toISOString()
     .slice(0, 10);
-  const selectedRadiusKm =
-    hotels.find((hotel) => hotel.id === selectedHotelId)?.demand_radius_km ?? null;
+  const selectedRadiusKm = selectedHotel?.demand_radius_km ?? null;
   const exportedDates = await calendarExportDates(accountId, selectedHotelId, eventIds);
-  const assessed: CalendarEvent[] = scopedEvents
+  const assessed: CalendarEvent[] = demandEvents
     .filter((event) => event.certainty === "confirmed")
     .map((event) => {
       const decision = decisionsByEvent.get(event.id);
@@ -193,7 +212,7 @@ export async function getCalendarData(
       };
     })
     .filter((event) => eventLocalDate(event.startAt) <= bounds.end && eventLocalDate(event.endAt) >= bounds.start);
-  const byDate = (left: CalendarEvent, right: CalendarEvent) =>
+  const byDate = (left: { startAt: string; title: string }, right: { startAt: string; title: string }) =>
     left.startAt.localeCompare(right.startAt) || left.title.localeCompare(right.title, "nl");
   const mapped = assessed.filter((event) => event.visible);
   // A hand-set level below the publish threshold takes the event out of the calendar. It stays
@@ -201,6 +220,9 @@ export async function getCalendarData(
   const hiddenEvents = assessed
     .filter((event) => !event.visible && Boolean(event.assessedScore?.manualLevel))
     .sort(byDate);
+  // Demand filters never hide date context: a filtered festival calendar still needs to show
+  // that its dates overlap Easter or the selected hotel's school holiday.
+  contextMarkers.sort(byDate);
   const categories = [...new Set(mapped.map((event) => event.category))].sort();
   const filtered = mapped
     .filter((event) => !filters.category || event.category === filters.category)
@@ -233,6 +255,7 @@ export async function getCalendarData(
   }
   return {
     events: filtered,
+    contextMarkers,
     hiddenEvents,
     latestRun,
     hotels,

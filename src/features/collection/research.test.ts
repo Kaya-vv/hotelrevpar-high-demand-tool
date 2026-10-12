@@ -100,10 +100,10 @@ describe("coordinated long-range research", () => {
     const requests = test.create.mock.calls.length;
     await collectLongRange(test.input);
     expect(test.create.mock.calls.length).toBeGreaterThan(requests);
-    expect(test.pageFetcher).toHaveBeenCalledTimes(1);
+    expect(test.pageFetcher).toHaveBeenCalledTimes(2);
     expect(test.state().budget!.billedIds).toEqual(expect.arrayContaining(billed));
     expect(test.state().leads[0].editions.some((edition) => edition.providerEventId === confirmed)).toBe(true);
-    expect(Object.values(test.state().pageCache ?? {}).every((entry) => entry.version === Number(`3${CLAUDE_ASSESSMENT_VERSION}2027`))).toBe(true);
+    expect(test.state().pageCache?.[url].version).toBe(Number(`3${CLAUDE_ASSESSMENT_VERSION}2027`));
     const afterUpgrade = test.create.mock.calls.length;
     await collectLongRange(test.input);
     expect(test.create).toHaveBeenCalledTimes(afterUpgrade);
@@ -223,7 +223,7 @@ describe("coordinated long-range research", () => {
       // A delayed response keeps the original request window when the horizon moves forward.
       const result = await collectLongRange({ ...input, start: "2027-11-01" });
       expect(create).toHaveBeenCalledTimes(1);
-      expect(test.pageFetcher).toHaveBeenCalledTimes(1);
+      expect(test.pageFetcher).toHaveBeenCalledTimes(2);
       expect(result.candidates).toHaveLength(1);
       expect(test.state().cycle?.pending).toBeUndefined();
       expect(test.state().budget?.billedIds).toHaveLength(1);
@@ -444,12 +444,12 @@ describe("coordinated long-range research", () => {
     await collectLongRange(test.input);
     expect(test.create).toHaveBeenCalledTimes(1);
     await collectLongRange(test.input);
-    expect(test.pageFetcher).toHaveBeenCalledTimes(1);
+    expect(test.pageFetcher).toHaveBeenCalledTimes(2);
     const later = new Date("2026-12-06T12:00:00Z");
     test.state().discoveredAt = later.toISOString();
     test.state().announcementSearchAt = later.toISOString();
     await collectLongRange({ ...test.input, now: later });
-    expect(test.pageFetcher).toHaveBeenCalledTimes(2);
+    expect(test.pageFetcher).toHaveBeenCalledTimes(4);
     expect(test.create).toHaveBeenCalledTimes(1);
   });
 
@@ -511,6 +511,23 @@ describe("coordinated long-range research", () => {
     expect(selectDueLeads(leads, now, false).slice(0, 2).map((lead) => lead.key)).toContain("concert");
   });
 
+  it("gives the weekly lead limit to the owner's agendas and large events before older small leads", async () => {
+    const test = setup();
+    const earlier = new Date(now.getTime() - 86_400_000).toISOString();
+    const gigs = Array.from({ length: 70 }, (_, index) => makeLead({ key: `gig-${index}`, title: `Club gig ${index}`, url: `https://club.example/${index}`, group: 1, nextCheck: earlier }));
+    test.state().leads = [
+      ...gigs,
+      makeLead({ key: "open-day", title: "Bachelor Open Dag", url: "https://university.example/open", group: 0, nextCheck: earlier }),
+      makeLead({ key: "mojo", title: "Mojo Concerts", url: "https://www.mojo.nl/agenda", kind: "calendar", origin: "venue_list" }),
+      makeLead({ key: "festival", title: "NN North Sea Jazz Festival", url: "https://www.northseajazz.com/nl/", group: 4 }),
+    ];
+    await collectLongRange(test.input);
+    const picked = test.state().cycle!.leadKeys;
+    expect(picked).toHaveLength(60);
+    expect(picked).toEqual(expect.arrayContaining(["mojo", "festival"]));
+    expect(picked).not.toContain("open-day");
+  });
+
   it("resumes an incomplete recorded calendar after a later fetch outage", async () => {
     const test = setup();
     test.state().leads[0].kind = "calendar";
@@ -529,7 +546,7 @@ describe("coordinated long-range research", () => {
     expect(test.state().pageCache?.[url].complete).toBe(true);
     expect(next.candidates.at(-1)?.evidence?.checkedAt).toBe("2026-10-07T12:00:00.000Z");
     expect(test.state().pageCache?.[url].checkedAt).toBe(now.toISOString());
-    expect(next.usage.blockedSources).toBe(1);
+    expect(next.usage.blockedSources).toBe(2);
   });
 
   it("does not replace a newly announced host city with the previous edition's location", async () => {
@@ -541,6 +558,41 @@ describe("coordinated long-range research", () => {
     const result = await collectLongRange({ ...test.input, seeds });
     expect(test.city).toHaveBeenCalledWith("Rotterdam");
     expect(result.candidates[0].evidence?.hostCity).toBe("Rotterdam");
+  });
+
+  it("reuses a portfolio seed's previous venue when the new dates omit their location", async () => {
+    const test = setup();
+    const previousUrl = url;
+    const previousText = "The festival returned to its familiar home for the previous edition.";
+    test.pageFetcher.mockImplementation(async (requested: string) => parseOfficialPage(
+      `${facts.dateText}\n${facts.demand[0].text}`,
+      requested,
+    ));
+    test.create.mockResolvedValue({ id: "missing-current-venue", stop_reason: "end_turn", usage: { input_tokens: 100, output_tokens: 100 },
+      content: [{ type: "text", text: JSON.stringify({ events: [{
+        ...event,
+        venue: null,
+        locationConfirmed: false,
+        facts: { ...facts, locationText: "", hostCity: null, locationScope: "unknown" },
+      }], reason: "Dates confirmed; current page omits the venue", more: false }) }] });
+    const geocode = vi.fn(async () => ({ latitude: 51.882, longitude: 4.488 }));
+    const seeds = [{ title: "Arts Week", url, lastEditionStart: "2026-10-17", lastEditionEnd: "2026-10-25",
+      previousLocation: { venue: "Rotterdam Ahoy", text: previousText, sourceUrl: previousUrl, checkedAt: "2026-09-01T00:00:00Z" } }];
+    const result = await collectLongRange({ ...test.input, seeds, geocode });
+    expect(result.candidates[0]).toMatchObject({
+      venue: "Rotterdam Ahoy",
+      latitude: 51.882,
+      longitude: 4.488,
+      primarySourceConfirmed: true,
+      evidence: {
+        locationText: previousText,
+        locationSourceUrl: previousUrl,
+        previousEditionLocation: { venue: "Rotterdam Ahoy", sourceUrl: previousUrl },
+      },
+    });
+    expect(geocode).toHaveBeenCalledWith("Rotterdam Ahoy");
+    expect(test.state().leads[0].pendingStage).toBeUndefined();
+    expect(test.state().leads[0].notes.some((note) => note.includes("Location reused from the previous edition"))).toBe(true);
   });
 
   it("retains a dated edition with unresolved location instead of substituting the search city", async () => {
@@ -814,7 +866,7 @@ it("limits repeated paid follow-ups while continuing cheap checks of the known p
     await collectLongRange({ ...test.input, now: check });
     expect(test.create).toHaveBeenCalledTimes(calls);
   }
-  expect(test.pageFetcher).toHaveBeenCalledTimes(3);
+  expect(test.pageFetcher).toHaveBeenCalledTimes(6);
   expect(test.state().leads[0].editions).toHaveLength(1);
   // New official information is still processed after the follow-up allowance ran out.
   test.pageFetcher.mockResolvedValue(parseOfficialPage(`${text} New official announcement.`, url));

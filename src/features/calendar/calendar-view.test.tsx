@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { RunStatusContext } from "@/features/collection/use-run-status-poll";
-import { CalendarView, type CalendarEvent } from "./calendar-view";
+import { CalendarView, type CalendarContextMarker, type CalendarEvent } from "./calendar-view";
 
 const { refresh } = vi.hoisted(() => ({ refresh: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
@@ -56,6 +56,23 @@ const events: CalendarEvent[] = [
   },
 ];
 
+const contextMarkers: CalendarContextMarker[] = [
+  {
+    id: "koningsdag",
+    title: "Koningsdag",
+    category: "public_holiday",
+    startAt: "2027-04-27T00:00:00+02:00",
+    endAt: "2027-04-27T23:59:59+02:00",
+  },
+  {
+    id: "meivakantie",
+    title: "Meivakantie",
+    category: "school_holiday",
+    startAt: "2027-04-24T00:00:00+02:00",
+    endAt: "2027-05-02T23:59:59+02:00",
+  },
+];
+
 describe("CalendarView", () => {
   it("groups future events by month, skips empty months and links to the filtered calendar", () => {
     render(<CalendarView month="2026-09" rangeStart="2026-09-08" events={[
@@ -95,6 +112,43 @@ describe("CalendarView", () => {
     expect(screen.getAllByText("Medium").length).toBeGreaterThan(0);
     expect(screen.queryByText("Laag")).not.toBeInTheDocument();
     expect(screen.queryByText("Handmatige inschatting")).not.toBeInTheDocument();
+  });
+
+  it("shows holidays separately without adding them to demand counts or controls", () => {
+    render(
+      <CalendarView
+        month="2027-10"
+        events={events}
+        contextMarkers={contextMarkers}
+      />,
+    );
+
+    const context = screen.getByRole("region", { name: "Kalendercontext" });
+    expect(within(context).getByText("Koningsdag")).toBeVisible();
+    expect(within(context).getByText("Feestdag")).toBeVisible();
+    expect(within(context).getByText("Schoolvakantie")).toBeVisible();
+    expect(within(context).getByText(/tellen niet mee als vraagmoment/)).toBeVisible();
+    expect(screen.getByText("bevestigde vraagmomenten").previousElementSibling).toHaveTextContent("1");
+    expect(within(context).queryByLabelText(/Handmatige inschatting/)).not.toBeInTheDocument();
+    expect(within(context).queryByText("Laag")).not.toBeInTheDocument();
+  });
+
+  it("renders compact, non-selectable holiday markers on every covered calendar day", () => {
+    render(
+      <CalendarView
+        month="2027-04"
+        view="calendar"
+        events={[]}
+        contextMarkers={contextMarkers}
+      />,
+    );
+
+    const day = screen.getByText("27", { selector: "time" }).closest<HTMLElement>(".month-day")!;
+    expect(within(day).getByTitle("Feestdag: Koningsdag")).toBeVisible();
+    expect(within(day).getByTitle("Schoolvakantie: Meivakantie")).toBeVisible();
+    expect(within(day).queryByRole("button")).not.toBeInTheDocument();
+    expect(document.querySelectorAll(".calendar-context-marker.school_holiday")).toHaveLength(7);
+    expect(screen.getByRole("region", { name: "Kalendercontext deze maand" })).toHaveTextContent("Meivakantie");
   });
 
   it("shows score overrides when the own-account action is supplied", () => {

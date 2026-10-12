@@ -36,7 +36,7 @@ export type Lead = {
   pendingStage?: "url" | "retrieval" | "extraction" | "location" | "demand" | "conflict";
   firstSeenAt?: string;
   discoveryGroups?: number[];
-  pageCache?: Record<string, { text?: string; links?: { url: string; label: string }[]; hash: string; version: number; cursor: number; complete: boolean; chunks: number; checkedAt: string }>;
+  pageCache?: Record<string, { title?: string; text?: string; links?: { url: string; label: string }[]; hash: string; version: number; cursor: number; complete: boolean; chunks: number; checkedAt: string }>;
   /** Extraction version whose cached pages this lead has already been re-read against. Bounds
    *  recovery of a lead that failed without editions to one retry per version. */
   extractedVersion?: number;

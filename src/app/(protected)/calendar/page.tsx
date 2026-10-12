@@ -95,7 +95,7 @@ export default async function CalendarPage({
         <header className="page-title">
           <span className="eyebrow">Overzicht</span>
           <h1>{selectedHotel?.name ?? "Hoge-vraagmomenten"}</h1>
-          <p>Alle relevante momenten met hun verwachte hotelvraag en score.</p>
+          <p>Vraagmomenten met hun verwachte hotelvraag, plus feestdagen en schoolvakanties.</p>
         </header>
       </div>
       {viewingOtherAccount && (
@@ -161,11 +161,12 @@ export default async function CalendarPage({
       <CalendarView
         month={month}
         rangeStart={bounds.start}
-        monthHrefs={Object.fromEntries(data.events.map((event) => {
-          const target = overviewMonth(event.startAt, bounds.start);
+        monthHrefs={Object.fromEntries([...data.events, ...data.contextMarkers].map((item) => {
+          const target = overviewMonth(item.startAt, bounds.start);
           return [target, href({ month: target, view: "calendar" })];
         }))}
         events={data.events}
+        contextMarkers={data.contextMarkers}
         hiddenEvents={data.hiddenEvents}
         latestRun={data.latestRun}
         view={view}

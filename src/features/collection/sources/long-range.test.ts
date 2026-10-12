@@ -353,6 +353,44 @@ describe("long-range source leads", () => {
     expect(memory.state().leads[0].outcome).toBe("confirmed");
   });
 
+  it("publishes a listed venue agenda when one show appears as a performance and a full run", async () => {
+    const single = event({ title: "Ashton Brothers Kerstcircus", category: "show",
+      startAt: "2026-12-19T15:30:00+01:00", endAt: "2026-12-19T22:00:00+01:00" });
+    const run = event({ title: "Ashton Brothers Kerstcircus", category: "show",
+      startAt: "2026-12-19T15:30:00+01:00", endAt: "2026-12-26T20:00:00+01:00" });
+    const expo = event({ title: "Rotterdam Trade Expo", category: "trade_fair",
+      startAt: "2027-03-02", endAt: "2027-03-04" });
+    const create = vi.fn().mockResolvedValueOnce(response([single, expo])).mockResolvedValueOnce(response([run]));
+    const memory = memoryStore(warmState([lead({ title: "Ahoy agenda", kind: "calendar", origin: "venue_list" })]));
+    const result = await collectLongRange({ ...input, store: memory.store, client: client(create) });
+    expect(result.candidates.map((item) => item.title).sort()).toEqual(["Ashton Brothers Kerstcircus", "Rotterdam Trade Expo"]);
+    expect(result.quarantinedProviderEventIds).toEqual([]);
+    expect(memory.state().leads[0]).toMatchObject({ outcome: "confirmed" });
+    expect(memory.state().leads[0].editions).toHaveLength(3);
+  });
+
+  it("re-reads and republishes a listed calendar stored with the old sticky conflict", async () => {
+    const create = vi.fn().mockResolvedValue(response([event()]));
+    const memory = memoryStore(warmState([lead({ title: "Ahoy agenda", kind: "calendar", origin: "venue_list" })]));
+    await collectLongRange({ ...input, store: memory.store, client: client(create) });
+    const stuck = memory.state().leads.find((item) => item.kind === "calendar")!;
+    stuck.outcome = "conflict";
+    stuck.pendingStage = "conflict";
+    stuck.notes = ["Conflicting dates retained for review; editions withheld."];
+    stuck.checkedAt = now.toISOString();
+    stuck.nextCheck = "2026-09-12T12:00:00.000Z";
+    memory.state().discoveredAt = "2026-09-12T12:00:00.000Z";
+    memory.state().announcementSearchAt = "2026-09-12T12:00:00.000Z";
+
+    const recovered = await collectLongRange({ ...input, now: new Date("2026-09-12T12:00:00Z"), store: memory.store, client: client(create) });
+    const calendar = memory.state().leads.find((item) => item.key === stuck.key)!;
+    expect(recovered.candidates).toContainEqual(expect.objectContaining({ title: "Annual Arts Week" }));
+    expect(recovered.quarantinedProviderEventIds).toEqual([]);
+    expect(calendar).toMatchObject({ outcome: "confirmed", checkedAt: "2026-09-12T12:00:00.000Z" });
+    expect(calendar.pendingStage).not.toBe("conflict");
+    expect(calendar.notes).not.toContain("Conflicting dates retained for review; editions withheld.");
+  });
+
   it("caches the shared instruction prefix and keeps the lead-specific text last", async () => {
     const create = vi.fn().mockResolvedValue(response([event()]));
     const memory = memoryStore(warmState([lead(), lead({ key: "other", title: "Other Week", url: "https://other.example/x" })]));
@@ -423,6 +461,8 @@ describe("long-range source leads", () => {
     expect(memory.state().leads[0].editions).toHaveLength(2);
     expect(changed.candidates).toEqual([]);
     expect(changed.error).toContain("Conflicting dates");
+    expect(memory.state().leads[0].pendingStage).toBe("conflict");
+    expect(changed.quarantinedProviderEventIds).toHaveLength(2);
   });
 
   it("re-reads listed venue agendas weekly, settled confirmed leads quarterly and unfinished work monthly", () => {

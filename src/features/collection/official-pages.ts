@@ -4,7 +4,7 @@ import { request as httpRequest } from "node:http";
 import { load } from "cheerio";
 import { createHash } from "node:crypto";
 
-export type OfficialPage = { url: string; text: string; links: { url: string; label: string }[] };
+export type OfficialPage = { url: string; title?: string; text: string; links: { url: string; label: string }[]; checkedAt?: string };
 export type PageFetcher = (url: string) => Promise<OfficialPage>;
 const maxBytes = 2_000_000;
 
@@ -41,7 +41,8 @@ export function parseOfficialPage(html: string, url: string): OfficialPage {
   $("p,div,section,li,h1,h2,h3,tr,br").append("\n");
   const siteContext = $("header,footer").text();
   $("nav,footer,header").remove();
-  return { url, text: `${$("body").text()}\nSTRUCTURED EVENT DATA:\n${structured}\nSITE CONTEXT (may contain organiser addresses rather than event locations):\n${siteContext}`.replace(/[ \t]+/g, " ").replace(/\n\s*\n/g, "\n").trim(),
+  return { url, title: $("title").first().text().trim() || undefined,
+    text: `${$("body").text()}\nSTRUCTURED EVENT DATA:\n${structured}\nSITE CONTEXT (may contain organiser addresses rather than event locations):\n${siteContext}`.replace(/[ \t]+/g, " ").replace(/\n\s*\n/g, "\n").trim(),
     links: [...links].map(([url, label]) => ({ url, label })) };
 }
 
@@ -115,9 +116,50 @@ export function pageChunks(page: OfficialPage, size = 12_000) {
 }
 export const pageHash = (page: OfficialPage) => createHash("sha256").update(page.text).digest("hex");
 
-export async function retrieveOfficialPages(url: string, year: string, fetchPage: PageFetcher, remembered: string[] = [], title = "", limit = 4, purpose: "dates" | "demand" = "dates"): Promise<{ pages: OfficialPage[]; errors: string[] }> {
+function homePages(url: string) {
+  const target = new URL(url);
+  const root = new URL("/", target).href;
+  const language = target.pathname.split("/").filter(Boolean)[0];
+  const languageRoot = language && /^[a-z]{2}(?:-[a-z]{2})?$/i.test(language) ? new URL(`/${language}/`, target).href : null;
+  return [languageRoot, root].filter((page): page is string => Boolean(page));
+}
+function homeTarget(url: string, remembered: string[], year: string) {
+  const sites = new Map<string, { count: number; past: boolean; url: string }>();
+  for (const candidate of new Set([url, ...remembered])) {
+    try {
+      const host = new URL(candidate).hostname.replace(/^www\./, "");
+      const past = pastEditionPage({ url: candidate }, year);
+      const site = sites.get(host);
+      if (site) {
+        site.count++;
+        site.past &&= past;
+      } else sites.set(host, { count: 1, past, url: candidate });
+    } catch { /* Invalid remembered URLs remain ordinary fetch errors. */ }
+  }
+  return [...sites.values()].sort((a, b) => b.count - a.count || Number(a.past) - Number(b.past))[0]?.url ?? url;
+}
+
+
+export function pastEditionPage(page: Pick<OfficialPage, "url" | "title">, year: string) {
+  const targetYear = Number(year);
+  const years = `${page.url} ${page.title ?? ""}`.match(/\b20\d{2}\b/g)?.map(Number) ?? [];
+  return Number.isInteger(targetYear) && years.length > 0 && Math.max(...years) < targetYear;
+}
+
+export async function retrieveOfficialPages(url: string, year: string, fetchPage: PageFetcher, remembered: string[] = [], title = "", limit = 4, purpose: "dates" | "demand" = "dates", prioritizeHome = true): Promise<{ pages: OfficialPage[]; errors: string[] }> {
   const pages: OfficialPage[] = [];
-  const queue = [...new Set([url, ...remembered])];
+  // North Sea Jazz was pinned to a 2026 news item while its language homepage already named 2027.
+  // Read the stable home first; dated articles remain useful fallbacks within the same page budget.
+  const stableTarget = homeTarget(url, remembered, year);
+  const stableHost = new URL(stableTarget).hostname.replace(/^www\./, "");
+  const sameSite = (candidate: string) => {
+    try { return new URL(candidate).hostname.replace(/^www\./, "") === stableHost; } catch { return false; }
+  };
+  const targetOnStableSite = sameSite(url);
+  const ordered = prioritizeHome && !targetOnStableSite && pastEditionPage({ url }, year)
+    ? [...remembered.filter(sameSite), url, ...remembered.filter((candidate) => !sameSite(candidate))]
+    : [url, ...remembered];
+  const queue = [...new Set([...(prioritizeHome ? homePages(stableTarget) : []), ...ordered])];
   const attempted = new Set<string>();
   const errors: string[] = [];
   while (queue.length && attempted.size < limit) {

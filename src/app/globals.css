@@ -764,6 +764,30 @@ a {
   background: #fafcfc;
 }
 
+.calendar-context-marker {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  margin: 2px 0;
+  padding: 2px 4px;
+  border-radius: 2px;
+  color: #76520b;
+  background: #fff1cf;
+  font-size: 0.61rem;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calendar-context-marker.school_holiday {
+  color: var(--blue);
+  background: #dff1f5;
+}
+
+.calendar-context-marker strong {
+  font-weight: 600;
+}
+
 .calendar-chip {
   display: block;
   width: 100%;
@@ -798,6 +822,92 @@ a {
 .calendar-chip.selected {
   color: var(--white);
   background: var(--blue);
+}
+
+.calendar-context-overview {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 16px;
+  padding: 18px;
+  border: 1px solid #c7dfe5;
+  border-radius: 8px;
+  background: #f2f9fa;
+}
+
+.calendar-context-overview > header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.calendar-context-overview h2,
+.calendar-context-overview h3,
+.calendar-context-sidebar h2 {
+  margin: 0;
+}
+
+.calendar-context-overview h2,
+.calendar-context-sidebar h2 {
+  font-size: 1rem;
+}
+
+.calendar-context-overview > header p {
+  max-width: 490px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.calendar-context-month {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.25fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+  padding-top: 12px;
+  border-top: 1px solid #c7dfe5;
+}
+
+.calendar-context-month h3 {
+  font-size: 0.9rem;
+}
+
+.calendar-context-month h3 a {
+  color: var(--blue);
+  text-decoration: none;
+}
+
+.calendar-context-list {
+  display: grid;
+  gap: 7px;
+}
+
+.calendar-context-row {
+  display: grid;
+  grid-template-columns: minmax(100px, 0.35fr) 110px minmax(140px, 1fr);
+  gap: 10px;
+  align-items: center;
+  font-size: 0.78rem;
+}
+
+.calendar-context-row time {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.calendar-context-kind {
+  width: fit-content;
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: #76520b;
+  background: #fff1cf;
+  font-size: 0.67rem;
+  font-weight: 600;
+}
+
+.calendar-context-kind.school_holiday {
+  color: var(--blue);
+  background: #dff1f5;
 }
 
 .event-overview {
@@ -1331,6 +1441,35 @@ td {
   max-height: calc(100vh - 116px);
   gap: 14px;
   overflow: auto;
+}
+
+.calendar-context-sidebar {
+  overflow: hidden;
+  border: 1px solid #c7dfe5;
+  border-radius: 8px;
+  background: #f2f9fa;
+}
+
+.calendar-context-sidebar h2 {
+  padding: 12px 14px;
+  border-bottom: 1px solid #c7dfe5;
+}
+
+.calendar-context-sidebar .calendar-context-list {
+  padding: 12px 14px;
+}
+
+.calendar-context-sidebar .calendar-context-row {
+  grid-template-columns: 86px minmax(0, 1fr);
+  gap: 3px 10px;
+}
+
+.calendar-context-sidebar .calendar-context-row time {
+  grid-row: 1 / span 2;
+}
+
+.calendar-context-sidebar .calendar-context-row strong {
+  grid-column: 2;
 }
 
 .event-agenda {
@@ -2000,6 +2139,30 @@ td {
   .agenda-score {
     grid-column: 3;
     grid-row: 1 / span 2;
+  }
+
+  .calendar-context-overview > header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .calendar-context-month {
+    grid-template-columns: 1fr;
+    gap: 9px;
+  }
+
+  .calendar-context-row {
+    grid-template-columns: 86px minmax(0, 1fr);
+    gap: 3px 10px;
+  }
+
+  .calendar-context-row time {
+    grid-row: 1 / span 2;
+  }
+
+  .calendar-context-row strong {
+    grid-column: 2;
   }
 
   .event-overview-summary {

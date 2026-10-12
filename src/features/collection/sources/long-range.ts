@@ -17,7 +17,7 @@ import { searchDue, ANNOUNCEMENT_SEARCH_DAYS, CONFIRMED_RECHECK_DAYS, LEAD_RECHE
 import type { CollectionWindow, SourceResult } from "../types";
 import { BatchPendingError, CLAUDE_ASSESSMENT_VERSION } from "../anthropic-batches";
 import { projectEditions, projectionInstructions, rememberEdition } from "../series-projections";
-import { fetchOfficialPage, retrieveOfficialPages, type PageFetcher, type OfficialPage } from "../official-pages";
+import { fetchOfficialPage, pastEditionPage, retrieveOfficialPages, type PageFetcher, type OfficialPage } from "../official-pages";
 import { createLongRangeStore, LONG_RANGE_VERSION, LongRangeLeaseError, longRangeMarketKey, type Lead, type LongRangeSeed, type LongRangeStore, type ResearchJob } from "../long-range-store";
 import { claudeProviderEventId, eventWireSchema, fetchedUrls, geocodeEventVenue, normalizeEventResponse, observedUrl, outputSchema, requestMessages, sourceUrls, usageEvent, type Batching, type MessageRequest, type ClaudeUsageEvent } from "./claude";
 
@@ -48,6 +48,32 @@ const NO_PAGE = "No fetched official page";
 function fetchTarget(lead: Lead) {
   return [lead.url, lead.officialPage].find((url) => url && /^https?:\/\//i.test(url) && url !== lead.blockedPage) ?? null;
 }
+type PreviousLocation = NonNullable<LongRangeSeed["previousLocation"]>;
+
+function reusablePreviousLocation(lead: Lead, event: { title: string; startAt: string }): PreviousLocation | null {
+  const eventSeries = labelKey(event.title);
+  const candidates: PreviousLocation[] = [
+    ...(lead.knownEdition?.previousLocation ? [lead.knownEdition.previousLocation] : []),
+    ...lead.editions.flatMap((previous) => {
+      if (eventLocalDate(previous.endAt) >= eventLocalDate(event.startAt)
+        || labelKey(previous.title) !== eventSeries || !previous.evidence?.locationText) return [];
+      return [{
+        venue: previous.venue,
+        text: previous.evidence.locationText,
+        sourceUrl: previous.evidence.locationSourceUrl ?? previous.sourceUrl,
+        checkedAt: previous.evidence.checkedAt,
+        evidence: previous.evidence,
+      }];
+    }),
+  ].filter((location) => location.text.trim().length > 0);
+  const places = new Map<string, PreviousLocation>();
+  for (const location of candidates.sort((a, b) => b.checkedAt.localeCompare(a.checkedAt))) {
+    const place = normalizeText(location.venue ?? location.evidence?.hostCity ?? location.text);
+    if (place && !places.has(place)) places.set(place, location);
+  }
+  return places.size === 1 ? [...places.values()][0] : null;
+}
+
 
 /** One spelling per agenda page, so a listed URL and a discovered one land on the same lead. */
 function calendarUrlKey(url: string) {
@@ -188,8 +214,8 @@ export function selectDueLeads(leads: Lead[], now: Date, bootstrap: boolean) {
     const calendars = [...fairQueue(listed), ...fairQueue(remaining.filter((lead) => lead.kind === "calendar" && !listed.includes(lead)))]
       .slice(0, CALENDAR_SLOTS);
     const eventLeads = remaining.filter((lead) => lead.kind !== "calendar");
-    const firstChecks = fairQueue(eventLeads.filter((lead) => !lead.checkedAt && !(lead.attempts ?? 0))).slice(0, Math.ceil(FETCH_SLOTS / 4));
-    const events = [...firstChecks, ...fairQueue(eventLeads.filter((lead) => !firstChecks.includes(lead)))].slice(0, FETCH_SLOTS - calendars.length);
+    const firstChecks = priorityQueue(eventLeads.filter((lead) => !lead.checkedAt && !(lead.attempts ?? 0))).slice(0, Math.ceil(FETCH_SLOTS / 4));
+    const events = [...firstChecks, ...priorityQueue(eventLeads.filter((lead) => !firstChecks.includes(lead)))].slice(0, FETCH_SLOTS - calendars.length);
     const window = [...firstChecks, ...calendars, ...events.filter((lead) => !firstChecks.includes(lead))];
     selected.push(...window);
     remaining = remaining.filter((lead) => !window.includes(lead));
@@ -200,7 +226,7 @@ export function selectDueLeads(leads: Lead[], now: Date, bootstrap: boolean) {
 /** URL work has its own queue, interleaved with fetched leads before budget reservations. */
 export function selectResolveLeads(leads: Lead[], now: Date, bootstrap: boolean) {
   void bootstrap;
-  return fairQueue(leads.filter((lead) => !fetchTarget(lead) && researchDue(lead, now)));
+  return priorityQueue(leads.filter((lead) => !fetchTarget(lead) && researchDue(lead, now)));
 }
 
 // Equally due category groups take turns; one large university calendar cannot occupy all first checks.
@@ -215,6 +241,32 @@ function fairQueue(leads: Lead[]) {
     }
   }
   return result;
+}
+
+// Prospective-student days fill whole university calendars and never fill a hotel.
+const lowValueTitle = /\bopen\s?(?:dag|dagen|day|days|avond|evening)\b|\bproefstudeer|\bmeeloopdag|\bvoorlichtings|prospective students/i;
+// Halls whose events draw from outside the region; a lead title often names the hall.
+const majorVenueTitle = /\bahoy\b|\bkuip\b|feijenoord|ziggo\s?dome|\barena\b|gelredome|jaarbeurs|\brai\b|\bmecc\b|martiniplaza|philips stadion/i;
+
+/**
+ * The weekly lead limit is fixed; this decides what fills it. In October 2026 Rotterdam held 115
+ * leads nobody had looked at: the owner's Mojo agenda, which listed North Sea Jazz 2027, waited
+ * there since 28 September behind open days and club gigs. Tiers: the owner's venue list, then
+ * large or already paid-for work, then the rest, then open days.
+ */
+export function leadPriority(lead: Lead) {
+  if (lead.kind === "calendar" && lead.origin === "venue_list") return 0;
+  if (lowValueTitle.test(lead.title)) return 3;
+  // Groups 2-5 are trade fairs, citywide culture weeks, festivals and championships (see `groups`).
+  // A series seeded from the calendar counts only when its last edition got the top size rating
+  // (60 impact points): most seeds are single concerts (Twilight In Concert, Racoon).
+  if (repairPending(lead) || assessmentPending(lead) || (lead.historicalDemandPoints ?? 0) >= 60 || (lead.group >= 2 && lead.group <= 5)
+    || (lead.discoveryGroups?.length ?? 0) >= 2 || majorVenueTitle.test(lead.title)) return 1;
+  return 2;
+}
+
+function priorityQueue(leads: Lead[]) {
+  return [0, 1, 2, 3].flatMap((tier) => fairQueue(leads.filter((lead) => leadPriority(lead) === tier)));
 }
 
 // Oldest due work first; prior demand and portfolio history only break ties. A lead that is
@@ -297,10 +349,20 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
   const version = LONG_RANGE_VERSION * 1000 + CLAUDE_ASSESSMENT_VERSION;
   const stored = await store.load(key);
   const state = stored ?? { version, discoveredAt: null, leads: [] };
+  // Ahoy listed the same show as both one performance and its full run. A calendar is a hub for
+  // independent entries, so the old page-level conflict must not keep its entire agenda withheld.
+  let recoveredCalendarConflict = false;
+  for (const lead of state.leads) if (lead.kind === "calendar" && lead.outcome === "conflict") {
+    lead.outcome = lead.editions.length ? "confirmed" : "pending";
+    if (lead.pendingStage === "conflict") delete lead.pendingStage;
+    lead.notes = lead.notes.filter((note) => note !== "Conflicting dates retained for review; editions withheld.");
+    recoveredCalendarConflict = true;
+  }
   // Multiple hotels share this market. A later hotel or a redelivery must not
   // reopen finished research and buy the same work again between checks.
   if (state.research?.completedAt && !state.cycle?.pending && state.version === version
     && !searchDue(state.research.requestedAt, now, ANNOUNCEMENT_SEARCH_DAYS)) {
+    if (recoveredCalendarConflict) await store.save(key, state);
     return { source: "claude", requests: 0, usage: { researchReused: 1 },
       candidates: uniqueEvidenceEditions(state.leads.filter((lead) => lead.outcome !== "conflict")
         .flatMap((lead) => lead.editions).filter((event) => validEventRange(event)
@@ -582,8 +644,8 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
   const sweepDue = discoveryDue || bootstrap
     || now.getTime() - Date.parse(state.lastSweepAt!) >= SWEEP_DAYS * day;
   const eligible = state.leads.filter((lead) => researchDue(lead, now));
-  const firstChecks = fairQueue(eligible.filter((lead) => !lead.checkedAt && !(lead.attempts ?? 0))).slice(0, 5);
-  const available = [...firstChecks, ...fairQueue(eligible.filter((lead) => !firstChecks.includes(lead)))];
+  const firstChecks = priorityQueue(eligible.filter((lead) => !lead.checkedAt && !(lead.attempts ?? 0))).slice(0, 5);
+  const available = [...firstChecks, ...priorityQueue(eligible.filter((lead) => !firstChecks.includes(lead)))];
   if (workCycle.finished && workCycle.waves < CYCLE_WAVE_LIMIT && workCycle.leadKeys.length < CYCLE_LEAD_LIMIT && available.some((lead) => !workCycle.leadKeys.includes(lead.key))) workCycle.finished = false;
   if (!workCycle.finished) for (const lead of available) {
     if (workCycle.leadKeys.length >= CYCLE_LEAD_LIMIT) break;
@@ -665,7 +727,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
       // Leave one of the four pages for a newly discovered announcement or venue address.
       // Keep half the four-page allowance for an organizer discovered by the bounded search
       // and its observed announcement/about link. A venue's practical page must not consume it.
-      const retrieved = job.pages ? { pages: job.pages, errors: [] } : await retrieveOfficialPages(target ?? fetchTarget(lead)!, input.end.slice(0, 4), boundedFetch, kind === "fetch" ? lead.officialPages : [], lead.title, 2, lead.pendingStage === "demand" ? "demand" : "dates");
+      const retrieved = job.pages ? { pages: job.pages, errors: [] } : await retrieveOfficialPages(target ?? fetchTarget(lead)!, input.end.slice(0, 4), boundedFetch, kind === "fetch" ? lead.officialPages : [], lead.title, 2, lead.pendingStage === "demand" ? "demand" : "dates", kind === "fetch");
       for (const error of retrieved.errors) failures.push(`${lead.title}: ${error}`);
       // Concert at SEA sat on a tourist page that reset the connection on every one of four
       // attempts, while its own organiser pages downloaded fine as remembered extras. The dead
@@ -683,8 +745,8 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
         const cachedUrl = target ?? fetchTarget(lead)!;
         const cached = state.pageCache![cachedUrl];
         if (cached?.text && (!cached.complete || cached.version !== Number(`${MONITORING_VERSION}${CLAUDE_ASSESSMENT_VERSION}${input.end.slice(0, 4)}`))) {
-          retrieved.pages.push({ url: cachedUrl, text: cached.text, links: cached.links ?? [] });
-          job.checkedAt = cached.checkedAt;
+          retrieved.pages.push({ url: cachedUrl, title: cached.title, text: cached.text, links: cached.links ?? [] });
+          if (cached.complete) job.checkedAt = cached.checkedAt;
         }
       }
       if (!retrieved.pages.length) {
@@ -725,11 +787,12 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
         const chunks = pageChunks(page);
         let cache = state.pageCache![page.url];
         if (!cache || cache.hash !== hash || cache.version !== extractionVersion || (incompleteExtraction && cache.complete)) {
-          cache = { text: page.text, links: page.links, hash, version: extractionVersion, cursor: 0, chunks: chunks.length, complete: false, checkedAt: now.toISOString() };
+          cache = { title: page.title, text: page.text, links: page.links, hash, version: extractionVersion, cursor: 0, chunks: chunks.length, complete: false, checkedAt: now.toISOString() };
           state.pageCache![page.url] = cache;
         }
         cache.text ??= page.text;
         cache.links ??= page.links;
+        cache.title ??= page.title;
         job.chunks!.push({ url: page.url, hash, index: cache.cursor, total: chunks.length });
         return { ...page, text: chunks[cache.cursor] ?? "" };
       });
@@ -741,9 +804,18 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
     }
     return request;
   };
-  const rememberedEvidence = (lead: Lead): OfficialPage[] => [...lead.editions, ...(lead.knownEdition?.previousLocation?.evidence ? [{ evidence: lead.knownEdition.previousLocation.evidence }] : [])].flatMap((event) => event.evidence
-    ? [{ url: event.evidence.dateSourceUrl, text: event.evidence.dateText, links: [] }, { url: event.evidence.locationSourceUrl ?? event.evidence.dateSourceUrl, text: [event.evidence.locationText, event.evidence.hostCityText].filter(Boolean).join("\n"), links: [] }, ...(event.evidence.locationAddressEvidence ? [{ url: event.evidence.locationAddressEvidence.sourceUrl, text: event.evidence.locationAddressEvidence.text, links: [] }] : []), ...event.evidence.demand.map((fact) => ({ url: fact.sourceUrl, text: fact.text, links: [] }))]
-    : []);
+  const rememberedEvidence = (lead: Lead): OfficialPage[] => {
+    const previous = lead.knownEdition?.previousLocation;
+    const events = [...lead.editions, ...(previous?.evidence ? [{ evidence: previous.evidence }] : [])];
+    const pages = events.flatMap((event) => event.evidence
+      ? [{ url: event.evidence.dateSourceUrl, text: event.evidence.dateText, links: [], checkedAt: event.evidence.checkedAt },
+        { url: event.evidence.locationSourceUrl ?? event.evidence.dateSourceUrl, text: [event.evidence.locationText, event.evidence.hostCityText].filter(Boolean).join("\n"), links: [], checkedAt: event.evidence.checkedAt },
+        ...(event.evidence.locationAddressEvidence ? [{ url: event.evidence.locationAddressEvidence.sourceUrl, text: event.evidence.locationAddressEvidence.text, links: [], checkedAt: event.evidence.locationAddressEvidence.checkedAt }] : []),
+        ...event.evidence.demand.map((fact) => ({ url: fact.sourceUrl, text: fact.text, links: [], checkedAt: event.evidence!.checkedAt }))]
+      : []);
+    if (previous && !previous.evidence) pages.push({ url: previous.sourceUrl, text: previous.text, links: [], checkedAt: previous.checkedAt });
+    return pages;
+  };
   const applyResult = (lead: Lead, message: Anthropic.Message, pages?: OfficialPage[], checkedAt = now.toISOString(), windowStart = verificationWindow().start) => {
     const parsed = parseMessage(message, editionSchema);
     if (pages) pages = [...pages, ...rememberedEvidence(lead)];
@@ -751,6 +823,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
     if (!observed.length) throw new Error(NO_PAGE);
     verifiedPages += observed.length;
     lead.notes = [parsed.reason];
+    const reusedLocations: PreviousLocation[] = [];
     const editions = parsed.events.flatMap((event): EventCandidate[] => {
       const repairedSource = repairObservedUrl(event.sourceUrl, observed);
       // A URL prefix alone must never turn an unfetched detail page into homepage evidence.
@@ -764,8 +837,29 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
       const end = event.endAt.slice(0, 10);
       const validDate = (date: string) => /^\d{4}-\d{2}-\d{2}$/.test(date) && Number.isFinite(Date.parse(date)) && new Date(date).toISOString().slice(0, 10) === date;
       if (!validDate(start) || !validDate(end) || end < start || start > input.end || end < windowStart) return [];
-      const evidencePages = pages?.map((page) => ({ ...page, text: state.pageCache![page.url]?.text ?? page.text, checkedAt: state.pageCache![page.url]?.checkedAt })) ?? message.content.flatMap((block) => block.type === "web_fetch_tool_result" && block.content.type === "web_fetch_result" ? [{ url: block.content.url, text: fetchedDocumentText(block.content.content) }] : []);
-      const evidence = verifyEventEvidence(event.facts, event.sourceUrl, evidencePages, checkedAt, { venue: event.venue, ownerType: event.ownerType, startAt: event.startAt, endAt: event.endAt });
+      const evidencePages = pages?.map((page) => page.checkedAt ? page : ({ ...page, text: state.pageCache![page.url]?.text ?? page.text, checkedAt: state.pageCache![page.url]?.checkedAt })) ?? message.content.flatMap((block) => block.type === "web_fetch_tool_result" && block.content.type === "web_fetch_result" ? [{ url: block.content.url, text: fetchedDocumentText(block.content.content) }] : []);
+      let evidence = verifyEventEvidence(event.facts, event.sourceUrl, evidencePages, checkedAt, { venue: event.venue, ownerType: event.ownerType, startAt: event.startAt, endAt: event.endAt });
+      if (!evidence?.locationText && event.facts) {
+        const previous = reusablePreviousLocation(lead, event);
+        if (previous) {
+          const historical = previous.evidence;
+          event.venue = previous.venue;
+          event.facts = {
+            ...event.facts,
+            locationText: previous.text,
+            locationSourceUrl: previous.sourceUrl,
+            hostCity: historical?.hostCity ?? null,
+            hostCityText: historical?.hostCityText ?? null,
+            locationScope: historical?.locationScope ?? (previous.venue ? "venue" : "unknown"),
+            venueAddress: historical?.venueAddress ?? null,
+          };
+          evidence = verifyEventEvidence(event.facts, event.sourceUrl, evidencePages, checkedAt, { venue: event.venue, ownerType: event.ownerType, startAt: event.startAt, endAt: event.endAt });
+          if (evidence?.locationText) {
+            evidence.previousEditionLocation = { venue: previous.venue, text: previous.text, sourceUrl: previous.sourceUrl, checkedAt: previous.checkedAt };
+            reusedLocations.push(previous);
+          }
+        }
+      }
       const candidate: EventCandidate = {
         evidence,
         provider: "claude", providerEventId: "", sourceUrl: event.sourceUrl,
@@ -789,17 +883,18 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
       if (prior) candidate.providerEventId = prior.providerEventId;
       return [candidate];
     });
+    for (const previous of reusedLocations) lead.notes.push(`Location reused from the previous edition: ${previous.venue ?? previous.text} (${previous.sourceUrl}).`);
     if (editions.length) {
-      lead.pendingStage = editions.some((event) => !event.evidence?.dateText) ? "extraction" : editions.some((event) => !event.evidence?.locationText || (event.evidence.locationScope === "venue" && !event.evidence.venueAddress)) ? "location" : demandStage(lead, editions);
+      lead.pendingStage = editions.some((event) => !event.evidence?.dateText) ? "extraction" : editions.some((event) => !event.evidence?.locationText || (event.evidence.locationScope === "venue" && !event.evidence.venueAddress && !event.evidence.previousEditionLocation)) ? "location" : demandStage(lead, editions);
       const ownEdition = editions.find((edition) => labelKey(edition.title) === labelKey(lead.title));
       const sameEditionDates = (a: EventCandidate, b: EventCandidate) => labelKey(a.title) === labelKey(b.title) && eventLocalDate(a.startAt) === eventLocalDate(b.startAt) && eventLocalDate(a.endAt) === eventLocalDate(b.endAt);
-      // Several editions can legitimately share a series and year. A date is ambiguous only when
-      // it is new AND replaces a stored edition absent from this response. Exact repeats and an
-      // additional edition alongside the existing one are not changes to the existing dates.
-      const conflicts = editions.filter((event) => !/concert|performance|theatre|musical/i.test(event.category) && !lead.editions.some((old) => sameEditionDates(old, event))
+      // A single event's owner page changing its dates is ambiguous. A venue or organiser agenda
+      // can legitimately list one performance and the full run, so it must never conflict as a unit.
+      // Exact repeats and an additional edition alongside the stored one are not date changes.
+      const conflicts = lead.kind === "event" ? editions.filter((event) => !/concert|performance|theatre|musical/i.test(event.category) && !lead.editions.some((old) => sameEditionDates(old, event))
         && lead.editions.some((old) => labelKey(old.title) === labelKey(event.title)
           && eventLocalDate(old.startAt).slice(0, 4) === eventLocalDate(event.startAt).slice(0, 4)
-          && !editions.some((current) => sameEditionDates(old, current))));
+          && !editions.some((current) => sameEditionDates(old, current)))) : [];
       lead.outcome = conflicts.length || lead.outcome === "conflict" ? "conflict" : "confirmed";
       if (lead.outcome !== "conflict" && lead.kind === "event" && ownEdition) {
         rememberEdition(lead, { start: eventLocalDate(ownEdition.startAt), end: eventLocalDate(ownEdition.endAt), sourceUrl: ownEdition.sourceUrl! });
@@ -814,11 +909,18 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
       const latest = lead.editions.map((event) => eventLocalDate(event.endAt)).sort().at(-1);
       if (latest && (!lead.anchor || lead.anchor < latest)) lead.anchor = latest;
       lead.projections = projectEditions(lead, input.start, input.end);
-    } else if (!lead.editions.length) lead.outcome = "unannounced";
+    } else if (!lead.editions.length) {
+      const onlyPastPages = pages?.length && pages.every((page) => pastEditionPage(page, input.end.slice(0, 4)));
+      if (onlyPastPages) {
+        lead.outcome = "pending";
+        lead.pendingStage = "retrieval";
+        lead.notes.push("Only a past-edition page was available; the next edition remains unresolved.");
+      } else lead.outcome = "unannounced";
+    }
     return editions.length > 0;
   };
   const finalize = (lead: Lead) => {
-    if (lead.outcome === "conflict" || lead.editions.some((event) => !validEventRange(event))) lead.pendingStage = "conflict";
+    if ((lead.kind === "event" && lead.outcome === "conflict") || lead.editions.some((event) => !validEventRange(event))) lead.pendingStage = "conflict";
     if (lead.repair) lead.repair.attemptedAt = now.toISOString();
     lead.checkedAt = now.toISOString();
     lead.nextCheck = nextCheckAt(lead, now);
@@ -1008,7 +1110,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
   const resolveLocation = createLocationResolver({ venue: input.geocode ?? geocodeEventVenue, city: input.geocodeCity, cache: state.locations });
   for (const event of candidates) await resolveLocation(event);
   for (const lead of state.leads) {
-    if (lead.outcome === "conflict" || lead.editions.some((event) => !validEventRange(event))) lead.pendingStage = "conflict";
+    if ((lead.kind === "event" && lead.outcome === "conflict") || lead.editions.some((event) => !validEventRange(event))) lead.pendingStage = "conflict";
     else if (lead.editions.some((event) => !event.evidence?.dateText)) lead.pendingStage = "extraction";
     else if (lead.editions.some((event) => event.latitude === null || event.longitude === null)) lead.pendingStage = "location";
     else if (demandStage(lead, lead.editions) === "demand") lead.pendingStage = "demand";
@@ -1073,7 +1175,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
     await store.save(key, state);
   }
   return { source: "claude", candidates: candidates.filter(validEventRange), requests, usage,
-    quarantinedProviderEventIds: state.leads.flatMap((lead) => lead.editions.filter((event) => lead.outcome === "conflict" || !validEventRange(event)).map((event) => event.providerEventId)),
+    quarantinedProviderEventIds: state.leads.flatMap((lead) => lead.editions.filter((event) => (lead.kind === "event" && lead.outcome === "conflict") || !validEventRange(event)).map((event) => event.providerEventId)),
     ...(failures.length ? { error: [...new Set(failures)].join("; ") } : {}),
     funnel: { namesDiscovered: discovered, urlsResolved: [...due, ...toResolve].filter((lead) => lead.url).length, pagesVerified: verifiedPages, demandAccepted: usage.demandAccepted, drops },
   };

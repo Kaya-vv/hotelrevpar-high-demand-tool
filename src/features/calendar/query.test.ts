@@ -22,7 +22,7 @@ const { tables, database } = vi.hoisted(() => {
 
 vi.mock("@/lib/supabase/server", () => ({ createServerClient: async () => database }));
 vi.mock("@/features/workspace/hotel-context", () => ({ getHotelScope: async () => ({
-  supabase: database, hotels: [{ id: "hotel", name: "Hotel", demand_radius_km: 25 }], selectedHotelId: "hotel", areaId: "area", enabledSources: ["claude"],
+  supabase: database, hotels: [{ id: "hotel", name: "Hotel", demand_radius_km: 25, holiday_region: "middle" }], selectedHotelId: "hotel", areaId: "area", enabledSources: ["claude", "openholidays", "rijksoverheid"],
 }) }));
 vi.mock("@/features/export/history", () => ({ calendarExportDates: async () => new Map([["future", "2026-09-01T12:00:00Z"]]) }));
 
@@ -32,6 +32,22 @@ function addEvent(id: string, start: string, end = start, overrides = {}) {
   tables.events.push({ id, title: id, certainty: "confirmed", category: "concert", start_at: `${start}T12:00:00Z`, end_at: `${end}T20:00:00Z` });
   tables.event_sources.push({ event_id: id, provider: "claude", source_state: "active", primary_source_confirmed: true, public_source_url: "https://example.com/event" });
   tables.hotel_event_scores.push({ event_id: id, hotel_id: "hotel", suggested_importance: "High", impact_basis: "demand_rule", total: 75, distance_km: 1, demand_assessment: { version: 1, relevance: "probable", magnitude: "High", confidence: "medium", reasons: [], sourceUrls: [] } });
+}
+
+function addHoliday(
+  id: string,
+  category: "public_holiday" | "school_holiday",
+  start: string,
+  end = start,
+  regionScope: "north" | "middle" | "south" | null = null,
+) {
+  addEvent(id, start, end);
+  Object.assign(tables.events.at(-1)!, { category, region_scope: regionScope });
+  Object.assign(tables.hotel_event_scores.at(-1)!, {
+    suggested_importance: "Medium",
+    impact_basis: "holiday_rule",
+    distance_km: null,
+  });
 }
 
 describe("calendar query periods", () => {
@@ -108,5 +124,27 @@ describe("calendar query periods", () => {
       importance: "Low",
     });
     expect(lowOnly.events.map((event) => event.id)).toEqual(["automatic-medium"]);
+  });
+
+  it("returns holidays as unscored context and only includes the hotel's school region", async () => {
+    addEvent("concert", "2027-04-20");
+    addHoliday("koningsdag", "public_holiday", "2027-04-27");
+    addHoliday("meivakantie-midden", "school_holiday", "2027-04-24", "2027-05-02", "middle");
+    addHoliday("meivakantie-zuid", "school_holiday", "2027-04-24", "2027-05-02", "south");
+
+    const result = await getCalendarData("account", {
+      month: "2027-04",
+      view: "calendar",
+      includeLow: true,
+      category: "concert",
+    });
+
+    expect(result.events.map((event) => event.id)).toEqual(["concert"]);
+    expect(result.contextMarkers).toEqual([
+      expect.objectContaining({ id: "meivakantie-midden", category: "school_holiday" }),
+      expect.objectContaining({ id: "koningsdag", category: "public_holiday" }),
+    ]);
+    expect(result.contextMarkers.every((marker) => !("shownLevel" in marker))).toBe(true);
+    expect(result.categories).toEqual(["concert"]);
   });
 });

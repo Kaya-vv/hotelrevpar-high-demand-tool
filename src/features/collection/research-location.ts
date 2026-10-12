@@ -68,9 +68,13 @@ export function createLocationResolver(options: {
     // require the venue to appear in the quoted text, and ignore the grade.
     const named = (evidence.venueAddress || event.venue)?.replace(/\s*\([^)]*\)/g, "").trim();
     const quoted = named && ` ${normalizeText(`${evidence.locationText ?? ""} ${evidence.hostCityText ?? ""}`)} `.includes(` ${normalizeText(named)} `);
+    // North Sea Jazz and Oasis had confirmed new dates but only their previous editions named
+    // Ahoy or Johan Cruijff ArenA. That stored venue is itself audited historical evidence.
+    const previousVenue = evidence.previousEditionLocation?.venue;
+    const reused = named && previousVenue && normalizeText(named) === normalizeText(previousVenue);
     // verifyEventEvidence also accepts an address from the host venue's own page.
     // That verified address need not be repeated in the selected location quote.
-    const venue = evidence.venueAddress || (quoted ? named : null);
+    const venue = evidence.venueAddress || (quoted || reused ? named : null);
     const queries: { query: string; method: "venue" | "city_centroid" }[] = [
       ...(venue ? [{ query: `${venue}${city ? `, ${city}` : ""}`, method: "venue" as const }] : []),
       ...(citySupported ? [{ query: city, method: "city_centroid" as const }] : []),
