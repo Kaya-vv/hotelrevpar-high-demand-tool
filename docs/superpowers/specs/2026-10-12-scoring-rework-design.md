@@ -37,41 +37,52 @@ Both options estimate **rooms per night** as visitors present per day × the sha
 
 Rooms per night replaces the impact points entirely. Peak needs a measured visitor figure.
 
-### B. Targeted fixes on top of today's scorer (recommended)
+### B. Targeted fixes on top of today's scorer (recommended, revised 2026-10-12)
 
-1. Hall size alone gives at most High (84). A family show gets at most Medium (69).
+1. Hall size alone gives at most High (84). This can only take a Peak down to High. Nothing that is High or Peak today can fall to Medium. There are no title or event-type exceptions.
 2. A measured visitor figure with a travelling audience lifts the event:
    - from about 2,000 rooms per night to Peak, but only for multi-day runs, business events, championships and marathons;
    - from about 800 rooms per night to at least High.
-3. Champions League matches become High (80) instead of an automatic Peak.
 
-Every other score stays exactly as it is today.
+Champions League matches keep today's automatic Peak (owner's decision). Every other score stays exactly as it is today.
+
+The first draft also put family shows at most at Medium. That rule was dropped: it only worked by naming the show in a word list, and it was the only way a High or Peak event could fall to Medium.
 
 ## Before and after (unique events, all active hotels)
 
 | | Today | A. Full model | B. Targeted |
 |---|---:|---:|---:|
-| Peak events | 14 | 41 | 32 |
-| High + Peak events | 121 | 225 | 122 |
-| Events that change level | – | 337 | 40 |
+| Peak events | 14 | 41 | 37 |
+| High + Peak events | 121 | 225 | 123 |
+| Events that change level | – | 337 | 35 |
+| High/Peak events that fall to Medium or Low | – | many | 0 |
+| Events that score lower at all | – | many | 4 |
+
+The 4 events that score lower all drop from Peak to High through rule 1:
+
+- Bassie & Adriaan: 85 → 84
+- C2C: 91 → 84
+- J. Cole at the Ziggo Dome: 90 → 84
+- Nederland – Griekenland: 87 → 84
+
+Each one was Peak only because of the hall's size. Each returns to Peak once a real visitor figure with a travelling audience is known (rule 2).
 
 Novotel Rotterdam Brainpark:
 
 | | Peak events | High + Peak shown |
 |---|---|---:|
 | Today | Bassie & Adriaan, Feyenoord–Como, –Inter, –Porto, C2C | 36 |
-| B. Targeted | Breakbulk, ERA Congress 2027, InfraTech, Maintenance Next, CHIO, NN Marathon, WK Beachvolleybal | 35 |
-| A. Full model | 10 Peak | 66 |
+| B. Targeted | Feyenoord–Como, –Inter, –Porto, Breakbulk, ERA Congress 2027, InfraTech, Maintenance Next, CHIO, NN Marathon, WK Beachvolleybal | 36 |
+| A. Full model | 10 Peak | 67 |
 
 Named results, today → B:
 
 - Breakbulk Europe: 71/High → 85/Peak
-- Bassie & Adriaan: 85/Peak → 69/Medium
-- Feyenoord and PSV Champions League matches: 88–93/Peak → 80/High
+- Bassie & Adriaan: 85/Peak → 84/High
+- Champions League matches: unchanged (Peak)
 - C2C: 91/Peak → 84/High
-- J. Cole at the Ziggo Dome: 90/Peak → 84/High
 - Horecava: 84/High → 85/Peak
-- IFFR, Europort and WK Turnen: unchanged (High)
+- IFFR, Europort, WK Turnen, Holiday on Ice: unchanged (High)
 
 Amsterdam hotels gain the most Peak days: ADE, IDFA, IBC, METSTRADE, Aquatech, DGTL, TCS Marathon. They move from 0–3 to 10–16 Peak events each.
 
@@ -85,23 +96,24 @@ A nearly doubles the High/Peak list (121 → 225) and moves 337 events. Most of 
 
 ## Known weaknesses of B
 
-- **A wrong number lifts the wrong event.** "Verknipt ADE Saturday" carries ADE's 500,000 total and rises from Medium to High. It is 1 of the 40 changes.
+- **A wrong number lifts the wrong event.** "Verknipt ADE Saturday" carries ADE's 500,000 total and rises from Medium to High. It is 1 of the 35 changes.
 - **Next year's edition stays High until its own number is found.** DDW 2027 is High while DDW 2026 is Peak. The fix is to carry a comparable previous edition's figure forward; the evidence already records those historical facts.
-- **Champions League becomes High for every hotel, including city-centre leisure hotels.** A per-hotel "business / leisure" setting is a separate decision.
+- **Hall-size Peaks drop to High until a real visitor figure is known.** That covers C2C, the arena concerts and Nederland – Griekenland. The step 5 work below closes this gap.
 
 ## Implementation plan (B)
 
 1. **`src/features/events/score.ts`**
    - Add the measured-visitor helper (attendance, quoted quantity, size-check visitors), the staying-share table and the rooms-per-night estimate as one exported function. Reuse `knownVenueCapacity` and `venueCrowdIsAudience`.
-   - Apply the three rules after the existing proxy, before the stadium and size-check floors. Add a new `impactBasis` value, "hotel_rooms", so the change is traceable.
+   - Apply the two rules after the existing proxy, before the stadium and size-check floors. Add a new `impactBasis` value, "hotel_rooms", so the change is traceable.
 2. **`src/features/events/types.ts`:** add "hotel_rooms" to the `impactBasis` union. The database column is free text, and the export guard only rejects "default", so no migration is needed.
 3. **Tests in `score.test.ts`, one per rule:**
-   - an arena family show stays Medium;
-   - an arena concert stops at High;
+   - an arena concert known only by hall size stops at High and never falls below High;
    - a measured international three-day trade fair reaches Peak;
    - a measured single-night concert does not reach Peak;
-   - a CL match is High;
-   - a measured event without a travelling audience is unchanged.
+   - a measured event without a travelling audience is unchanged;
+   - a Champions League match stays Peak.
+
+   The preview's regression check ("High/Peak today that fall below High: 0") is the acceptance bar for the rescore.
 4. **Rescore stored scores** with the existing recalculation path. There are no provider calls and no running cost. Confirm with `scripts/rescore-preview.mjs` per hotel.
 5. **Optional, recommended next:**
    - make the page reading fill the visitor number it quotes (Breakbulk's "12,800" was saved with an empty quantity); this is a prompt change with no extra calls;

@@ -38,7 +38,7 @@ const congress = /congres|congress|conferen|symposi|summit|convention|annual mee
 const tradeFair = /trade|beurs|expo\b|exhibition|vakbeurs|show\b.*(industry|b2b)/i;
 const championship = /kampioenschap|championship|\bwk\b|\bek\b|world cup|tournament|toernooi|qualif|kwalificatie|marathon/i;
 const festival = /festival/i;
-const family = /kinder|kids|family|familie|children|\(\d\+\)|bassie|sesamstraat|k3\b|disney on ice/i;
+const family = /kinder|kids|family|familie|children|\(\d\+\)|sesamstraat|k3\b|disney on ice/i;
 const performance = /music|muziek|concert|dance|comedy|cabaret|\bdj\b|show|musical|theat|circus|club|film/i;
 const marquee = (category, title, regionScope = "") => category === "sports" && (
   /international|internationaal|european|europees/i.test(regionScope)
@@ -138,9 +138,9 @@ function proposedScore(candidate, current, overlapBonus, radiusKm) {
 function targetedScore(candidate, current, full, radiusKm) {
   let total = current.total;
   const text = `${candidate.category} ${candidate.title}`;
-  // Hall size is a ceiling, not an audience: on its own it gives at most High, and a family show
-  // not even that.
-  if (current.impactBasis === "venue_capacity") total = Math.min(family.test(text) ? 69 : 84, total);
+  // Hall size is a ceiling, not an audience: on its own it gives at most High. This can only take
+  // a Peak down to High (84); nothing that is High or Peak today can fall to Medium.
+  if (current.impactBasis === "venue_capacity") total = Math.min(84, total);
   // A real visitor figure with a travelling audience lifts a stay-generating event. Peak only for
   // multi-day runs, business events and championships/marathons: a single concert's "international"
   // label usually describes the artist, not the audience.
@@ -151,8 +151,6 @@ function targetedScore(candidate, current, full, radiusKm) {
   const stayKind = (days > 1 && (candidate.evidence?.continuous ?? true)) || congress.test(text) || tradeFair.test(text) || championship.test(text);
   if (eligible && stayKind && full.rooms >= 2000) total = Math.max(total, 85);
   else if (eligible && full.rooms >= 800) total = Math.max(total, 75);
-  // Champions League matches: High instead of automatic Peak.
-  if (current.impactBasis === "competition_rule") total = Math.min(total, 80);
   return { ...full, total, suggestedImportance: importance(total), impactBasis: total === current.total ? current.impactBasis : "targeted" };
 }
 
@@ -218,6 +216,10 @@ for (const key of ["targeted"]) {
   for (const row of unique(rows.filter((row) => row[key].suggestedImportance !== row.before.suggestedImportance))
     .sort((a, b) => levels.indexOf(b[key].suggestedImportance) - levels.indexOf(a[key].suggestedImportance) || b[key].total - a[key].total)) console.log("  " + fmt(row, key));
 }
+const fellBelowHigh = rows.filter((row) => ["High", "Peak"].includes(row.before.suggestedImportance) && !["High", "Peak"].includes(row.targeted.suggestedImportance));
+const anyDrop = rows.filter((row) => row.targeted.total < row.before.total);
+console.log(`\n== Regression check (B) ==\n  High/Peak today that fall below High: ${fellBelowHigh.length}\n  hotel-event pairs scoring lower at all: ${anyDrop.length}`);
+for (const row of unique(anyDrop)) console.log(`    ${row.before.total}/${row.before.suggestedImportance} -> ${row.targeted.total}/${row.targeted.suggestedImportance}  ${row.title.slice(0, 50)}  (reden: ${row.before.impactBasis})`);
 const named = /breakbulk|bassie|champions league|north sea|marathon|europort|iffr|film festival rotterdam|state of trance|c2c|holiday on ice|dutch design week|horecava|glow|wk turnen|era congress|oasis|j\. cole|korfball|intermodal|infratech/i;
 console.log("\n== Named events: before | A full | B targeted ==");
 for (const row of unique(rows.filter((row) => named.test(row.title))).sort((a, b) => b.targeted.total - a.targeted.total))
