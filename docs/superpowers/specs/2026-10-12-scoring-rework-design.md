@@ -41,7 +41,7 @@ Rooms per night replaces the impact points entirely. Peak needs a measured visit
 
 1. Hall size alone gives at most High (84). This can only take a Peak down to High. Nothing that is High or Peak today can fall to Medium. There are no title or event-type exceptions.
 2. A measured visitor figure with a travelling audience lifts the event:
-   - from about 2,000 rooms per night to Peak, but only for multi-day runs, business events, championships and marathons;
+   - from about 2,000 rooms per night to Peak, but only for multi-day runs, business events, championships and marathons, **and only when the source shows visitors from abroad**. Without that last condition, Dutch trade fairs and public events that are mostly day trips also became Peak (InfraTech, Maintenance Next, Horecava-style fairs, GLOW): 37 Peak events instead of 22;
    - from about 800 rooms per night to at least High.
 
 Champions League matches keep today's automatic Peak (owner's decision). Every other score stays exactly as it is today.
@@ -52,9 +52,9 @@ The first draft also put family shows at most at Medium. That rule was dropped: 
 
 | | Today | A. Full model | B. Targeted |
 |---|---:|---:|---:|
-| Peak events | 14 | 41 | 37 |
+| Peak events | 14 | 41 | 22 |
 | High + Peak events | 121 | 225 | 123 |
-| Events that change level | – | 337 | 35 |
+| Events that change level | – | 337 | 21 |
 | High/Peak events that fall to Medium or Low | – | many | 0 |
 | Events that score lower at all | – | many | 4 |
 
@@ -72,7 +72,7 @@ Novotel Rotterdam Brainpark:
 | | Peak events | High + Peak shown |
 |---|---|---:|
 | Today | Bassie & Adriaan, Feyenoord–Como, –Inter, –Porto, C2C | 36 |
-| B. Targeted | Feyenoord–Como, –Inter, –Porto, Breakbulk, ERA Congress 2027, InfraTech, Maintenance Next, CHIO, NN Marathon, WK Beachvolleybal | 36 |
+| B. Targeted | Feyenoord–Como, –Inter, –Porto, Breakbulk, ERA Congress 2027, NN Marathon, CHIO, WK Beachvolleybal | 36 |
 | A. Full model | 10 Peak | 67 |
 
 Named results, today → B:
@@ -84,7 +84,9 @@ Named results, today → B:
 - Horecava: 84/High → 85/Peak
 - IFFR, Europort, WK Turnen, Holiday on Ice: unchanged (High)
 
-Amsterdam hotels gain the most Peak days: ADE, IDFA, IBC, METSTRADE, Aquatech, DGTL, TCS Marathon. They move from 0–3 to 10–16 Peak events each.
+New Peak events across all hotels: ADE, MRO Europe (2026 and 2027), IDFA, METSTRADE, OEEC, Aquatech, PTE World, APEX, NN Marathon Rotterdam, Enschede Marathon, Breakbulk, ERA Congress, CHIO, WK Beachvolleybal. Amsterdam hotels move from 0–3 to 7–9 Peak events each.
+
+Known misses of the "from abroad" condition: IBC and ESNS are clearly international but stay High, because their stored evidence does not record where visitors come from (we record visitor origin for about 9% of events). The step 5 follow-up below fixes this.
 
 ## Why not option A
 
@@ -96,7 +98,7 @@ A nearly doubles the High/Peak list (121 → 225) and moves 337 events. Most of 
 
 ## Known weaknesses of B
 
-- **A wrong number lifts the wrong event.** "Verknipt ADE Saturday" carries ADE's 500,000 total and rises from Medium to High. It is 1 of the 35 changes.
+- **A wrong number lifts the wrong event.** "Verknipt ADE Saturday" carries ADE's 500,000 total and rises from Medium to High. It is 1 of the 21 changes.
 - **Next year's edition stays High until its own number is found.** DDW 2027 is High while DDW 2026 is Peak. The fix is to carry a comparable previous edition's figure forward; the evidence already records those historical facts.
 - **Hall-size Peaks drop to High until a real visitor figure is known.** That covers C2C, the arena concerts and Nederland – Griekenland. The step 5 work below closes this gap.
 

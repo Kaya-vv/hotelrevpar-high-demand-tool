@@ -149,7 +149,10 @@ function targetedScore(candidate, current, full, radiusKm) {
     && !(candidate.category === "sports" && !marquee(candidate.category, candidate.title, candidate.regionScope));
   const days = Math.round((Date.parse(eventLocalDate(candidate.endAt)) - Date.parse(eventLocalDate(candidate.startAt))) / 86_400_000) + 1;
   const stayKind = (days > 1 && (candidate.evidence?.continuous ?? true)) || congress.test(text) || tradeFair.test(text) || championship.test(text);
-  if (eligible && stayKind && full.rooms >= 2000) total = Math.max(total, 85);
+  // Peak also needs visitors from abroad: Dutch trade fairs and public events are mostly day trips.
+  const fromAbroad = candidate.overnightAudience === "international" || (candidate.evidence?.demand ?? []).some((fact) =>
+    /countries|landen|abroad|buitenland|international (visitors|delegates|attendees|participants)|worldwide|from around the world/i.test(fact.text));
+  if (eligible && stayKind && fromAbroad && full.rooms >= 2000) total = Math.max(total, 85);
   else if (eligible && full.rooms >= 800) total = Math.max(total, 75);
   return { ...full, total, suggestedImportance: importance(total), impactBasis: total === current.total ? current.impactBasis : "targeted" };
 }
