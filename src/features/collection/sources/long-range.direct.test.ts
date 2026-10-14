@@ -101,16 +101,18 @@ it("reads a listed agenda page itself before any homepage", async () => {
 it("files an edition found on another lead's page under its own series and looks up its audience next cycle", async () => {
   const now = new Date("2026-10-14T12:00:00Z");
   const agenda = "https://venue.example/agenda";
-  const page = "vr. 20 nov. Rock Big Festival\nza. 21 nov. Rock Big Festival\nwo. 31 dec. Club Night NYE\nVenue Hall, Hallweg 1, 5617 AB Eindhoven";
+  const page = "vr. 20 nov. Rock Big Festival\nza. 21 nov. Rock Big Festival\ndi. 3 nov. - wo. 4 nov. Photonics Summit\nwo. 31 dec. Club Night NYE\nVenue Hall, Hallweg 1, 5617 AB Eindhoven";
   const facts = (dateText: string) => ({ dateText, locationText: "Venue Hall, Hallweg 1, 5617 AB Eindhoven", venueAddress: "Hallweg 1, 5617 AB Eindhoven",
     hostCity: "Eindhoven", locationScope: "venue", continuous: true, majorCompetition: false, demand: [] });
-  const edition = (title: string, startAt: string, endAt: string, dateText: string) => ({ sourceUrl: agenda, title, category: "festival", venue: "Venue Hall",
+  const edition = (title: string, startAt: string, endAt: string, dateText: string, sourceUrl = agenda) => ({ sourceUrl, title, category: "festival", venue: "Venue Hall",
     startAt, endAt, status: "active", ownerType: "venue", attendance: null, venueCapacity: null, impactPoints: null, overnightAudience: null,
     titleConfirmed: true, dateConfirmed: true, locationConfirmed: true, facts: facts(dateText) });
   let state: LongRangeState = { version: 2003, discoveredAt: now.toISOString(), announcementSearchAt: now.toISOString(), lastSweepAt: now.toISOString(), leads: [
     { key: "club", title: "Club Night NYE", url: agenda, kind: "event", group: 1, outcome: "pending", nextCheck: now.toISOString(), checkedAt: null, editions: [], notes: [] },
     { key: "festival", title: "Big Festival", url: "https://venue.example/practical", kind: "event", group: 0, outcome: "failed",
       nextCheck: "2026-10-29T12:00:00Z", checkedAt: "2026-09-29T12:00:00Z", attempts: 1, editions: [], notes: ["No fetched official page"] },
+    { key: "hub", title: "Venue Hall agenda", url: "https://venue.example/calendar", kind: "calendar", origin: "venue_list", group: 0, outcome: "pending",
+      nextCheck: now.toISOString(), checkedAt: null, editions: [], notes: [] },
   ] };
   const store: LongRangeStore = { acquire: async () => true, release: async () => {}, load: async () => state,
     save: async (_key, value) => { state = structuredClone(value); } };
@@ -120,6 +122,7 @@ it("files an edition found on another lead's page under its own series and looks
     // Only the agenda carries dates; the festival's own lead points at a practical-information page.
     const body = text.includes("Search once for") ? (searches.push(text), { url: null, reason: "No audience page" })
       : text.includes("Lead: Big Festival") ? { events: [], reason: "Practical information only", more: false }
+      : text.includes("Lead: Venue Hall agenda") ? { events: [edition("Photonics Summit", "2026-11-03", "2026-11-04", "di. 3 nov. - wo. 4 nov. Photonics Summit", "https://venue.example/calendar")], reason: "Agenda", more: false }
       : { events: [edition("Big Festival", "2026-11-20", "2026-11-21", "vr. 20 nov. Rock Big Festival\nza. 21 nov. Rock Big Festival"),
         edition("Club Night NYE", "2026-12-31", "2026-12-31", "wo. 31 dec. Club Night NYE")], reason: "Agenda", more: false };
     return { stop_reason: "end_turn", usage: { input_tokens: 10, output_tokens: 10 }, content: [{ type: "text", text: JSON.stringify(body) }] };
@@ -131,8 +134,11 @@ it("files an edition found on another lead's page under its own series and looks
   const festival = () => state.leads.find((lead) => lead.key === "festival")!;
   expect(festival().editions.map((item) => item.title)).toEqual(["Big Festival"]);
   expect(festival()).toMatchObject({ nextCheck: now.toISOString(), pendingStage: "demand" });
+  // PIC Summit Europe, 2026-10-14: an event with no lead of its own is looked up before its dates.
+  expect(state.leads.find((lead) => lead.title === "Photonics Summit")).toMatchObject({ nextCheck: now.toISOString(), pendingStage: "demand" });
   await run(new Date("2026-10-21T12:00:00Z"));
   expect(searches.some((text) => text.includes("Big Festival bezoekers herkomst"))).toBe(true);
+  expect(searches.some((text) => text.includes("Photonics Summit bezoekers herkomst"))).toBe(true);
 });
 
 it("does not call a next edition unannounced from only a past-year article", async () => {

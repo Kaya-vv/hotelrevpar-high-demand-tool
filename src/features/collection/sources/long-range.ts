@@ -1135,8 +1135,11 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
     let series = state.leads.find((lead) => lead.kind === "event" && (labelKey(lead.title) === labelKey(candidate.title) || candidate.evidence?.aliases?.some((alias) => labelKey(alias) === labelKey(lead.title))) && (!lead.url || !candidate.sourceUrl || new URL(lead.url).hostname === new URL(candidate.sourceUrl).hostname))
       ?? state.leads.find((lead) => lead.kind === "event" && lead.editions.some((edition) => edition.providerEventId === candidate.providerEventId));
     if (!series && candidate.sourceUrl) {
+      // A series first seen on an agenda page has no audience evidence yet. Waiting the monthly
+      // recheck would have searched for PIC Summit Europe's visitors after its 3-4 November dates.
       series = { key, title: candidate.title, url: candidate.sourceUrl, kind: "event", group: 0,
-        outcome: "confirmed", editions: [candidate], notes: [], nextCheck: later(now, LEAD_RECHECK_DAYS), checkedAt: now.toISOString() };
+        outcome: "confirmed", editions: [candidate], notes: [], checkedAt: now.toISOString(),
+        nextCheck: needsDemandResearch(candidate) ? now.toISOString() : later(now, LEAD_RECHECK_DAYS) };
       state.leads.push(series);
     }
     if (series && candidate.sourceUrl && series.outcome !== "conflict") {
