@@ -74,6 +74,27 @@ it("reads the homepage before a stored past-year news page and finds the next ed
   expect(state.leads[0]).toMatchObject({ outcome: "confirmed", officialPage: homepage });
 });
 
+// Brainport Eindhoven, 2026-10-14: its agenda lives at /nl/evenementen. Reading the language
+// home and the site root first used both page slots, so PIC Summit Europe was never seen.
+it("reads a listed agenda page itself before any homepage", async () => {
+  const now = new Date("2026-10-14T12:00:00Z");
+  const agenda = "https://brainport.example/nl/evenementen";
+  let state: LongRangeState = { version: 2003, discoveredAt: now.toISOString(), leads: [{
+    key: "brainport", title: "Brainport Eindhoven evenementen", url: agenda, kind: "calendar", origin: "venue_list", group: 0,
+    outcome: "pending", nextCheck: now.toISOString(), checkedAt: null, editions: [], notes: [],
+  }] };
+  const store: LongRangeStore = { acquire: async () => true, release: async () => {}, load: async () => state,
+    save: async (_key, value) => { state = structuredClone(value); } };
+  const pageFetcher = vi.fn(async (requested: string) => parseOfficialPage(
+    requested === agenda ? "PIC Summit Europe 2026 03 nov - 04 nov Evoluon" : "Welkom bij Brainport", requested));
+  const create = vi.fn(async () => ({ stop_reason: "end_turn", usage: { input_tokens: 10, output_tokens: 10 },
+    content: [{ type: "text", text: JSON.stringify({ events: [], reason: "Read", more: false }) }] }));
+  await collectLongRange({ start: "2026-10-14", end: "2027-12-31", location: "Eindhoven", radiusKm: 25,
+    now, model: "claude-sonnet-5", client: { messages: { create } } as unknown as Anthropic, batching: { enabled: false },
+    pageFetcher, store, geocode: async () => ({ latitude: 51.44, longitude: 5.48 }) });
+  expect(pageFetcher.mock.calls[0][0]).toBe(agenda);
+});
+
 it("does not call a next edition unannounced from only a past-year article", async () => {
   const now = new Date("2026-10-05T12:00:00Z");
   const article = "https://organizer.example/news/programme-2026";

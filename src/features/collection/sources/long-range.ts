@@ -727,7 +727,9 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
       // Leave one of the four pages for a newly discovered announcement or venue address.
       // Keep half the four-page allowance for an organizer discovered by the bounded search
       // and its observed announcement/about link. A venue's practical page must not consume it.
-      const retrieved = job.pages ? { pages: job.pages, errors: [] } : await retrieveOfficialPages(target ?? fetchTarget(lead)!, input.end.slice(0, 4), boundedFetch, kind === "fetch" ? lead.officialPages : [], lead.title, 2, lead.pendingStage === "demand" ? "demand" : "dates", kind === "fetch");
+      // An agenda page is itself the forward source: reading the language home and site root
+      // first spent both slots on Brainport's /nl/evenementen and never reached its events.
+      const retrieved = job.pages ? { pages: job.pages, errors: [] } : await retrieveOfficialPages(target ?? fetchTarget(lead)!, input.end.slice(0, 4), boundedFetch, kind === "fetch" ? lead.officialPages : [], lead.title, 2, lead.pendingStage === "demand" ? "demand" : "dates", kind === "fetch" && lead.kind !== "calendar");
       for (const error of retrieved.errors) failures.push(`${lead.title}: ${error}`);
       // Concert at SEA sat on a tourist page that reset the connection on every one of four
       // attempts, while its own organiser pages downloaded fine as remembered extras. The dead
