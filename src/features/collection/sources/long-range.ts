@@ -96,13 +96,12 @@ const SWEEP_DAYS = LEAD_RECHECK_DAYS;
 const MONITORING_VERSION = 3;
 // A cycle drains its backlog across resumable invocations; 18 left confirmed-but-unassessed leads
 // queued behind fresh discovery for months (pendingDemand 60 against demandAccepted 6).
-// Raised from 60 on 2026-10-14: first checks now take up to FIRST_CHECK_LIMIT of the cycle, and
-// the extra 30 keep rechecks and size checks moving at the pace they had before.
-const CYCLE_LEAD_LIMIT = 90;
+const CYCLE_LEAD_LIMIT = 60;
 // On 2026-10-14 Eindhoven held 129 names nobody had looked at, AI Summit Brainport among them since
-// 6 October: five first-check places a week could not keep up with ~30 new names a week. A name now
-// gets its first look in the cycle after it was found unless more than this many arrive at once.
-const FIRST_CHECK_LIMIT = 60;
+// 6 October: five first-check places a week could not keep up with ~30 new names a week. Half the
+// cycle now goes to first checks, large categories first; raising the cycle to 90 instead was
+// turned down at about 25 EUR a month across all cities.
+const FIRST_CHECK_LIMIT = 30;
 // Discovery, URL resolution, extraction, demand lookup and evidence extraction
 // must fit in one cycle. The monthly spend ledger still bounds paid work.
 const CYCLE_WAVE_LIMIT = 5;

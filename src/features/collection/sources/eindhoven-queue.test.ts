@@ -40,10 +40,8 @@ it.each([false, true])("selects the benchmark from the saved queue without relyi
       { type: "text", text: JSON.stringify({ events: [], reason: "Offline old-edition fixture" }) },
     ], usage: { input_tokens: 0, output_tokens: 0, server_tool_use: { web_fetch_requests: 1 } } };
   });
-  // Production research runs on Luna. At Sonnet prices a 90-lead cycle reserves more than the
-  // 8 EUR monthly ceiling within one wave, which is not a situation production can reach.
   const result = await collectLongRange({ pageFetcher: false, start: "2026-12-05", end: "2027-12-31", location: "Eindhoven", radiusKm: 25,
-    now, seeds, store, model: "gpt-6-luna", batching: { enabled: false },
+    now, seeds, store, model: "claude-sonnet-5", batching: { enabled: false },
     client: { messages: { create } } as unknown as Anthropic, geocode: async () => { throw new Error("Network disabled"); } });
   const ddwRequests = create.mock.calls.map(([request]) => JSON.stringify(request.messages)).filter((text) => text.includes(`Lead: ${target}`));
   expect(ddwRequests).toHaveLength(2);
@@ -51,8 +49,8 @@ it.each([false, true])("selects the benchmark from the saved queue without relyi
   expect(ddwRequests[0]).toContain("edition year(s) 2027");
   expect(result.usage.deepRequests).toBeLessThanOrEqual(state.leads.length * 8);
   // Dropping unfetchable ticket-vendor and tourist-listing seeds makes those leads resolve their
-  // real owner page. What must never be deferred is the benchmark itself: `queueOrder` spends the
-  // budget on assessment work first.
+  // real owner page, so the monthly ledger now bounds the tail of the queue. What must never be
+  // deferred is the benchmark itself: `queueOrder` spends the budget on assessment work first.
   expect(result.funnel?.drops.filter((drop) => drop.title.includes(target) && drop.reason.includes("Research budget exhausted"))).toEqual([]);
   expect(result.candidates).toEqual([]);
   expect(create.mock.calls.some(([request]) => JSON.stringify(request.messages).includes("First fetch this observed official source: ozi:"))).toBe(false);
