@@ -96,7 +96,13 @@ const SWEEP_DAYS = LEAD_RECHECK_DAYS;
 const MONITORING_VERSION = 3;
 // A cycle drains its backlog across resumable invocations; 18 left confirmed-but-unassessed leads
 // queued behind fresh discovery for months (pendingDemand 60 against demandAccepted 6).
-const CYCLE_LEAD_LIMIT = 60;
+// Raised from 60 on 2026-10-14: first checks now take up to FIRST_CHECK_LIMIT of the cycle, and
+// the extra 30 keep rechecks and size checks moving at the pace they had before.
+const CYCLE_LEAD_LIMIT = 90;
+// On 2026-10-14 Eindhoven held 129 names nobody had looked at, AI Summit Brainport among them since
+// 6 October: five first-check places a week could not keep up with ~30 new names a week. A name now
+// gets its first look in the cycle after it was found unless more than this many arrive at once.
+const FIRST_CHECK_LIMIT = 60;
 // Discovery, URL resolution, extraction, demand lookup and evidence extraction
 // must fit in one cycle. The monthly spend ledger still bounds paid work.
 const CYCLE_WAVE_LIMIT = 5;
@@ -644,10 +650,15 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
   const sweepDue = discoveryDue || bootstrap
     || now.getTime() - Date.parse(state.lastSweepAt!) >= SWEEP_DAYS * day;
   const eligible = state.leads.filter((lead) => researchDue(lead, now));
-  const firstChecks = priorityQueue(eligible.filter((lead) => !lead.checkedAt && !(lead.attempts ?? 0))).slice(0, 5);
+  const unchecked = priorityQueue(eligible.filter((lead) => !lead.checkedAt && !(lead.attempts ?? 0)));
+  const firstChecks = unchecked.slice(0, 5);
   const available = [...firstChecks, ...priorityQueue(eligible.filter((lead) => !firstChecks.includes(lead)))];
+  // New names are guaranteed a place in the cycle, not a place at the front of the budget: the
+  // work below is still spent in `available` order, so a large known event is never deferred
+  // behind a week of fresh discovery. Open days get no guaranteed place.
+  const guaranteed = unchecked.filter((lead) => leadPriority(lead) < 3).slice(0, FIRST_CHECK_LIMIT);
   if (workCycle.finished && workCycle.waves < CYCLE_WAVE_LIMIT && workCycle.leadKeys.length < CYCLE_LEAD_LIMIT && available.some((lead) => !workCycle.leadKeys.includes(lead.key))) workCycle.finished = false;
-  if (!workCycle.finished) for (const lead of available) {
+  if (!workCycle.finished) for (const lead of [...guaranteed, ...available]) {
     if (workCycle.leadKeys.length >= CYCLE_LEAD_LIMIT) break;
     if (!workCycle.leadKeys.includes(lead.key)) workCycle.leadKeys.push(lead.key);
   }
@@ -1111,6 +1122,33 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
   state.locations ??= {};
   const resolveLocation = createLocationResolver({ venue: input.geocode ?? geocodeEventVenue, city: input.geocodeCity, cache: state.locations });
   for (const event of candidates) await resolveLocation(event);
+  if (due.length || toResolve.length) {
+    state.lastPassAt = now.toISOString();
+    if (sweepDue) state.lastSweepAt = now.toISOString();
+  }
+  // Calendar hubs can confirm several unrelated series sharing one URL. Keep each series' own
+  // announcement target without replacing the hub or borrowing another event's dates.
+  // A series' own lead wins over whichever lead first read the page: the Klokgebouw agenda was
+  // read through the VERKNIPT NYE lead, which kept Revolution Calling, so its only audience search
+  // asked about VERKNIPT and the festival's own lead never looked for its visitors.
+  for (const candidate of candidates) {
+    const key = createHash("sha256").update(labelKey(candidate.title)).digest("hex");
+    let series = state.leads.find((lead) => lead.kind === "event" && (labelKey(lead.title) === labelKey(candidate.title) || candidate.evidence?.aliases?.some((alias) => labelKey(alias) === labelKey(lead.title))) && (!lead.url || !candidate.sourceUrl || new URL(lead.url).hostname === new URL(candidate.sourceUrl).hostname))
+      ?? state.leads.find((lead) => lead.kind === "event" && lead.editions.some((edition) => edition.providerEventId === candidate.providerEventId));
+    if (!series && candidate.sourceUrl) {
+      series = { key, title: candidate.title, url: candidate.sourceUrl, kind: "event", group: 0,
+        outcome: "confirmed", editions: [candidate], notes: [], nextCheck: later(now, LEAD_RECHECK_DAYS), checkedAt: now.toISOString() };
+      state.leads.push(series);
+    }
+    if (series && candidate.sourceUrl && series.outcome !== "conflict") {
+      // An edition another lead's page supplied is due its own audience search next cycle, not
+      // at the series' monthly recheck: Revolution Calling's lead would have waited until 29 Oct.
+      if (!series.editions.some((edition) => edition.providerEventId === candidate.providerEventId) && series.nextCheck > now.toISOString()) series.nextCheck = now.toISOString();
+      series.editions = [...new Map([...series.editions, candidate].map((event) => [`${event.providerEventId}|${eventLocalDate(event.endAt)}`, event])).values()];
+      rememberEdition(series, { start: eventLocalDate(candidate.startAt), end: eventLocalDate(candidate.endAt), sourceUrl: candidate.sourceUrl });
+      series.projections = projectEditions(series, input.start, input.end);
+    }
+  }
   for (const lead of state.leads) {
     if ((lead.kind === "event" && lead.outcome === "conflict") || lead.editions.some((event) => !validEventRange(event))) lead.pendingStage = "conflict";
     else if (lead.editions.some((event) => !event.evidence?.dateText)) lead.pendingStage = "extraction";
@@ -1118,26 +1156,6 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
     else if (demandStage(lead, lead.editions) === "demand") lead.pendingStage = "demand";
     else if (lead.editions.length) delete lead.pendingStage;
     else if (!fetchTarget(lead)) lead.pendingStage = "url";
-  }
-  if (due.length || toResolve.length) {
-    state.lastPassAt = now.toISOString();
-    if (sweepDue) state.lastSweepAt = now.toISOString();
-  }
-  // Calendar hubs can confirm several unrelated series sharing one URL. Keep each series' own
-  // announcement target without replacing the hub or borrowing another event's dates.
-  for (const candidate of candidates) {
-    const key = createHash("sha256").update(labelKey(candidate.title)).digest("hex");
-    let series = state.leads.find((lead) => lead.kind === "event" && (lead.editions.some((edition) => edition.providerEventId === candidate.providerEventId) || ((labelKey(lead.title) === labelKey(candidate.title) || candidate.evidence?.aliases?.some((alias) => labelKey(alias) === labelKey(lead.title))) && (!lead.url || !candidate.sourceUrl || new URL(lead.url).hostname === new URL(candidate.sourceUrl).hostname))));
-    if (!series && candidate.sourceUrl) {
-      series = { key, title: candidate.title, url: candidate.sourceUrl, kind: "event", group: 0,
-        outcome: "confirmed", editions: [candidate], notes: [], nextCheck: later(now, LEAD_RECHECK_DAYS), checkedAt: now.toISOString() };
-      state.leads.push(series);
-    }
-    if (series && candidate.sourceUrl && series.outcome !== "conflict") {
-      series.editions = [...new Map([...series.editions, candidate].map((event) => [`${event.providerEventId}|${eventLocalDate(event.endAt)}`, event])).values()];
-      rememberEdition(series, { start: eventLocalDate(candidate.startAt), end: eventLocalDate(candidate.endAt), sourceUrl: candidate.sourceUrl });
-      series.projections = projectEditions(series, input.start, input.end);
-    }
   }
   workCycle.finished = true;
   state.publicationPending = true;

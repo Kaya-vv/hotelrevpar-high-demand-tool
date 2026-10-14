@@ -514,7 +514,7 @@ describe("coordinated long-range research", () => {
   it("gives the weekly lead limit to the owner's agendas and large events before older small leads", async () => {
     const test = setup();
     const earlier = new Date(now.getTime() - 86_400_000).toISOString();
-    const gigs = Array.from({ length: 70 }, (_, index) => makeLead({ key: `gig-${index}`, title: `Club gig ${index}`, url: `https://club.example/${index}`, group: 1, nextCheck: earlier }));
+    const gigs = Array.from({ length: 100 }, (_, index) => makeLead({ key: `gig-${index}`, title: `Club gig ${index}`, url: `https://club.example/${index}`, group: 1, nextCheck: earlier }));
     test.state().leads = [
       ...gigs,
       makeLead({ key: "open-day", title: "Bachelor Open Dag", url: "https://university.example/open", group: 0, nextCheck: earlier }),
@@ -523,9 +523,24 @@ describe("coordinated long-range research", () => {
     ];
     await collectLongRange(test.input);
     const picked = test.state().cycle!.leadKeys;
-    expect(picked).toHaveLength(60);
+    expect(picked).toHaveLength(90);
     expect(picked).toEqual(expect.arrayContaining(["mojo", "festival"]));
     expect(picked).not.toContain("open-day");
+  });
+
+  // Eindhoven, 2026-10-14: AI Summit Brainport was found on 6 October and still unchecked a week
+  // later, because rechecks of older leads filled all but five places of the weekly cycle.
+  it("gives every new name its first look in the next cycle, ahead of rechecks of older leads", async () => {
+    const test = setup();
+    const weekAgo = new Date(now.getTime() - 7 * 86_400_000).toISOString();
+    const rechecks = Array.from({ length: 80 }, (_, index) => makeLead({ key: `recheck-${index}`, title: `Trade fair ${index}`, url: `https://fair.example/${index}`,
+      group: 2, checkedAt: "2026-08-01T00:00:00Z", nextCheck: "2026-09-01T00:00:00Z" }));
+    const fresh = Array.from({ length: 40 }, (_, index) => makeLead({ key: `new-${index}`, title: `Conference ${index}`, url: `https://conference.example/${index}`, group: 1, nextCheck: weekAgo }));
+    test.state().leads = [...rechecks, ...fresh];
+    await collectLongRange(test.input);
+    const picked = test.state().cycle!.leadKeys;
+    expect(picked).toEqual(expect.arrayContaining(fresh.map((lead) => lead.key)));
+    expect(picked.filter((key) => key.startsWith("recheck-"))).toHaveLength(50);
   });
 
   it("resumes an incomplete recorded calendar after a later fetch outage", async () => {
