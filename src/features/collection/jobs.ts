@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { unexpiredTrialFilter } from "@/features/accounts/trial";
 
 import { BatchPendingError } from "./anthropic-batches";
+import { mergeCalendarCopies } from "./calendar-copies";
 import { errorMessage, runCollection } from "./run";
 import { processMarketWork, type MarketWork } from "./market-research";
 
@@ -240,6 +241,14 @@ export async function processCollectionJob(
         pending_since: null,
       })
       .eq("id", job.id));
+    try {
+      await mergeCalendarCopies(admin, job.account_id);
+    } catch (error) {
+      console.error("Calendar copies could not be merged", {
+        jobId: job.id,
+        error: error instanceof Error ? error.name : "unknown",
+      });
+    }
     try {
       const { stageHotelEventNotifications } = await import("@/features/notifications/service");
       const claude = result.sourceResults?.claude as { researchPending?: boolean } | undefined;

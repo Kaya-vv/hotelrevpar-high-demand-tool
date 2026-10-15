@@ -5,6 +5,7 @@ import { CLAUDE_ASSESSMENT_VERSION } from "./anthropic-batches";
 import { collectionWindow, publishLongRangeResult, type CollectionContext } from "./run";
 import { longRangeWindow, marketWindow } from "./sources/claude";
 import { collectLongRange } from "./sources/long-range";
+import { mergeCalendarCopies } from "./calendar-copies";
 import type { SourceResult } from "./types";
 import { ANNOUNCEMENT_SEARCH_DAYS, searchDue } from "./schedule";
 import { researchBatchingEnabled } from "./research-client";
@@ -159,6 +160,14 @@ export async function processMarketWork(work: MarketWork) {
     state.publicationPending = false;
     state.publishedAt = new Date().toISOString();
     await store.save(key, state);
+    // Clean up before mail is prepared so a copy hidden here is never announced.
+    for (const accountId of new Set(contexts.map((areaContext) => areaContext.area.accountId))) {
+      // A failed clean-up must not hold back the emails; the next run tries again.
+      await mergeCalendarCopies(admin, accountId).catch((error: unknown) => console.error(
+        "Calendar copies could not be merged",
+        { accountId, error: error instanceof Error ? error.name : "unknown" },
+      ));
+    }
     // Only final publication prepares mail. If staging fails, this publication
     // message retries without buying research or losing the unsent notification.
     const { stageHotelEventNotifications } = await import("@/features/notifications/service");
