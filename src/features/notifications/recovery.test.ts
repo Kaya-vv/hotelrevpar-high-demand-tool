@@ -1,8 +1,8 @@
 import { beforeEach, expect, it, vi } from "vitest";
-const state = vi.hoisted(() => ({ tables: {} as Record<string, Record<string, unknown>[]>, fail: "", eventIds: ["event"] }));
+const state = vi.hoisted(() => ({ tables: {} as Record<string, Record<string, unknown>[]>, fail: "", eventIds: ["event"], events: {} as Partial<Record<string, { title: string; startAt: string; endAt: string }>> }));
 const publish = vi.hoisted(() => vi.fn());
 vi.mock("@/features/collection/jobs", () => ({ publishCollectionJob: publish }));
-vi.mock("./query", () => ({ loadVisibleNotificationEvents: async () => ({ id: "hotel", name: "Hotel", events: state.eventIds.map(id => ({ id, title: `Festival ${id}`, startAt: "2027-06-01", endAt: "2027-06-02", level: "High", venue: "Venue" })) }) }));
+vi.mock("./query", () => ({ loadVisibleNotificationEvents: async () => ({ id: "hotel", name: "Hotel", events: state.eventIds.map(id => ({ id, title: `Festival ${id}`, startAt: "2027-06-01", endAt: "2027-06-02", level: "High", venue: "Venue", ...state.events[id] })) }) }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => admin }));
 const admin = {
   auth: { admin: { getUserById: async () => ({ data: { user: { email: "hotel@example.com" } }, error: null }) } },
@@ -50,6 +50,7 @@ beforeEach(() => {
   publish.mockClear();
   state.fail = "";
   state.eventIds = ["event"];
+  state.events = {};
   state.tables = { collection_areas: [{ id: "area", account_id: "account", hotel_id: "hotel" }], account_members: [{ account_id: "account", user_id: "user", event_notifications_enabled: true }], event_notification_items: [], event_notification_batches: [] };
 });
 it.each(["insert", "claim"])("recovers after %s failure without another new event", async (failure) => {
@@ -111,4 +112,32 @@ it("still sends a genuinely new hotel link after the baseline", async () => {
   state.tables.account_event_areas = [{ account_id: "account", collection_area_id: "area", event_id: "event", created_at: "2026-09-21T08:00:00Z" }];
   expect(await stageHotelEventNotifications("account", "area")).toEqual({ queued: 1 });
   expect(state.tables.event_notification_items.find(row => row.event_id === "event")?.suppressed).toBe(false);
+});
+
+const night = (day: number) => ({ startAt: `2027-07-${day - 1}T22:00:00+00:00`, endAt: `2027-07-${day}T21:59:59+00:00` });
+
+it("does not announce a second calendar copy of an event the hotel was already told about", async () => {
+  // Oasis was announced on 16 July; a week later its 17 July night arrived as its own row.
+  state.eventIds = ["oasis-16", "oasis-17", "racoon"];
+  state.events = {
+    "oasis-16": { title: "Oasis Live '27", ...night(16) },
+    "oasis-17": { title: "Oasis Live '27", ...night(17) },
+    racoon: { title: "Racoon", ...night(17) },
+  };
+  state.tables.event_notification_items.push({ account_id: "account", hotel_id: "hotel", user_id: "user", event_id: "oasis-16", batch_id: "sent", suppressed: false });
+  expect(await stageHotelEventNotifications("account", "area")).toEqual({ queued: 1 });
+  const batch = state.tables.event_notification_batches[0];
+  expect(batch.subject).toBe("1 nieuw event voor Hotel");
+  expect(batch.text_body).toContain("Racoon");
+  expect(state.tables.event_notification_items.find(row => row.event_id === "oasis-17")?.suppressed).toBe(true);
+});
+
+it("announces two copies found in the same run once", async () => {
+  state.eventIds = ["glow-a", "glow-b"];
+  state.events = {
+    "glow-a": { title: "GLOW Festival Eindhoven - CONNECT", startAt: "2026-11-07T17:30:00+00:00", endAt: "2026-11-14T22:00:00+00:00" },
+    "glow-b": { title: "GLOW 2026 – Connect", startAt: "2026-11-06T23:00:00+00:00", endAt: "2026-11-14T22:59:59+00:00" },
+  };
+  await stageHotelEventNotifications("account", "area");
+  expect(state.tables.event_notification_batches[0].subject).toBe("1 nieuw event voor Hotel");
 });

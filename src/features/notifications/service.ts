@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 
 import { fetchAllRows, fetchInBatches } from "@/lib/supabase/fetch-in-batches";
 import { createAdminClient, type AdminClient } from "@/lib/supabase/admin";
+import { similarity } from "@/features/events/match";
+import { eventLocalDate, meaningfulTokens, normalizeText } from "@/features/events/normalize";
 
 import { renderEventNotification } from "./email";
 import {
@@ -62,6 +64,29 @@ export async function postEventNotification(
   }
   const result = (await response.json().catch(() => ({}))) as { id?: string };
   return { accepted: true as const, providerMessageId: result.id ?? null };
+}
+
+function dayAfter(date: string) {
+  const next = new Date(`${date}T00:00:00Z`);
+  next.setUTCDate(next.getUTCDate() + 1);
+  return next.toISOString().slice(0, 10);
+}
+
+// One event can sit in a calendar twice: saved from two websites under different names
+// ("GLOW 2026 – Connect", "GLOW Festival Eindhoven - CONNECT"), or one night of a run that was
+// first listed as the whole range (Oasis 16-17 July, later 16 and 17 apart). The email speaks
+// for the hotel, so a calendar twin of something already announced is not a new event. The
+// venue is left out on purpose: both rows already passed this hotel's distance check, and a
+// wrong address on one copy (ICE at Schiphol placed in central Amsterdam) is a common cause.
+// Place words are dropped from the titles for the same reason, and so "Marathon Expo Amsterdam"
+// and another "... Expo Amsterdam" in the same week do not match on "Amsterdam" alone.
+export function sameNotifiedEvent(left: NotificationEvent, right: NotificationEvent) {
+  const [leftStart, leftEnd] = [eventLocalDate(left.startAt), eventLocalDate(left.endAt)];
+  const [rightStart, rightEnd] = [eventLocalDate(right.startAt), eventLocalDate(right.endAt)];
+  return leftStart <= dayAfter(rightEnd) && rightStart <= dayAfter(leftEnd) && similarity(
+    meaningfulTokens(normalizeText(left.title)).join(" "),
+    meaningfulTokens(normalizeText(right.title)).join(" "),
+  ) >= 0.5;
 }
 
 function notificationsEnabled() {
@@ -227,7 +252,15 @@ async function reserveForMember(
       .in("event_id", ids),
   );
   const known = new Set(existing.map((item) => item.event_id));
-  const fresh = eventIds.filter((eventId) => !known.has(eventId));
+  const inCalendar = events.filter((event) => known.has(event.id));
+  const fresh: string[] = [];
+  const twins = new Set<string>();
+  for (const event of events) {
+    if (known.has(event.id)) continue;
+    if (inCalendar.some((other) => sameNotifiedEvent(other, event))) twins.add(event.id);
+    inCalendar.push(event);
+    fresh.push(event.id);
+  }
   // A previous attempt may have recorded items before creating or claiming its batch.
   const unclaimed = existing.some((item) => !item.batch_id && !item.suppressed);
   if (!fresh.length && !unclaimed) return null;
@@ -255,7 +288,7 @@ async function reserveForMember(
           hotel_id: hotelId,
           event_id: eventId,
           user_id: userId,
-          suppressed: !enabled || alreadyKnown.has(eventId),
+          suppressed: !enabled || alreadyKnown.has(eventId) || twins.has(eventId),
           created_at: now.toISOString(),
         })),
         { onConflict: "user_id,hotel_id,event_id", ignoreDuplicates: true },

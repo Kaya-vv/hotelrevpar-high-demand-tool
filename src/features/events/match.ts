@@ -11,7 +11,7 @@ export type Match =
 // Deliberately keeps place qualifiers: dropping them shortens titles, and the containment rule
 // below needs three tokens, so "Dutch Design Week" against "Dutch Design Festival" would score
 // lower and split into two events. Place-only differences get their own rule instead.
-function similarity(left: string, right: string) {
+export function similarity(left: string, right: string) {
   const meaningful = (value: string) =>
     value.split(" ").filter((token) => token && !/^20\d{2}$/.test(token));
   const leftTokens = meaningful(left);
