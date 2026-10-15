@@ -107,3 +107,11 @@ it("does not hide a copy behind a listing another hotel cannot see", async () =>
   show("second", "era-copy", "Hoog");
   expect((await findCalendarCopies(admin, "account"))[0].keeperId).toBe("era-copy");
 });
+
+it("keeps this year's and next year's edition of the same event apart", async () => {
+  event("2026", "TCS Amsterdam Marathon", { start_at: "2026-10-17T22:00:00+00:00", end_at: "2026-10-18T21:59:59+00:00" }, "2026-09-01", "Marathon");
+  event("2027", "TCS Amsterdam Marathon", { start_at: "2027-10-30T22:00:00+00:00", end_at: "2027-10-31T22:59:59+00:00" }, "2026-10-07", "Marathon");
+  show("hotel", "2026", "Hoog");
+  show("hotel", "2027", "Hoog");
+  expect(await findCalendarCopies(admin, "account")).toEqual([]);
+});
