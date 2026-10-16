@@ -128,6 +128,22 @@ export function mayDispatchSynchronously(
   return Boolean(context.firstRun) && !resume;
 }
 
+/**
+ * How many stored event pages a run re-checks before it looks at anything new. A round of
+ * re-checks is due only for an event still ahead that has not been looked at for a whole
+ * near-term cycle: one stuck event (J. Cole after its concert date, or a page that keeps saving
+ * old evidence) made every run of Citiez Amsterdam re-check 60 known pages, and on 16 October
+ * the Post-Quantum Cryptography Conference and two other congresses were cut with 18 more new
+ * events. A round now takes at most half the 60 verification places.
+ */
+export function claudeRefreshLimit(rows: ClaudeSourceRow[], window: CollectionWindow, now = new Date()) {
+  const lastCycle = new Date(now.getTime() - NEAR_TERM_SEARCH_DAYS * 86_400_000).toISOString();
+  const due = rows.some((row) => row.needs_reassessment
+    && (row.extracted_end_at ?? row.extracted_start_at).slice(0, 10) >= window.start
+    && row.checked_at < lastCycle);
+  return due ? 30 : 8;
+}
+
 export function selectClaudeRefreshUrls(
   rows: ClaudeSourceRow[],
   window: CollectionWindow,

@@ -9,6 +9,7 @@ import {
 import {
   claudeDiscoveryDecision,
   claudeDiscoveryDue,
+  claudeRefreshLimit,
   collectionWindow,
   mayDispatchSynchronously,
   publishLongRangeResult,
@@ -108,6 +109,21 @@ it("prioritizes events that need the current Claude assessment", () => {
   ], { start: "2026-09-01", end: "2026-11-30" }, 1)).toEqual([
     "https://venue.nl/stale-visible",
   ]);
+});
+
+it("leaves new events room unless an event still ahead has waited a whole cycle for re-assessment", () => {
+  const window = { start: "2026-10-16", end: "2027-01-14" };
+  const now = new Date("2026-10-16T12:00:00Z");
+  const row = (start: string, checkedAt: string, needs_reassessment = true) => ({
+    source_url: `https://venue.nl/${start}-${checkedAt}`, extracted_start_at: `${start}T18:00:00Z`, extracted_end_at: `${start}T22:00:00Z`,
+    checked_at: `${checkedAt}T05:00:00Z`, needs_reassessment,
+  });
+  // Citiez Amsterdam, 16 October: J. Cole was over and Xzibit had been looked at two days before,
+  // yet each forced 60 re-checks and the Post-Quantum Cryptography Conference was cut.
+  expect(claudeRefreshLimit([row("2026-10-13", "2026-09-04"), row("2026-11-20", "2026-10-14")], window, now)).toBe(8);
+  expect(claudeRefreshLimit([row("2026-11-20", "2026-09-20", false)], window, now)).toBe(8);
+  // A real backlog still gets its round, but never more than half the 60 places.
+  expect(claudeRefreshLimit([row("2026-11-20", "2026-09-20")], window, now)).toBe(30);
 });
 
 it("seeds long-range leads from recently ended editions only", () => {

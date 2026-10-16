@@ -25,6 +25,7 @@ import {
 import { marketLocation } from "./long-range-store";
 import {
   claudeDiscoveryDecision,
+  claudeRefreshLimit,
   collectionWindow,
   selectClaudeRefreshUrls,
   selectLongRangeSeeds,
@@ -231,7 +232,6 @@ export function createCollectionRepository(): CollectionRepository {
         ? await fetchInBatches(seedRows.map((row) => row.eventId), (ids) =>
           supabase.from("events").select("id, title, venue").in("id", ids))
         : [];
-      const reassessmentDue = refreshSources.some((source) => source.needs_reassessment);
       // A third of every run's verification budget went to events this area already holds as
       // confirmed. Loading their identity lets discovery skip them and spend the slot on
       // something unknown; refreshing them stays the job of `knownClaudeUrls`.
@@ -276,7 +276,7 @@ export function createCollectionRepository(): CollectionRepository {
         knownClaudeUrls: selectClaudeRefreshUrls(
           refreshSources,
           window,
-          reassessmentDue ? 60 : 8,
+          claudeRefreshLimit(refreshSources, window),
         ),
         knownEvents: knownEvents.map((event) => ({
           title: event.title,
