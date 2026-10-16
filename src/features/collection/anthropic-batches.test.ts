@@ -43,6 +43,11 @@ describe("Anthropic batch cache", () => {
       .not.toBe(claudeMarketGroupKey(input));
     expect(claudeMarketGroupKey({ ...input, discoveryMode: "long_range" }))
       .not.toBe(claudeMarketGroupKey(input));
+    // A sweep bought before a hall was added to the search list must not be served as if it
+    // searched that hall; a city without halls keeps the key it always had.
+    expect(claudeMarketGroupKey({ ...input, venueSearches: [] })).toBe(claudeMarketGroupKey(input));
+    expect(claudeMarketGroupKey({ ...input, venueSearches: ["Meervaart|Amsterdam"] }))
+      .not.toBe(claudeMarketGroupKey(input));
   });
 
   it("submits once, restores request order, and charges usage once", async () => {

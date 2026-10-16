@@ -356,7 +356,7 @@ function defaultCollectors(
           "PredictHQ"
         ),
       }),
-    claude: (context) => {
+    claude: async (context) => {
       researchConfigured();
       // A first run has no calendar to show yet, so it buys latency with the batch discount: the
       // near-term horizon answers in minutes instead of waiting out the batch queue. Long-range
@@ -366,6 +366,10 @@ function defaultCollectors(
       // A redelivery must not repeat the trade. Synchronous work has no checkpoint to resume
       // from, so re-buying it on every attempt is how one timeout becomes repeated spend.
       const sync = mayDispatchSynchronously(context, resume);
+      // Dynamic: market-research.ts imports this module (a static import here is a cycle), and the
+      // admin client is server-only, which this module's tests cannot load.
+      const { venueSearchTargets, readAndEnqueueResearch } = await import("./market-research");
+      const { createAdminClient } = await import("@/lib/supabase/admin");
       return collectClaudeCalendar({
         ...context.window,
         location: context.area.searchLocation,
@@ -373,6 +377,8 @@ function defaultCollectors(
         knownUrls: context.knownClaudeUrls,
         longRangeSeeds: context.longRangeSeeds,
         agendaSeedUrls: context.claudeAgendaSeedUrls,
+        venueSearches: context.runNearTermClaude === false ? []
+          : await venueSearchTargets({ location: context.area.searchLocation, radiusKm: context.area.radiusKm }, createAdminClient()),
         runNearTerm: context.runNearTermClaude,
         knownEvents: context.knownEvents,
         longRangeEnabled: context.longRangeAllowed && process.env.LONG_RANGE_DISCOVERY === "enabled",
@@ -380,8 +386,7 @@ function defaultCollectors(
         // Still shared either way: reading the city result is what lets a new hotel in a covered
         // market skip the sweep entirely, which is faster than any dispatch mode.
         ...(sync ? { batching: { enabled: false }, shareMarketResult: true } : {}),
-        // Dynamic: market-research.ts imports this module, so a static import here is a cycle.
-      }, undefined, async () => (await import("./market-research")).readAndEnqueueResearch(context, runId));
+      }, undefined, async () => readAndEnqueueResearch(context, runId));
     },
     // The whole season arrives in one request. Cutting it at 90 days hid a January home
     // tie (Feyenoord - RB Leipzig, 2027-01-27) for weeks; a trial still stops at 90 days.

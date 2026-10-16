@@ -162,6 +162,9 @@ export type ClaudeMarketInput = {
   discoveryModel: string;
   knownUrls: string[];
   discoveryMode?: "long_range";
+  /** `name|city` of each hall searched by name. Absent when there are none, so the key of a city
+   *  without them is unchanged; present, a sweep bought before a hall was added is not reused. */
+  venueSearches?: string[];
 };
 
 /**
@@ -182,6 +185,7 @@ export function claudeMarketGroupKey(input: Omit<ClaudeMarketInput, "radiusKm" |
       model: input.model,
       discoveryModel: input.discoveryModel,
       discoveryMode: input.discoveryMode,
+      venueSearches: input.venueSearches?.length ? [...input.venueSearches].sort() : undefined,
     }))
     .digest("hex");
 }

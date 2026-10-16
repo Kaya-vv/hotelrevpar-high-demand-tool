@@ -47,34 +47,61 @@ export async function readAndEnqueueResearch(context: CollectionContext, runId: 
   return { ...storedLongRangeResult(state), researchPending: true };
 }
 
+type Geocode = (city: string) => Promise<{ latitude: number; longitude: number } | null>;
+type PlacedVenue = { id: string; name: string; city: string; latitude: number | null; longitude: number | null };
+
 /**
- * The owner's venue agendas this market should re-read weekly: national promoters plus venues
- * whose city lies inside the market radius. A venue whose city cannot be placed is skipped for
- * now and stays on the list; coordinates found once are stored so later runs skip the lookup.
+ * The venues whose city lies inside the market radius. A venue whose city cannot be placed is
+ * skipped for now and stays on the list; coordinates found once are stored so later runs skip
+ * the lookup.
  */
-export async function venueCalendarLeads(market: { location: string; radiusKm: number }, admin: AdminClient,
-  geocode: (city: string) => Promise<{ latitude: number; longitude: number } | null> = (city) => geocodeCity(city)) {
-  const { data: rows, error } = await admin.from("venue_calendars")
-    .select("id, name, url, city, latitude, longitude, national").eq("active", true).order("name");
-  if (error) throw error;
-  const local = rows.filter((row) => !row.national);
-  const centre = local.length ? await geocode(market.location) : null;
-  if (local.length && !centre) console.warn("Venue calendars: market centre could not be placed", { location: market.location });
-  const leads: { title: string; url: string }[] = [];
+async function venuesInsideMarket<T extends PlacedVenue>(rows: T[], market: { location: string; radiusKm: number },
+  geocode: Geocode, savePoint: (id: string, point: { latitude: number; longitude: number }) => Promise<void>) {
+  if (!rows.length) return [];
+  const centre = await geocode(market.location);
+  if (!centre) {
+    console.warn("Venue lists: market centre could not be placed", { location: market.location });
+    return [];
+  }
+  const inside: T[] = [];
   for (const row of rows) {
-    if (row.national) { leads.push({ title: row.name, url: row.url }); continue; }
-    if (!centre) continue;
     let point = row.latitude !== null && row.longitude !== null ? { latitude: row.latitude, longitude: row.longitude } : null;
     if (!point) {
       point = await geocode(row.city);
-      if (!point) { console.warn("Venue calendars: city could not be placed", { name: row.name, city: row.city }); continue; }
-      const { error: saveError } = await admin.from("venue_calendars")
-        .update({ latitude: point.latitude, longitude: point.longitude, updated_at: new Date().toISOString() }).eq("id", row.id);
-      if (saveError) throw saveError;
+      if (!point) { console.warn("Venue lists: city could not be placed", { name: row.name, city: row.city }); continue; }
+      await savePoint(row.id, point);
     }
-    if (distanceKm(centre.latitude, centre.longitude, point.latitude, point.longitude) <= market.radiusKm) leads.push({ title: row.name, url: row.url });
+    if (distanceKm(centre.latitude, centre.longitude, point.latitude, point.longitude) <= market.radiusKm) inside.push(row);
   }
-  return leads;
+  return inside;
+}
+
+/** The owner's venue agendas this market should re-read weekly: national promoters plus venues inside its radius. */
+export async function venueCalendarLeads(market: { location: string; radiusKm: number }, admin: AdminClient,
+  geocode: Geocode = (city) => geocodeCity(city)) {
+  const { data: rows, error } = await admin.from("venue_calendars")
+    .select("id, name, url, city, latitude, longitude, national").eq("active", true).order("name");
+  if (error) throw error;
+  const inside = new Set(await venuesInsideMarket(rows.filter((row) => !row.national), market, geocode, async (id, point) => {
+    const { error: saveError } = await admin.from("venue_calendars")
+      .update({ ...point, updated_at: new Date().toISOString() }).eq("id", id);
+    if (saveError) throw saveError;
+  }));
+  return rows.filter((row) => row.national || inside.has(row)).map((row) => ({ title: row.name, url: row.url }));
+}
+
+/** Halls without a public agenda inside this market, searched by name in the near-term sweep. */
+export async function venueSearchTargets(market: { location: string; radiusKm: number }, admin: AdminClient,
+  geocode: Geocode = (city) => geocodeCity(city)) {
+  const { data: rows, error } = await admin.from("venue_searches")
+    .select("id, name, city, latitude, longitude").eq("active", true).order("name");
+  if (error) throw error;
+  const inside = await venuesInsideMarket(rows, market, geocode, async (id, point) => {
+    const { error: saveError } = await admin.from("venue_searches")
+      .update({ ...point, updated_at: new Date().toISOString() }).eq("id", id);
+    if (saveError) throw saveError;
+  });
+  return inside.map((row) => ({ name: row.name, city: row.city }));
 }
 
 export async function processMarketWork(work: MarketWork) {

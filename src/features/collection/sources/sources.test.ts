@@ -574,6 +574,59 @@ describe("source adapters", () => {
     expect(queries[0]).toBe("festivals en stadsevenementen Amsterdam augustus 2027");
   });
 
+  it("searches each listed hall by name in Dutch and English for every month", async () => {
+    const create = vi.fn();
+    queueClaudeSearches(create);
+    for (let index = 0; index < 6; index += 1) create.mockResolvedValueOnce(discoveryResponse());
+
+    const result = await collectClaude({
+      ...claudeWindow,
+      location: "Amsterdam",
+      radiusKm: 15,
+      model: "claude-test",
+      venueSearches: [{ name: "Meervaart", city: "Amsterdam" }],
+      client: { messages: { create } } as unknown as Anthropic,
+      triage: async () => new Map<number, string>(),
+    });
+
+    const quoted = (content: string) => content.match(/zoekopdracht exact "([^"]+)"/)?.[1];
+    // The Post-Quantum Cryptography Conference filled the whole hall for three days and was on no
+    // trade-fair listing; only a search naming the hall and its month (1-3 December) found it.
+    expect(create.mock.calls.slice(12).map(([request]) => quoted(request.messages[0].content))).toEqual([
+      "congres Meervaart Amsterdam augustus 2027", "conference Meervaart Amsterdam August 2027",
+      "congres Meervaart Amsterdam september 2027", "conference Meervaart Amsterdam September 2027",
+      "congres Meervaart Amsterdam oktober 2027", "conference Meervaart Amsterdam October 2027",
+    ]);
+    // All eighteen must complete, or the city result is not shared with the next hotel.
+    expect(result.usage).toMatchObject({ plannedSearches: 18, completedSearches: 18 });
+  });
+
+  it("does not read a hall's theatre agenda because a congress there linked to the hall's site", async () => {
+    const create = vi.fn();
+    queueClaudeSearches(create);
+    create.mockResolvedValueOnce(discoveryResponse([discoveredCandidate({
+      title: "Jaarcongres Huiselijk Geweld", startDate: "2027-08-19", endDate: "2027-08-19", city: "Amsterdam",
+      venue: "Meervaart", officialUrl: "https://meervaart.nl/agenda/jaarcongres",
+    })], ["https://meervaart.nl/agenda"]));
+    for (let index = 1; index < 6; index += 1) create.mockResolvedValueOnce(discoveryResponse());
+
+    await collectClaude({
+      ...claudeWindow,
+      location: "Amsterdam",
+      radiusKm: 15,
+      model: "claude-test",
+      venueSearches: [{ name: "Meervaart", city: "Amsterdam" }],
+      client: { messages: { create } } as unknown as Anthropic,
+      triage: async () => new Map<number, string>(),
+    }).catch(() => undefined);
+
+    // A live run that read meervaart.nl/agenda added twenty theatre shows and no congress.
+    const agendaReads = create.mock.calls.filter(([request]) => String(request.messages[0].content).includes("Open deze agendapagina"));
+    expect(agendaReads).toEqual([]);
+    // The congress itself still goes to verification.
+    expect(create.mock.calls.some(([request]) => JSON.stringify(request).includes("https://meervaart.nl/agenda/jaarcongres"))).toBe(true);
+  });
+
   it("prices its own near-term usage instead of reporting it as free", async () => {
     const create = vi.fn();
     queueClaudeSearches(create);

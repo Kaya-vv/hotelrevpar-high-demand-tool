@@ -53,10 +53,13 @@ These replace the all-monthly schedule of 21 September once deployed.
 | Broad long-range announcement search | 7 days |
 | Venue agendas on `/admin/venue-calendars` within the market radius, plus national ones | 7 days |
 | Near-term search (next 90 days) | 14 days |
+| Halls without an agenda ("Zalen zonder agenda" on `/admin/venue-calendars`) within the search radius: searched by name for congresses, Dutch and English, per calendar month of the 90 days; 6-8 extra searches per hall, part of the near-term search (live test 16 Oct 2026, De Meervaart: $0.22 per run) | 14 days |
 | Lead still being worked on (unannounced, failed, owed evidence or repair) | 30 days |
 | Lead whose edition is confirmed and fully assessed | 90 days |
 
 Order matters: apply migration `202609240001_venue_calendars.sql` to the production database before deploying this code. Without the table every long-range research job stops with a database error. Switching a venue agenda off or removing it keeps the events already found; the page just stops being read weekly.
+
+Apply migration `202610160001_venue_searches.sql` before deploying the hall searches. Without the table every near-term search stops with a database error. Adding a hall makes the next near-term search for that city a fresh one instead of reusing another hotel's result.
 
 ## Email notification rollout
 

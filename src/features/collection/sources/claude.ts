@@ -502,6 +502,19 @@ function searchWindows(start: string, end: string) {
   });
 }
 
+/** The calendar months a window touches, each clipped to the window. */
+function hallMonths(start: string, end: string) {
+  const months: CollectionWindow[] = [];
+  for (let monthStart = `${start.slice(0, 7)}-01`; monthStart <= end;) {
+    const next = new Date(`${monthStart}T00:00:00Z`);
+    next.setUTCMonth(next.getUTCMonth() + 1);
+    const nextStart = next.toISOString().slice(0, 10);
+    months.push({ start: [monthStart, start].sort()[1], end: [addDays(nextStart, -1), end].sort()[0] });
+    monthStart = nextStart;
+  }
+  return months;
+}
+
 async function triageDiscoveries(input: {
   candidates: DiscoveredCandidate[];
   location: string;
@@ -606,9 +619,13 @@ type MarketCache = {
 /** The identity fields `sameIdentity` compares, shared by a fresh candidate and a stored event. */
 export type DatedTitle = { title: string; startDate: string; endDate: string | null };
 
+export type VenueSearch = { name: string; city: string };
+
 type CollectClaudeInput = CollectionWindow & {
   discoveryMode?: "long_range";
   agendaSeedUrls?: string[];
+  /** Halls searched by name for the near-term sweep; see `venueSearchQueries`. */
+  venueSearches?: VenueSearch[];
   location: string;
   radiusKm: number;
   model?: string;
@@ -747,6 +764,7 @@ export async function collectClaude(input: CollectClaudeInput): Promise<SourceRe
     discoveryModel,
     knownUrls: input.knownUrls ?? [],
     discoveryMode: input.discoveryMode,
+    venueSearches: input.venueSearches?.map((venue) => `${venue.name}|${venue.city}`),
   };
   // Production (no injected client) always has the durable city store, batched or not; Luna
   // never batches, and must still reuse a sweep another hotel in the same city already bought.
@@ -788,36 +806,58 @@ async function collectClaudeFresh(
     timezone: "Europe/Amsterdam",
   };
   // 50 was reached inside the resolution phase of a 100-candidate run, so every verification
-  // drop after it vanished and the audit list read as though nothing failed there. A run cannot
-  // exceed 152 candidates (12 searches x 6 + 8 agendas x 10), so 200 covers the worst case.
+  // drop after it vanished and the audit list read as though nothing failed there. Sized on the
+  // worst case: six names per search plus ten per agenda page.
   const drops: DiscoveryDrop[] = [];
   const recordDrop = (title: string, stage: DiscoveryDrop["stage"], reason: string) => {
-    if (drops.length < 200) drops.push({ title, stage, reason });
+    if (drops.length < dropLimit) drops.push({ title, stage, reason });
   };
 
   const searches: Anthropic.Message[] = [];
   const discovered: DiscoveredCandidate[] = [];
+  const hallCandidates = new Set<DiscoveredCandidate>();
   const foundAgendaUrls: string[] = [];
   const longRange = input.discoveryMode === "long_range";
   const verificationBudget = longRange ? 12 : VERIFICATION_BUDGET;
   const agendaBudget = longRange ? 2 : 8;
   let parsedSearches = 0;
   let firstFailure: unknown;
-  const searchPlan = longRange
+  const searchPlan: { window: CollectionWindow; focus: string; searchQuery: string; hall?: boolean }[] = longRange
     ? longRangeGroups.map((group) => ({
       window: { start: input.start, end: input.end },
       focus: group.focus,
       // Including the current year drowned out announced future editions in the Eindhoven trial.
       searchQuery: `${input.location} ${group.query} ${input.end.slice(0, 4)}`,
     }))
-    : searchWindows(input.start, input.end).flatMap((window) => {
+    : [...searchWindows(input.start, input.end).flatMap((window) => {
       const month = monthLabels(window.start);
       return searchGroups.map((group) => ({ window, focus: group.focus, searchQuery: group.query(input.location, month) }));
-    });
-  const searchTasks = searchPlan.map(({ window, focus, searchQuery }) => {
+    }), ...hallMonths(input.start, input.end).flatMap((window) => {
+      // Congress halls without a public agenda (De Meervaart hosts about 60 business events a
+      // year and lists none of them) never reach the city searches above: those land on
+      // trade-fair listings that carry the RAI and little else. Naming the hall surfaces the
+      // organisers' own pages; Dutch reaches domestic congresses, English the international ones.
+      // Calendar months, not the 30-day slices: the slice from 14 November was searched as
+      // "November" and missed the Post-Quantum Cryptography Conference of 1-3 December.
+      const month = monthLabels(window.start);
+      return (input.venueSearches ?? []).flatMap((venue) => [
+        `congres ${venue.name} ${venue.city} ${month.nl}`,
+        `conference ${venue.name} ${venue.city} ${month.en}`,
+      ].map((searchQuery) => ({
+        window,
+        // The hall's own theatre programme already arrives through ticket sellers; a live test
+        // without this line returned twenty shows and no extra congress.
+        focus: `alleen zakelijke evenementen in ${venue.name} in ${venue.city}: congressen, conferenties, symposia, vakdagen en bedrijfsevenementen. Geen theatervoorstellingen, cabaret, comedy, concerten, dans, film of familievoorstellingen`,
+        searchQuery,
+        hall: true,
+      })));
+    })];
+  const dropLimit = Math.max(200, searchPlan.length * 6 + agendaBudget * 10);
+  const searchTasks = searchPlan.map(({ window, focus, searchQuery, hall }) => {
       return {
         window,
         focus,
+        hall,
         request: {
           options: searchRequestOptions,
           params: {
@@ -874,11 +914,13 @@ async function collectClaudeFresh(
       const parsed = parseDiscovery(text, (reason) => recordDrop("Discovery response", "discovery", reason));
       parsedSearches += 1;
       const observed = sourceUrls(search);
-      parsed.candidates.slice(0, 6).forEach((candidate) => discovered.push({
-        ...candidate,
-        officialUrl: observedUrl(candidate.officialUrl, observed) ? candidate.officialUrl : null,
-      }));
-      foundAgendaUrls.push(...parsed.agendaUrls.filter((url) => observedUrl(url, observed)));
+      parsed.candidates.slice(0, 6).forEach((candidate) => {
+        const entry = { ...candidate, officialUrl: observedUrl(candidate.officialUrl, observed) ? candidate.officialUrl : null };
+        discovered.push(entry);
+        if (task.hall) hallCandidates.add(entry);
+      });
+      // A hall's agenda is its theatre programme, not its congresses.
+      if (!task.hall) foundAgendaUrls.push(...parsed.agendaUrls.filter((url) => observedUrl(url, observed)));
     } catch (error) {
       firstFailure ??= error;
       recordDrop(`<${task.focus} ${task.window.start}>`, "discovery", dropReason(error));
@@ -888,8 +930,9 @@ async function collectClaudeFresh(
 
   const agendaTargets: string[] = [];
   const seenAgendaKeys = new Set<string>();
+  // A congress found through its hall links to the hall's site, whose agenda is the theatre programme.
   const venueAgendas = discovered.flatMap((candidate) =>
-    candidate.officialUrl ? [parentPath(candidate.officialUrl)] : [],
+    candidate.officialUrl && !hallCandidates.has(candidate) ? [parentPath(candidate.officialUrl)] : [],
   ).filter((url): url is string => Boolean(url));
   // A venue whose agenda paid off once keeps paying off - its listing carries next month's
   // programme. Derive roots from already-confirmed URLs too, so the channel survives a week

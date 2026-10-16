@@ -74,6 +74,12 @@ export type Database = {
         Update: { id?: string; name?: string; url?: string; city?: string; latitude?: number | null; longitude?: number | null; national?: boolean; active?: boolean; created_at?: string; updated_at?: string };
         Relationships: [];
       };
+      venue_searches: {
+        Row: { id: string; name: string; city: string; latitude: number | null; longitude: number | null; active: boolean; created_at: string; updated_at: string };
+        Insert: { id?: string; name: string; city: string; latitude?: number | null; longitude?: number | null; active?: boolean; created_at?: string; updated_at?: string };
+        Update: { id?: string; name?: string; city?: string; latitude?: number | null; longitude?: number | null; active?: boolean; created_at?: string; updated_at?: string };
+        Relationships: [];
+      };
       anthropic_batch_cache: {
         Row: {
           batch_id: string | null;
