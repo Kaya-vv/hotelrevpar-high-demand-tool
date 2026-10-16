@@ -1228,6 +1228,46 @@ describe("source adapters", () => {
       .toBe(false);
   });
 
+  it("cuts new candidates by estimated hotel demand, not by the order the searches ran", async () => {
+    const small = "https://organizer.example/small-club-night";
+    const big = "https://organizer.example/big-trade-fair";
+    const verificationTargets: string[] = [];
+    const create = vi.fn(async (params: { messages: Array<{ content: string }> }) => {
+      const prompt = JSON.stringify(params.messages);
+      if (params.messages[0].content.startsWith("Voer eerst precies")) {
+        // The small event arrives first (first search); the big one arrives with the last search.
+        if (create.mock.calls.length === 1) return discoveryResponse([discoveredCandidate({ title: "Small Club Night", startDate: "2027-08-10", endDate: "2027-08-10", officialUrl: small })]);
+        if (create.mock.calls.length === 12) return discoveryResponse([discoveredCandidate({ title: "Big Trade Fair", startDate: "2027-10-10", endDate: "2027-10-12", officialUrl: big })]);
+        return discoveryResponse();
+      }
+      if (params.messages[0].content.startsWith("Beoordeel op basis")) {
+        return {
+          content: [{ type: "text", text: JSON.stringify({ reviews: [
+            { index: 0, decision: "verify", excludeAs: null, act: null, demandLevel: "low", reason: "lokaal" },
+            { index: 1, decision: "verify", excludeAs: null, act: null, demandLevel: "high", reason: "internationale beurs" },
+          ] }) }],
+          usage: { input_tokens: 10, output_tokens: 5 },
+        };
+      }
+      for (const url of [small, big]) if (prompt.includes(url)) verificationTargets.push(url);
+      return { content: [], usage: { input_tokens: 1, output_tokens: 1 } };
+    });
+
+    await collectClaude({
+      ...claudeWindow,
+      location: "Amsterdam",
+      radiusKm: 15,
+      model: "claude-test",
+      // 59 calendar re-checks leave one slot for the two new names.
+      knownUrls: Array.from({ length: 59 }, (_, index) => `https://city.example/event-${index}`),
+      client: { messages: { create } } as unknown as Anthropic,
+      marketCache: { load: async () => null, save: async () => undefined },
+    }).catch(() => undefined);
+
+    expect(verificationTargets).toContain(big);
+    expect(verificationTargets).not.toContain(small);
+  });
+
   it("resumes a timed-out run from the batch cache without resubmitting a phase", async () => {
     const official = "https://organizer.example/event";
     const rows = new Map<string, BatchRow>();
@@ -1278,6 +1318,7 @@ describe("source adapters", () => {
                 decision: triageCalls === 1 ? "verify" : "exclude",
                 excludeAs: triageCalls === 1 ? null : "artist_show",
                 act: triageCalls === 1 ? null : "Dutch Design Week",
+                demandLevel: "high",
                 reason: "wisselend",
               }],
             }),

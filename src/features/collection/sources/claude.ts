@@ -174,6 +174,9 @@ const discoveryTriageSchema = z.object({
     decision: z.enum(["verify", "exclude"]),
     excludeAs: z.enum(excludableCategories).nullable(),
     act: z.string().nullable(),
+    // Only orders the candidates when there are more than verification can take; it never
+    // excludes anything on its own.
+    demandLevel: z.enum(["low", "medium", "high", "peak"]),
     reason: z.string(),
   })),
 });
@@ -525,6 +528,7 @@ async function triageDiscoveries(input: {
 }) {
   const model = researchModels().triage;
   const excluded = new Map<number, string>();
+  const levels = new Map<number, "low" | "medium" | "high" | "peak">();
   const messages: Anthropic.Message[] = [];
   const errors: { label: string; reason: string }[] = [];
   const slices: { offset: number; size: number; request: MessageRequest }[] = [];
@@ -541,7 +545,7 @@ async function triageDiscoveries(input: {
           output_config: { format: zodOutputFormat(discoveryTriageSchema) },
           messages: [{
             role: "user",
-            content: `Beoordeel op basis van alleen deze metadata welke kandidaten een webcontrole waard zijn voor een hotel in ${input.location} met een straal van ${input.radiusKm} km. Kies verify voor alles wat aannemelijk extra hotelovernachtingen veroorzaakt, en kies bij twijfel altijd verify. Kies exclude alleen met een categorie in excludeAs: theatre_run voor een doorlopende theater- of bioscoopvoorstelling; market voor een waren-, rommel- of vintagemarkt; course voor een cursus of workshop. Zet bij elke exclude in act de woorden uit de titel die de categorie aantonen: bij artist_show de naam van de artiest, en bij de andere categorieën het woord of de merknaam waaruit de categorie blijkt. Neem die woorden letterlijk uit de titel over; kun je dat niet, kies dan verify. Een eigen merknaam zonder artiestennaam is een evenement en geen artist_show, ook als je de naam niet kent. Een artiestenshow of concert moet altijd naar verify, ook voor een enkele avond. Een competitiewedstrijd of professionele sportwedstrijd is nooit een exclude-categorie; kies dan verify. Geef voor elke index precies één beslissing met een korte reden. Kandidaten:\n${JSON.stringify(batch.map((candidate, index) => ({ index: offset + index, title: candidate.title, startDate: candidate.startDate, endDate: candidate.endDate, venue: candidate.venue, city: candidate.city, category: candidate.category })))}`,
+            content: `Beoordeel op basis van alleen deze metadata welke kandidaten een webcontrole waard zijn voor een hotel in ${input.location} met een straal van ${input.radiusKm} km. Kies verify voor alles wat aannemelijk extra hotelovernachtingen veroorzaakt, en kies bij twijfel altijd verify. Kies exclude alleen met een categorie in excludeAs: theatre_run voor een doorlopende theater- of bioscoopvoorstelling; market voor een waren-, rommel- of vintagemarkt; course voor een cursus of workshop. Zet bij elke exclude in act de woorden uit de titel die de categorie aantonen: bij artist_show de naam van de artiest, en bij de andere categorieën het woord of de merknaam waaruit de categorie blijkt. Neem die woorden letterlijk uit de titel over; kun je dat niet, kies dan verify. Een eigen merknaam zonder artiestennaam is een evenement en geen artist_show, ook als je de naam niet kent. Een artiestenshow of concert moet altijd naar verify, ook voor een enkele avond. Een competitiewedstrijd of professionele sportwedstrijd is nooit een exclude-categorie; kies dan verify. Schat daarnaast bij elke kandidaat in demandLevel hoeveel extra hotelovernachtingen het waarschijnlijk veroorzaakt: peak voor stadsbrede of grote internationale evenementen, high voor meerdaagse congressen, beurzen, festivals en stadionconcerten met bezoekers van buiten de regio, medium voor evenementen met deels bezoekers van buiten de regio, low voor evenementen met vooral publiek uit de stad zelf. Geef voor elke index precies één beslissing met een korte reden. Kandidaten:\n${JSON.stringify(batch.map((candidate, index) => ({ index: offset + index, title: candidate.title, startDate: candidate.startDate, endDate: candidate.endDate, venue: candidate.venue, city: candidate.city, category: candidate.category })))}`,
           }],
         } satisfies MessageCreateParamsNonStreaming,
       },
@@ -575,13 +579,14 @@ async function triageDiscoveries(input: {
       discoveryTriageSchema.parse(JSON.parse(text)).reviews.forEach((review) => {
         const candidate = input.candidates[review.index];
         if (!candidate || review.index < offset || review.index >= offset + size) return;
+        levels.set(review.index, review.demandLevel);
         if (triageExclusionAllowed(review, candidate)) excluded.set(review.index, review.reason);
       });
     } catch (error) {
       errors.push({ label, reason: dropReason(error) });
     }
   }
-  return { excluded, requests: slices.length, messages, errors };
+  return { excluded, levels, requests: slices.length, messages, errors };
 }
 
 export function verificationInstructions(input: { start: string; end: string; location: string; radiusKm: number }) {
@@ -624,7 +629,7 @@ export type VenueSearch = { name: string; city: string };
 type CollectClaudeInput = CollectionWindow & {
   discoveryMode?: "long_range";
   agendaSeedUrls?: string[];
-  /** Halls searched by name for the near-term sweep; see `venueSearchQueries`. */
+  /** Halls searched by name, per calendar month, in the near-term sweep. */
   venueSearches?: VenueSearch[];
   location: string;
   radiusKm: number;
@@ -1093,7 +1098,7 @@ async function collectClaudeFresh(
     return true;
   });
   const triage = input.triage
-    ? { excluded: await input.triage(inWindow), requests: 0, messages: [] as Anthropic.Message[], errors: [] }
+    ? { excluded: await input.triage(inWindow), levels: new Map<number, "low" | "medium" | "high" | "peak">(), requests: 0, messages: [] as Anthropic.Message[], errors: [] }
     : await triageDiscoveries({
       candidates: inWindow,
       location: input.location,
@@ -1107,6 +1112,9 @@ async function collectClaudeFresh(
   triage.errors.forEach(({ label, reason }) => recordDrop(label, "triage", reason));
   const urlEntries: VerificationEntry[] = [];
   const nameEntries: VerificationEntry[] = [];
+  // An unrated candidate counts as medium, so a failed triage slice neither buries nor promotes it.
+  const levelRank: Record<string, number> = { low: 0, medium: 1, high: 2, peak: 3 };
+  const rankOf = new Map<VerificationEntry, number>();
   inWindow.forEach((candidate, index) => {
     const rejected = triage.excluded.get(index);
     if (rejected !== undefined) {
@@ -1121,6 +1129,7 @@ async function collectClaudeFresh(
       officialUrl: candidate.officialUrl,
       search: false,
     };
+    rankOf.set(entry, levelRank[triage.levels.get(index) ?? "medium"]);
     (candidate.officialUrl ? urlEntries : nameEntries).push(entry);
   });
 
@@ -1157,8 +1166,11 @@ async function collectClaudeFresh(
       officialUrl: url,
       search: false,
     })),
-    ...urlEntries,
-    ...spreadNames,
+    // More new names than verification can take are cut by estimated hotel demand, not by
+    // arrival order. Arrival order is search order, so the last searches always lost: Amsterdam
+    // on 8 October dropped METSTRADE and a Martin Garrix concert while smaller events got checked.
+    // The sort is stable, so within one level the existing order (links first, months spread) holds.
+    ...[...urlEntries, ...spreadNames].sort((left, right) => rankOf.get(right)! - rankOf.get(left)!),
   ];
   const queue: VerificationEntry[] = [];
   const queuedUrlKeys = new Set<string>();
