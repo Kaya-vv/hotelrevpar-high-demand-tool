@@ -3,7 +3,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { collectLongRange, selectDueLeads } from "./sources/long-range";
 import { collectClaudeCalendar, parseDiscovery } from "./sources/claude";
 import { parseOfficialPage } from "./official-pages";
-import { geocodeCity, geocodeStreet, createLocationResolver } from "./research-location";
+import { geocodeCity, geocodeKnownVenue, geocodeStreet, createLocationResolver } from "./research-location";
 import { researchBudget } from "./research-budget";
 import { localDateBoundary, verifyEventEvidence } from "../events/evidence";
 import { localParts, eventLocalDate } from "../events/normalize";
@@ -762,6 +762,25 @@ describe("coordinated long-range research", () => {
   it("refuses ambiguous towns", async () => {
     const fetcher = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ response: { docs: [{ woonplaatsnaam: "Bergen", centroide_ll: "POINT(4.7 52.6)" }, { woonplaatsnaam: "Bergen", centroide_ll: "POINT(6 51.6)" }] } }) });
     expect(await geocodeCity("Bergen", fetcher)).toBeNull();
+  });
+
+  it("places a hall where its ticketed shows agree, in the named town only", async () => {
+    const amsterdam = async () => ({ latitude: 52.373, longitude: 4.904 });
+    const listing = (venue: string, latitude: number, longitude: number, count = 1) => Array.from({ length: count }, () => ({ venue, latitude, longitude }));
+    // The Post-Quantum Cryptography Conference page said "Meervaart"; the address register knew no
+    // such address and the conference landed on Amsterdam's centre, 7 km from a hotel next door.
+    const meervaart = async () => listing("De Meervaart", 52.3592, 4.8068, 5);
+    for (const query of ["Meervaart, Amsterdam", "Theater de Meervaart, Amsterdam", "Meervaart Amsterdam, Amsterdam"]) {
+      expect(await geocodeKnownVenue(query, { city: amsterdam, points: meervaart })).toEqual({ latitude: 52.3592, longitude: 4.8068 });
+    }
+    // Listings that themselves sit on the city centre do not count, and a stray listing is outvoted.
+    const ziggo = async () => [...listing("Ziggo Dome", 52.318, 4.936, 32), ...listing("Ziggo Dome, Amsterdam", 52.373, 4.904, 12), ...listing("Ziggo Dome", 52.36, 4.85)];
+    expect(await geocodeKnownVenue("Ziggo Dome, Amsterdam", { city: amsterdam, points: ziggo })).toEqual({ latitude: 52.318, longitude: 4.936 });
+    // A namesake hall in another town, a split vote, a single listing or an unknown hall stay unplaced.
+    expect(await geocodeKnownVenue("Beatrix Theater, Amsterdam", { city: amsterdam, points: async () => listing("Beatrix Theater", 52.088, 5.107, 9) })).toBeNull();
+    expect(await geocodeKnownVenue("Paradiso, Amsterdam", { city: amsterdam, points: async () => [...listing("Paradiso", 52.362, 4.884, 3), ...listing("Paradiso", 52.39, 4.95, 3)] })).toBeNull();
+    expect(await geocodeKnownVenue("Melkweg, Amsterdam", { city: amsterdam, points: async () => listing("Melkweg", 52.365, 4.881) })).toBeNull();
+    expect(await geocodeKnownVenue("Meervaart", { city: amsterdam, points: meervaart })).toBeNull();
   });
 
   it("reserves before dispatch, deduplicates billed IDs and drops stale reservations at month rollover", () => {

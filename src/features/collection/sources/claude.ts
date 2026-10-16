@@ -4,7 +4,7 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import type { MessageCreateParamsNonStreaming } from "@anthropic-ai/sdk/resources/messages/messages";
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { geocodeCity, geocodeStreet, createLocationResolver } from "../research-location";
+import { geocodeCity, geocodeKnownVenue, geocodeStreet, createLocationResolver } from "../research-location";
 import { estimatedCostUsd } from "../research-budget";
 import { fetchedDocumentText, eventFactsSchema, evidenceInstructions, verifyEventEvidence } from "@/features/events/evidence";
 import type { ResearchClient } from "../luna-client";
@@ -353,9 +353,10 @@ export async function geocodeVenue(query: string) {
 }
 
 /** Collectors resolve a quoted place: an exact building when the page gave one, otherwise the
- *  street it named. The operator's address form keeps `geocodeVenue` and its single exact match. */
+ *  street it named, otherwise the hall as ticket sellers place it. The operator's address form
+ *  keeps `geocodeVenue` and its single exact match. */
 export async function geocodeEventVenue(query: string) {
-  return (await geocodeVenue(query)) ?? (await geocodeStreet(query));
+  return (await geocodeVenue(query)) ?? (await geocodeStreet(query)) ?? (await geocodeKnownVenue(query));
 }
 
 async function requestPhase<T>(phase: "search" | "agenda" | "triage" | "verification", request: () => Promise<T>) {

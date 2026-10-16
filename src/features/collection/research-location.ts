@@ -1,3 +1,4 @@
+import { distanceKm } from "@/features/events/distance";
 import type { EventCandidate } from "@/features/events/types";
 import { normalizeText } from "@/features/events/normalize";
 
@@ -45,6 +46,58 @@ export async function geocodeStreet(query: string, fetcher: typeof fetch = fetch
     const chosen = exact.length === 1 ? exact[0] : candidates.length === 1 ? candidates[0] : null;
     if (!chosen) return null;
     return { latitude: Number(chosen.point![2]), longitude: Number(chosen.point![1]) };
+  } catch { return null; }
+}
+
+type Point = { latitude: number; longitude: number };
+type VenuePoint = Point & { venue: string };
+
+/** Words that vary between listings of one hall: "Theater de Meervaart" is "De Meervaart". */
+const venueNoise = new Set(["de", "het", "the", "theater", "theatre"]);
+
+/** Ticket-seller listings of halls whose name holds this word, with the coordinates the seller gave. */
+async function ticketVenuePoints(word: string): Promise<VenuePoint[]> {
+  // Dynamic: the admin client is server-only, which this module's tests cannot load.
+  const { createAdminClient } = await import("@/lib/supabase/admin");
+  const { data, error } = await createAdminClient().from("events")
+    .select("venue, latitude, longitude, event_sources!inner(provider)")
+    .ilike("venue", `%${word}%`).not("latitude", "is", null).eq("event_sources.provider", "ticketmaster").limit(500);
+  if (error) throw error;
+  return data.flatMap((row) => row.venue && row.latitude !== null && row.longitude !== null
+    ? [{ venue: row.venue, latitude: row.latitude, longitude: row.longitude }] : []);
+}
+
+/**
+ * The address register knows streets, not halls: "Meervaart" placed the Post-Quantum Cryptography
+ * Conference on Amsterdam's centre, 7 km from a hotel 200 m from the door, and on 16 October two
+ * thirds of the upcoming researched events sat on a city centre that way, Ahoy and Ziggo Dome
+ * included. Ticket sellers give those halls exact coordinates, so a hall named on an organiser's
+ * page takes the point its ticketed shows agree on. Same city only, and only a clear majority:
+ * a few listings carry the city centre themselves, and one Melkweg listing sat 6 km north.
+ */
+export async function geocodeKnownVenue(query: string, options: {
+  city?: typeof geocodeCity;
+  points?: (word: string) => Promise<VenuePoint[]>;
+} = {}): Promise<Point | null> {
+  const parts = query.split(",").map((part) => part.trim()).filter(Boolean);
+  if (parts.length < 2) return null;
+  const town = parts[parts.length - 1];
+  const townWords = new Set(normalizeText(town).split(" "));
+  const words = (name: string) => normalizeText(name.replace(/\([^)]*\)/g, " ")).split(" ")
+    .filter((word) => word && !venueNoise.has(word) && !townWords.has(word)).join(" ");
+  const hall = words(parts[0]);
+  if (!hall) return null;
+  try {
+    const centre = await (options.city ?? geocodeCity)(town);
+    if (!centre) return null;
+    const longest = hall.split(" ").sort((left, right) => right.length - left.length)[0];
+    const listed = (await (options.points ?? ticketVenuePoints)(longest)).filter((point) => words(point.venue) === hall
+      && distanceKm(centre.latitude, centre.longitude, point.latitude, point.longitude) > 0.05
+      && distanceKm(centre.latitude, centre.longitude, point.latitude, point.longitude) <= 25);
+    const near = (point: Point) => listed.filter((other) => distanceKm(point.latitude, point.longitude, other.latitude, other.longitude) <= 1).length;
+    const best = listed.map((point) => ({ point, support: near(point) })).sort((left, right) => right.support - left.support)[0];
+    if (!best || best.support < 2 || best.support * 3 < listed.length * 2) return null;
+    return { latitude: best.point.latitude, longitude: best.point.longitude };
   } catch { return null; }
 }
 
