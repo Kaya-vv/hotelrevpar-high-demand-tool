@@ -124,6 +124,8 @@ describe("CalendarView", () => {
     );
 
     const context = screen.getByRole("region", { name: "Kalendercontext" });
+    expect(within(context).getByText("Koningsdag")).not.toBeVisible();
+    fireEvent.click(within(context).getByText(/Feestdagen en schoolvakanties/));
     expect(within(context).getByText("Koningsdag")).toBeVisible();
     expect(within(context).getByText("Feestdag")).toBeVisible();
     expect(within(context).getByText("Schoolvakantie")).toBeVisible();

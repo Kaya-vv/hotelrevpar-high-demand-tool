@@ -825,20 +825,45 @@ a {
 }
 
 .calendar-context-overview {
-  display: grid;
-  gap: 14px;
   margin-bottom: 16px;
-  padding: 18px;
   border: 1px solid #c7dfe5;
   border-radius: 8px;
   background: #f2f9fa;
 }
 
-.calendar-context-overview > header {
+.calendar-context-overview > details > summary {
   display: flex;
-  align-items: end;
+  align-items: center;
   justify-content: space-between;
   gap: 20px;
+  padding: 14px 18px;
+  list-style: none;
+  cursor: pointer;
+}
+
+.calendar-context-overview > details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.calendar-context-toggle {
+  flex: none;
+  color: var(--blue);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.calendar-context-toggle::after {
+  content: "Tonen ▾";
+}
+
+.calendar-context-overview > details[open] .calendar-context-toggle::after {
+  content: "Verbergen ▴";
+}
+
+.calendar-context-body {
+  display: grid;
+  gap: 14px;
+  padding: 0 18px 18px;
 }
 
 .calendar-context-overview h2,
@@ -852,8 +877,7 @@ a {
   font-size: 1rem;
 }
 
-.calendar-context-overview > header p {
-  max-width: 490px;
+.calendar-context-body > p {
   margin: 0;
   color: var(--muted);
   font-size: 0.78rem;
@@ -2139,12 +2163,6 @@ td {
   .agenda-score {
     grid-column: 3;
     grid-row: 1 / span 2;
-  }
-
-  .calendar-context-overview > header {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 8px;
   }
 
   .calendar-context-month {
