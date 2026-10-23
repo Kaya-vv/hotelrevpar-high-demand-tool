@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { impact } from "./score";
-import { isAncillaryListing, knownVenueCapacity } from "./venues";
+import { isAncillaryListing, isArenaShow, knownVenueCapacity } from "./venues";
 
 describe("venue capacity", () => {
   it("reads the arena through the city and stadium suffixes its feeds add", () => {
@@ -44,6 +44,15 @@ describe("venue capacity", () => {
       "2026 LE SSERAFIM TOUR 'PUREFLOW' in Amsterdam",
       "Pussylounge",
     ]) expect(isAncillaryListing(title, "Ziggo Dome")).toBe(false);
+  });
+
+  it("sends only real shows at the two biggest arenas to be judged by name", () => {
+    expect(isArenaShow("concert", "Muse", "Ziggo Dome")).toBe(true);
+    expect(isArenaShow("electronic music event", "A State of Trance", "Hall 1 to Hall 4, Ahoy Arena")).toBe(true);
+    // A 6,000-seat hall, an add-on listing and a congress in the arena's halls are not arena shows.
+    expect(isArenaShow("concert", "Froukje", "AFAS Live")).toBe(false);
+    expect(isArenaShow("concert", "Westlife | Comfort Seats", "Ziggo Dome")).toBe(false);
+    expect(isArenaShow("conference", "Breakbulk Europe", "Rotterdam Ahoy")).toBe(false);
   });
 });
 

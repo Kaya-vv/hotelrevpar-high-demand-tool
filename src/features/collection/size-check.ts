@@ -2,8 +2,10 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 
+import { demandLabels } from "@/features/events/importance";
 import { eventLocalDate } from "@/features/events/normalize";
 import { readEventSizeCheck, type EventSizeCheck } from "@/features/events/size-check";
+import { isArenaShow } from "@/features/events/venues";
 import { loadVisibleNotificationEvents } from "@/features/notifications/query";
 import { createAdminClient, type AdminClient } from "@/lib/supabase/admin";
 import { fetchInBatches } from "@/lib/supabase/fetch-in-batches";
@@ -54,7 +56,9 @@ Dates: ${startDate}, ${days} day(s)
 Venue: ${event.venue ?? "unknown"}
 
 Use "big" only if you actually know this event and it typically draws thousands of overnight visitors from outside the region. Use "small" if you know it and it is mainly local, small, or day visitors. Use "unsure" if you do not know this specific event well. Never guess.
-visitors: the rough total visitors of a typical edition, or "onbekend". reason: at most 20 words, in Dutch.`;
+${isArenaShow(event.category, event.title, event.venue) ? `
+This venue is an arena with a show most nights. A full hall alone is not enough: most arena audiences live within driving distance and go home the same night, including tribute shows, film concerts, family shows and Dutch party or sing-along nights. Use "big" only for a top international or national act whose fans travel from abroad or from far across the country and stay overnight.
+` : ""}visitors: the rough total visitors of a typical edition, or "onbekend". reason: at most 20 words, in Dutch.`;
 }
 
 /** One request per event; a failed request leaves that event unchecked for the next run. */
@@ -96,17 +100,25 @@ export async function checkEventSizes(events: SizeCheckEvent[], options: {
   return { checks, failed, requests: events.length };
 }
 
-/** Shown Medium events for this area's hotels that have never been size-checked. */
+/**
+ * Events for this area's hotels that have never been size-checked: the shown Medium tier, and
+ * hidden arena shows whose venue pages never say who travels (see `isArenaShow`).
+ */
 async function dueSizeChecks(admin: AdminClient, context: CollectionContext): Promise<SizeCheckEvent[]> {
   const announced = new Set<string>();
+  const hidden = new Set<string>();
   for (const hotel of context.hotels) {
-    const visible = await loadVisibleNotificationEvents(admin, context.area.accountId, hotel.id);
-    for (const event of visible?.events ?? []) if (event.announced) announced.add(event.id);
+    const visible = await loadVisibleNotificationEvents(admin, context.area.accountId, hotel.id, new Date(), { includeLow: true });
+    for (const event of visible?.events ?? []) {
+      if (event.announced) announced.add(event.id);
+      else if (event.level === demandLabels.Low) hidden.add(event.id);
+    }
   }
-  if (!announced.size) return [];
-  const rows = await fetchInBatches([...announced], (ids) =>
+  if (!announced.size && !hidden.size) return [];
+  const rows = await fetchInBatches([...announced, ...hidden], (ids) =>
     admin.from("events").select("id, title, category, venue, start_at, end_at, size_check").in("id", ids));
-  return rows.filter((row) => !readEventSizeCheck(row.size_check)).map((row) => ({
+  return rows.filter((row) => !readEventSizeCheck(row.size_check)
+    && (announced.has(row.id) || isArenaShow(row.category, row.title, row.venue))).map((row) => ({
     id: row.id, title: row.title, category: row.category, venue: row.venue, startAt: row.start_at, endAt: row.end_at,
   }));
 }

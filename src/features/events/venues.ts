@@ -95,10 +95,24 @@ export const STADIUM_CONCERT_CAPACITY = 30_000;
  * ArenA stayed hidden: the ArenA agenda lists dates, never hotel stays, so no evidence rule could
  * ever lift it. Arenas (Ziggo Dome, Ahoy) are deliberately out: a review of the ~35 upcoming
  * Ziggo Dome shows for two Amsterdam hotels judged only about a quarter to draw overnight fans,
- * so they keep needing real evidence. Football is excluded by `venueCrowdIsAudience`.
+ * so each arena show is judged by name instead, see `isArenaShow`. Football is excluded by
+ * `venueCrowdIsAudience`.
  */
 export function stadiumConcertCapacity(category: string, title: string, venue: string | null) {
   if (!venueCrowdIsAudience(category, title, venue)) return null;
   const capacity = knownVenueCapacity(venue);
   return capacity !== null && capacity >= STADIUM_CONCERT_CAPACITY ? capacity : null;
+}
+
+/** Ziggo Dome and Ahoy: big enough that a well-known act fills hotels, too many shows to grade all. */
+export const ARENA_SHOW_CAPACITY = 15_000;
+
+/**
+ * A show at an arena whose own pages never mention hotel stays: Muse, Stevie Wonder and A State
+ * of Trance sat hidden in October 2026 for every Amsterdam and Rotterdam hotel. The size check
+ * judges each one by name, so the quarter of shows that draw overnight fans can reach High and
+ * the rest stay hidden.
+ */
+export function isArenaShow(category: string, title: string, venue: string | null) {
+  return venueCrowdIsAudience(category, title, venue) && (knownVenueCapacity(venue) ?? 0) >= ARENA_SHOW_CAPACITY;
 }

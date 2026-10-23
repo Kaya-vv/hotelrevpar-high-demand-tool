@@ -32,6 +32,8 @@ export async function loadVisibleNotificationEvents(
   accountId: string,
   hotelId: string,
   now = new Date(),
+  /** Also return the hidden-by-default Laag events, labelled Low. */
+  options: { includeLow?: boolean } = {},
 ): Promise<NotificationHotel | null> {
   const [
     { data: hotel, error: hotelError },
@@ -155,6 +157,7 @@ export async function loadVisibleNotificationEvents(
         return Boolean(evidence?.dateText && evidence.locationText);
       }),
       scores: eventScores,
+      includeLow: options.includeLow,
     });
     if (!visibility.visible || !visibility.shownLevel) return [];
     return [

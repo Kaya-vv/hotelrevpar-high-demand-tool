@@ -2,9 +2,10 @@ import { z } from "zod";
 
 /**
  * A general-knowledge answer to "does this event bring many overnight visitors from outside the
- * region?". It is asked only where the sources prove the right kind of visitor but never the size
+ * region?". It is asked where the sources prove the right kind of visitor but never the size
  * (the shown Medium tier): the International Film Festival Rotterdam and a library's children's
- * book week scored identically on source evidence alone. See `scoreHotelEvent` for how it grades.
+ * book week scored identically on source evidence alone. It is also asked for hidden arena shows,
+ * whose venue pages never say who travels (`isArenaShow`). See `scoreHotelEvent` for how it grades.
  */
 export const eventSizeCheckSchema = z.object({
   version: z.literal(1),
