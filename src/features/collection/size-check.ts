@@ -76,7 +76,9 @@ export async function checkEventSizes(events: SizeCheckEvent[], options: {
     try {
       const message = await options.client.messages.create({
         model,
-        max_tokens: 300,
+        // The model thinks before it answers; at 300 the thinking used up the limit on harder
+        // names (Guus Meeuwis in Ahoy failed every run). Only tokens actually used are billed.
+        max_tokens: 2_000,
         output_config: { format: zodOutputFormat(answerSchema) },
         messages: [{ role: "user", content: prompt(event) }],
       }, { timeout: 60_000, maxRetries: 2 });
