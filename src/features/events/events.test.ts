@@ -161,6 +161,17 @@ describe("event domain", () => {
     expect(classifyMatch(walk, [{ ...swim, id: "swim-1" }]).kind).not.toBe("exact");
   });
 
+  it("merges the Dutch and English spelling of one event, but not short words a letter apart", () => {
+    // nvmo.nl and its /en/ page: same days, same hall, shown twice in one email at two levels.
+    const dutch = normalizeCandidate({ ...candidate, providerEventId: "nl", title: "NVMO Congres 2027" });
+    const english = normalizeCandidate({ ...candidate, providerEventId: "en", title: "NVMO Congress 2027" });
+    expect(classifyMatch(english, [{ ...dutch, id: "nvmo" }])).toEqual({ kind: "exact", eventId: "nvmo" });
+
+    const run = normalizeCandidate({ ...candidate, providerEventId: "run", title: "Ladies Run" });
+    const fun = normalizeCandidate({ ...candidate, providerEventId: "fun", title: "Ladies Fun" });
+    expect(classifyMatch(fun, [{ ...run, id: "run" }]).kind).not.toBe("exact");
+  });
+
   it("marks a similar same-day title as uncertain", () => {
     const normalized = normalizeCandidate(candidate);
     const changed = normalizeCandidate({

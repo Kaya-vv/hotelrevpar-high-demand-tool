@@ -8,6 +8,26 @@ export type Match =
   | { kind: "uncertain"; eventId: string }
   | { kind: "new"; eventId: null };
 
+// Dutch and English pages of one organiser spell the same word one letter apart: nvmo.nl gave
+// "NVMO Congres 2027" and its /en/ page "NVMO Congress 2027", same days, same hall, and the
+// calendar showed both. Only words of five or more letters qualify, so short codes, numbers
+// and editions ("NK Dames"/"NK Heren", "Deel 1"/"Deel 2") still count as different words.
+function sameWord(left: string, right: string) {
+  if (left === right) return true;
+  if (left.length < 5 || right.length < 5 || /\d/.test(left) || /\d/.test(right)) return false;
+  if (Math.abs(left.length - right.length) > 1) return false;
+  let start = 0;
+  while (left[start] === right[start]) start += 1;
+  let leftEnd = left.length;
+  let rightEnd = right.length;
+  while (leftEnd > start && rightEnd > start && left[leftEnd - 1] === right[rightEnd - 1]) {
+    leftEnd -= 1;
+    rightEnd -= 1;
+  }
+  // At most one letter added, dropped or swapped for another.
+  return leftEnd - start <= 1 && rightEnd - start <= 1;
+}
+
 // Deliberately keeps place qualifiers: dropping them shortens titles, and the containment rule
 // below needs three tokens, so "Dutch Design Week" against "Dutch Design Festival" would score
 // lower and split into two events. Place-only differences get their own rule instead.
@@ -16,20 +36,26 @@ export function similarity(left: string, right: string) {
     value.split(" ").filter((token) => token && !/^20\d{2}$/.test(token));
   const leftTokens = meaningful(left);
   const rightTokens = meaningful(right);
-  const leftSet = new Set(leftTokens);
-  const rightSet = new Set(rightTokens);
-  const union = new Set([...leftSet, ...rightSet]);
-  if (!union.size) return 0;
-  let shared = 0;
-  leftSet.forEach((token) => {
-    if (rightSet.has(token)) shared += 1;
-  });
-  const jaccard = shared / union.size;
-  const smallest = Math.min(leftSet.size, rightSet.size);
+  const leftSet = [...new Set(leftTokens)];
+  const rightSet = [...new Set(rightTokens)];
+  if (!leftSet.length && !rightSet.length) return 0;
+  // Pair exact words first, then near spellings, each word at most once, so a near spelling
+  // never takes the partner of an exact one.
+  const leftOpen = leftSet.filter((token) => !rightSet.includes(token));
+  const rightOpen = rightSet.filter((token) => !leftSet.includes(token));
+  let shared = leftSet.length - leftOpen.length;
+  for (const token of leftOpen) {
+    const match = rightOpen.findIndex((other) => sameWord(token, other));
+    if (match < 0) continue;
+    rightOpen.splice(match, 1);
+    shared += 1;
+  }
+  const jaccard = shared / (leftSet.length + rightSet.length - shared);
+  const smallest = Math.min(leftSet.length, rightSet.length);
   const [shorter, longer] = leftTokens.length <= rightTokens.length
     ? [leftTokens, rightTokens]
     : [rightTokens, leftTokens];
-  const prefix = shorter.length > 0 && shorter.every((token, index) => longer[index] === token);
+  const prefix = shorter.length > 0 && shorter.every((token, index) => sameWord(token, longer[index]));
   const containment = smallest >= 3 || prefix ? shared / smallest : 0;
   return Math.max(jaccard, containment);
 }
