@@ -61,6 +61,16 @@ it("tucks disabled and loginless accounts away and counts only their hotels that
   expect(hiddenSection.querySelector("summary")).toHaveTextContent("1 hotel zoekt nog");
 });
 
+it("offers adding a login to every active account, including ones without a login, but not to disabled accounts", async () => {
+  const { container } = render(await AccountsPage({ searchParams: Promise.resolve({}) }));
+  const page = within(container);
+  for (const [name, id] of [["Abonnee", "subscriber"], ["Account zonder login", "retained"]]) {
+    const add = page.getByRole("textbox", { name: `Login toevoegen aan ${name}`, hidden: true }).closest("form")!;
+    expect(new FormData(add).get("accountId")).toBe(id);
+  }
+  expect(page.queryByRole("textbox", { name: "Login toevoegen aan Uitgeschakeld account", hidden: true })).toBeNull();
+});
+
 it("requires platform administration before loading the account list", async () => {
   vi.mocked(requirePlatformAdmin).mockRejectedValue(new Error("/calendar"));
   await expect(AccountsPage({ searchParams: Promise.resolve({}) })).rejects.toThrow("/calendar");

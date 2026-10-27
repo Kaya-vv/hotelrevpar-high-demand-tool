@@ -107,8 +107,24 @@ describe("subscriber actions", () => {
     auth.admin.createUser.mockResolvedValue({ data: { user: { id: "replacement" } }, error: null });
     auth.admin.inviteUserByEmail.mockResolvedValue({ data: { user: { id: "replacement" } }, error: null });
     await expect(createSubscriberAccount(form({ email: "new@example.com" }))).rejects.toThrow("notice=invited");
-    expect(membership.insert).toHaveBeenCalledWith({ account_id: "account-1", user_id: "replacement", event_notifications_enabled: false });
+    expect(membership.insert).toHaveBeenCalledWith({ account_id: "account-1", user_id: "replacement", event_notifications_enabled: false, role: "operator" });
     expect(membership.update).toHaveBeenCalledWith({ event_notifications_enabled: true });
+  });
+
+  it.each([
+    { existing: [{ user_id: "admin-1" }], role: "platform_admin" },
+    { existing: [], role: "operator" },
+  ])("gives an added login administrator rights only on an account run by administrators: %j", async ({ existing, role }) => {
+    const membership = query(null);
+    const admins = query(existing);
+    from.mockReturnValueOnce(query({ id: "account-1", active: true })).mockReturnValueOnce(admins).mockReturnValue(membership);
+    auth.admin.createUser.mockResolvedValue({ data: { user: { id: "colleague" } }, error: null });
+    auth.admin.inviteUserByEmail.mockResolvedValue({ data: { user: { id: "colleague" } }, error: null });
+    await expect(createSubscriberAccount(form({ email: "rm@example.com" }))).rejects.toThrow("notice=invited");
+    expect(admins.eq).toHaveBeenCalledWith("role", "platform_admin");
+    expect(membership.insert).toHaveBeenCalledWith({
+      account_id: "account-1", user_id: "colleague", event_notifications_enabled: false, role,
+    });
   });
 
   it("reports deletion failure without deleting any portfolio records", async () => {

@@ -54,6 +54,14 @@ async function activeAccount(admin: AdminClient, accountId: string) {
   if (!data.active) throw new AccountActionError("inactive");
 }
 
+/** A login added to the platform's own account gets the same administrator rights as its other logins. */
+async function newMemberRole(admin: AdminClient, accountId: string) {
+  const { data, error } = await admin.from("account_members")
+    .select("user_id").eq("account_id", accountId).eq("role", "platform_admin");
+  if (error) throw error;
+  return data?.length ? "platform_admin" as const : "operator" as const;
+}
+
 function parseHotelLimit(value: FormDataEntryValue | null): number | null {
   const raw = String(value ?? "").trim();
   if (raw === "") return null;
@@ -73,8 +81,9 @@ export async function createSubscriberAccount(formData: FormData) {
     const redirectTo = passwordRedirect();
     const admin = createAdminClient();
     if (accountId) await activeAccount(admin, accountId);
+    const role = accountId ? await newMemberRole(admin, accountId) : undefined;
     await provisionSubscriberAccount(admin, {
-      accountName, email, accountId: accountId || undefined, hotelLimit, redirectTo,
+      accountName, email, accountId: accountId || undefined, hotelLimit, redirectTo, role,
     });
   });
 }

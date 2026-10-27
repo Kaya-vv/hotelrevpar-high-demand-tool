@@ -2,6 +2,7 @@ import "server-only";
 
 import { baselineMemberNotifications } from "@/features/notifications/service";
 import type { AdminClient } from "@/lib/supabase/admin";
+import type { Database } from "@/lib/supabase/database.types";
 
 import { provisionSubscriber } from "./provision-subscriber";
 
@@ -10,6 +11,8 @@ export type ProvisionAccountInput = {
   email: string;
   /** Add the login to this existing account instead of creating one. */
   accountId?: string;
+  /** Rights of the new login. Defaults to a normal login. */
+  role?: Database["public"]["Enums"]["account_role"];
   /** How many hotels the new account may run. `null` means no limit. */
   hotelLimit?: number | null;
   plugandpaySubscriptionId?: string | null;
@@ -64,6 +67,7 @@ export async function provisionSubscriberAccount(
         account_id: targetId,
         user_id: userId,
         event_notifications_enabled: false,
+        ...(input.role ? { role: input.role } : {}),
       });
       if (error) {
         if (!accountId) {

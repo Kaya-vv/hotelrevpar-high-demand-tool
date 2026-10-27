@@ -68,6 +68,17 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
                       )}
                     </div>
                   ))}
+                  {account.active && (
+                    <form action={createSubscriberAccount} className="subscriber-login">
+                      <input type="hidden" name="accountId" value={account.id} />
+                      {members.some((member) => member.account_id === account.id && member.role === "platform_admin") && (
+                        <span className="muted">Een nieuwe login krijgt beheerrechten, net als de andere logins van dit account.</span>
+                      )}
+                      <input name="email" type="email" required placeholder="Nieuw e-mailadres"
+                        aria-label={`Login toevoegen aan ${account.name}`} />
+                      <SubmitButton>Login toevoegen</SubmitButton>
+                    </form>
+                  )}
                 </div>
               </td>
               <td>
