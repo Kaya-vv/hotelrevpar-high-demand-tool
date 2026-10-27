@@ -43,8 +43,17 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
       {rows.map((account) => {
         const accountMembers = members.filter((member) => member.account_id === account.id);
         const accountHotels = hotels.filter((hotel) => hotel.account_id === account.id);
-        const searching = accountHotels.filter((hotel) => !hotel.archived_at).length;
-        const archived = accountHotels.length - searching;
+        const activeHotels = accountHotels.filter((hotel) => !hotel.archived_at);
+        const archivedHotels = accountHotels.filter((hotel) => hotel.archived_at);
+        const hotelRow = (hotel: (typeof hotels)[number]) => (
+          <form key={hotel.id} action={setSubscriberHotelArchived} className="account-hotel">
+            <span><strong>{hotel.name}</strong><br /><span className="muted">{hotel.archived_at ? "Gearchiveerd" : account.active ? "Zoeken aan" : "Account uitgeschakeld"}</span></span>
+            <input type="hidden" name="accountId" value={account.id} />
+            <input type="hidden" name="hotelId" value={hotel.id} />
+            <input type="hidden" name="archived" value={String(!hotel.archived_at)} />
+            <SubmitButton>{hotel.archived_at ? "Herstellen" : "Archiveren"}</SubmitButton>
+          </form>
+        );
         const adminAccount = accountMembers.some((member) => member.role === "platform_admin");
         const removable = (member: (typeof members)[number]) => member.role !== "platform_admin" && member.user_id !== current.userId;
         return (
@@ -62,8 +71,8 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
                 {adminAccount && <span className="muted"> · beheer</span>}
               </span>
               <span>
-                {accountHotels.length === 0 ? "Geen hotels" : `${searching} actief`}
-                {archived > 0 && <span className="muted"> · {archived} gearchiveerd</span>}
+                {accountHotels.length === 0 ? "Geen hotels" : `${activeHotels.length} actief`}
+                {archivedHotels.length > 0 && <span className="muted"> · {archivedHotels.length} gearchiveerd</span>}
               </span>
               <span>{account.hotel_limit ?? "Onbeperkt"}</span>
               <span className="account-toggle" aria-hidden="true" />
@@ -107,17 +116,16 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
               </section>
               <section aria-label={`Hotels van ${account.name}`}>
                 <h3>Hotels</h3>
-                {accountHotels.length === 0 && <p className="muted">Geen hotels.</p>}
-                {accountHotels.map((hotel) => (
-                  <form key={hotel.id} action={setSubscriberHotelArchived} className="subscriber-login">
-                    <span><strong>{hotel.name}</strong><br /><span className="muted">{hotel.archived_at ? "Gearchiveerd" : account.active ? "Zoeken aan" : "Account uitgeschakeld"}</span></span>
-                    <input type="hidden" name="accountId" value={account.id} />
-                    <input type="hidden" name="hotelId" value={hotel.id} />
-                    <input type="hidden" name="archived" value={String(!hotel.archived_at)} />
-                    <SubmitButton>{hotel.archived_at ? "Herstellen" : "Archiveren"}</SubmitButton>
-                  </form>
-                ))}
-                {accountHotels.length > 0 && <p className="muted">Archiveren stopt nieuwe zoekopdrachten en e-mails voor dat hotel. De geschiedenis blijft bewaard en je kunt het later herstellen.</p>}
+                {accountHotels.length === 0 ? <p className="muted">Geen hotels.</p>
+                  : activeHotels.length === 0 && <p className="muted">Geen actieve hotels.</p>}
+                {activeHotels.map(hotelRow)}
+                {activeHotels.length > 0 && <p className="muted">Archiveren stopt nieuwe zoekopdrachten en e-mails voor dat hotel. De geschiedenis blijft bewaard en je kunt het later herstellen.</p>}
+                {archivedHotels.length > 0 && (
+                  <details className="archived-hotels">
+                    <summary>Gearchiveerde hotels ({archivedHotels.length})</summary>
+                    {archivedHotels.map(hotelRow)}
+                  </details>
+                )}
               </section>
               <section aria-label={`Hotellimiet van ${account.name}`}>
                 <h3>Hotellimiet</h3>

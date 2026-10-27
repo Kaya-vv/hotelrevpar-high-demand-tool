@@ -47,6 +47,8 @@ it("keeps hotels manageable after the last login was removed and offers restore 
   const restore = screen.getByRole("button", { name: "Herstellen", hidden: true }).closest("form")!;
   expect(new FormData(restore).get("hotelId")).toBe("archived-hotel");
   expect(new FormData(restore).get("archived")).toBe("false");
+  expect(restore.closest(".archived-hotels")).not.toHaveAttribute("open");
+  expect(archive.closest(".archived-hotels")).toBeNull();
 });
 
 it("tucks disabled and loginless accounts away and counts only their hotels that still search", async () => {

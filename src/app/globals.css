@@ -1429,6 +1429,33 @@ a {
   justify-content: flex-start;
 }
 
+/* Name left, button right, also for long hotel names. */
+.account-hotel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.archived-hotels {
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.archived-hotels > form {
+  margin-top: 12px;
+}
+
+.archived-hotels > summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.archived-hotels .account-hotel strong {
+  color: var(--muted);
+}
+
 .compact-form {
   display: flex;
   gap: 10px;
