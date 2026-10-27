@@ -12,7 +12,8 @@ import { createAdminClient, type AdminClient } from "@/lib/supabase/admin";
 
 class AccountActionError extends Error {}
 
-async function runAccountAction(success: string, operation: () => Promise<void>) {
+/** Runs one page action, then returns to the page with that account still open for its result. */
+async function runAccountAction(formData: FormData, success: string, operation: () => Promise<void>) {
   let notice = success;
   try {
     await operation();
@@ -26,7 +27,8 @@ async function runAccountAction(success: string, operation: () => Promise<void>)
     console.error("Subscriber action failed", { operation: success, code, notice });
   }
   revalidatePath("/admin/accounts");
-  redirect(`/admin/accounts?notice=${notice}`);
+  const accountId = String(formData.get("accountId") ?? "");
+  redirect(`/admin/accounts?notice=${notice}${accountId ? `&account=${encodeURIComponent(accountId)}` : ""}`);
 }
 
 function passwordRedirect() {
@@ -72,7 +74,7 @@ function parseHotelLimit(value: FormDataEntryValue | null): number | null {
 
 export async function createSubscriberAccount(formData: FormData) {
   await requirePlatformAdmin();
-  return runAccountAction("invited", async () => {
+  return runAccountAction(formData, "invited", async () => {
     const accountName = String(formData.get("accountName") ?? "").trim();
     const accountId = String(formData.get("accountId") ?? "");
     const email = String(formData.get("email") ?? "").trim().toLowerCase();
@@ -90,7 +92,7 @@ export async function createSubscriberAccount(formData: FormData) {
 
 export async function setAccountHotelLimit(formData: FormData) {
   await requirePlatformAdmin();
-  return runAccountAction("limit-saved", async () => {
+  return runAccountAction(formData, "limit-saved", async () => {
     const accountId = String(formData.get("accountId") ?? "");
     if (!accountId) throw new AccountActionError("missing");
     const limit = parseHotelLimit(formData.get("hotelLimit"));
@@ -104,7 +106,7 @@ export async function setAccountHotelLimit(formData: FormData) {
 
 export async function resendSubscriberLink(formData: FormData) {
   const current = await requirePlatformAdmin();
-  return runAccountAction("resent", async () => {
+  return runAccountAction(formData, "resent", async () => {
     const admin = createAdminClient();
     const member = await subscriberMember(admin, formData, current.userId);
     await activeAccount(admin, String(formData.get("accountId")));
@@ -118,7 +120,7 @@ export async function resendSubscriberLink(formData: FormData) {
 
 export async function deleteSubscriberUser(formData: FormData) {
   const current = await requirePlatformAdmin();
-  return runAccountAction("deleted", async () => {
+  return runAccountAction(formData, "deleted", async () => {
     const admin = createAdminClient();
     const member = await subscriberMember(admin, formData, current.userId);
     // The database removes membership with the auth user. Account data stays.
@@ -130,7 +132,7 @@ export async function deleteSubscriberUser(formData: FormData) {
 export async function setSubscriberHotelArchived(formData: FormData) {
   await requirePlatformAdmin();
   const archived = formData.get("archived");
-  return runAccountAction(archived === "true" ? "hotel-archived" : "hotel-restored", async () => {
+  return runAccountAction(formData, archived === "true" ? "hotel-archived" : "hotel-restored", async () => {
     const hotelId = String(formData.get("hotelId") ?? "");
     const accountId = String(formData.get("accountId") ?? "");
     if (!hotelId || !accountId || !["true", "false"].includes(String(archived))) throw new AccountActionError("hotel-input");

@@ -37,7 +37,7 @@ beforeEach(() => {
 
 it("keeps hotels manageable after the last login was removed and offers restore for archived hotels", async () => {
   render(await AccountsPage({ searchParams: Promise.resolve({}) }));
-  const retained = screen.getByText("Account zonder login").closest("tr")!;
+  const retained = screen.getByText("Account zonder login").closest("details")!;
   expect(within(retained).getByText("Geen login")).toBeInTheDocument();
   expect(within(retained).getByText("Bewaard hotel")).toBeInTheDocument();
   const archive = within(retained).getByRole("button", { name: "Archiveren", hidden: true }).closest("form")!;
@@ -57,7 +57,7 @@ it("tucks disabled and loginless accounts away and counts only their hotels that
   expect(within(hiddenSection).getByText("Account zonder login")).toBeInTheDocument();
   expect(within(hiddenSection).getByText("Uitgeschakeld account")).toBeInTheDocument();
   expect(within(hiddenSection).queryByText("Abonnee")).not.toBeInTheDocument();
-  expect(page.getByText("Abonnee").closest("details")).toBeNull();
+  expect(page.getByText("Abonnee").closest(".hidden-accounts")).toBeNull();
   expect(hiddenSection.querySelector("summary")).toHaveTextContent("1 hotel zoekt nog");
 });
 
@@ -69,6 +69,17 @@ it("offers adding a login to every active account, including ones without a logi
     expect(new FormData(add).get("accountId")).toBe(id);
   }
   expect(page.queryByRole("textbox", { name: "Login toevoegen aan Uitgeschakeld account", hidden: true })).toBeNull();
+});
+
+it("reopens the account an action came from and shows its result there, also inside the tucked-away section", async () => {
+  const { container } = render(await AccountsPage({ searchParams: Promise.resolve({ notice: "limit-saved", account: "retained" }) }));
+  const page = within(container);
+  const retained = page.getByText("Account zonder login").closest("details")!;
+  expect(retained).toHaveAttribute("open");
+  expect(retained.closest(".hidden-accounts")).toHaveAttribute("open");
+  expect(page.getByText("Abonnee").closest("details")).not.toHaveAttribute("open");
+  expect(page.getAllByRole("status", { hidden: true })).toHaveLength(1);
+  expect(within(retained).getByRole("status", { hidden: true })).toHaveTextContent("Het aantal hotels is opgeslagen.");
 });
 
 it("requires platform administration before loading the account list", async () => {

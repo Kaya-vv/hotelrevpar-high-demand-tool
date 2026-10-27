@@ -1344,6 +1344,108 @@ a {
   justify-content: flex-end;
 }
 
+/* Abonnees: one overview row per account; "Beheren" opens its management blocks underneath. */
+.account-row {
+  display: grid;
+  grid-template-columns: minmax(170px, 1.5fr) minmax(130px, 1fr) minmax(170px, 1.5fr) minmax(120px, 1fr) minmax(90px, 0.7fr) 96px;
+  gap: 14px;
+  align-items: center;
+  padding: 12px 10px;
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+
+.account-head {
+  font-weight: 700;
+}
+
+.account-item > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.account-item > summary::-webkit-details-marker {
+  display: none;
+}
+
+.account-item > summary:hover,
+.account-item[open] > summary {
+  background: var(--soft);
+}
+
+.account-toggle::after {
+  content: "Beheren";
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 5px 12px;
+  border: 1px solid var(--blue);
+  border-radius: 5px;
+  color: var(--blue);
+}
+
+.account-item[open] .account-toggle::after {
+  content: "Sluiten";
+  color: var(--white);
+  background: var(--blue);
+}
+
+.account-manage {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1.25fr) minmax(0, 0.9fr);
+  gap: 28px;
+  padding: 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.account-manage > .notice {
+  grid-column: 1 / -1;
+}
+
+.account-manage section {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.account-manage h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.account-manage p {
+  margin: 0;
+  font-size: 0.88rem;
+}
+
+.account-login {
+  display: grid;
+  gap: 8px;
+}
+
+.account-login .subscriber-login-actions {
+  margin-left: 0;
+  justify-content: flex-start;
+}
+
+.compact-form {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.compact-form input {
+  flex: 1 1 140px;
+  min-width: 0;
+  min-height: 38px;
+}
+
+.compact-form input[type="number"] {
+  flex: 0 1 125px;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -2123,6 +2225,29 @@ td {
   }
 
   .inline-form.venue-calendar-form {
+    grid-template-columns: 1fr;
+  }
+
+  .account-head {
+    display: none;
+  }
+
+  .account-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px 14px;
+  }
+
+  .account-row > :not(strong, .account-toggle) {
+    grid-column: 1 / -1;
+    color: var(--muted);
+  }
+
+  .account-toggle {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .account-manage {
     grid-template-columns: 1fr;
   }
 

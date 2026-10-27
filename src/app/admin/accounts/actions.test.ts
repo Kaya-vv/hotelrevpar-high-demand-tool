@@ -106,7 +106,7 @@ describe("subscriber actions", () => {
     from.mockReturnValueOnce(query({ id: "account-1", active: true })).mockReturnValue(membership);
     auth.admin.createUser.mockResolvedValue({ data: { user: { id: "replacement" } }, error: null });
     auth.admin.inviteUserByEmail.mockResolvedValue({ data: { user: { id: "replacement" } }, error: null });
-    await expect(createSubscriberAccount(form({ email: "new@example.com" }))).rejects.toThrow("notice=invited");
+    await expect(createSubscriberAccount(form({ email: "new@example.com" }))).rejects.toThrow("/admin/accounts?notice=invited&account=account-1");
     expect(membership.insert).toHaveBeenCalledWith({ account_id: "account-1", user_id: "replacement", event_notifications_enabled: false, role: "operator" });
     expect(membership.update).toHaveBeenCalledWith({ event_notifications_enabled: true });
   });
