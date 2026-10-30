@@ -44,3 +44,14 @@ it("lets an account without a limit continue to the address check", async () => 
   await saveHotel({}, newHotel());
   expect(mocks.geocode).toHaveBeenCalled();
 });
+
+it("saves a hotel without a RevControl code under its own name", async () => {
+  mocks.limit = null;
+  mocks.count = 0;
+  mocks.geocode.mockResolvedValue({ address: "Stationsplein 1, 5611AB Eindhoven", locality: "Eindhoven", latitude: 51.4, longitude: 5.4 });
+  mocks.insert.mockReturnValue({ select: () => ({ single: async () => ({ data: { id: "hotel" }, error: null }) }) });
+  const form = newHotel();
+  form.set("revcontrolCode", "  ");
+  await saveHotel({}, form);
+  expect(mocks.insert).toHaveBeenCalledWith(expect.objectContaining({ revcontrol_code: "Hotel Zuid" }));
+});

@@ -27,6 +27,13 @@ describe("PDOK addresses", () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 
+  it("drops characters PDOK refuses instead of failing the search", async () => {
+    const fetcher = vi.fn().mockResolvedValue(response({ features: [] }));
+
+    await searchAddresses("Eerste Ringdijkstraat 4: Amsterdam!", fetcher);
+    expect(new URL(String(fetcher.mock.calls[0][0])).searchParams.get("q")).toBe("Eerste Ringdijkstraat 4 Amsterdam");
+  });
+
   it("maps a selected PDOK BAG address", async () => {
     const fetcher = vi.fn().mockResolvedValue(response({
         properties: {

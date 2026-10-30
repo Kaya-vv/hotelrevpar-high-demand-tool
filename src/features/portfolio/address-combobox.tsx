@@ -119,7 +119,7 @@ export function AddressCombobox({
       )}
       <small role="status">
         {status === "loading" && "Adressen zoeken…"}
-        {status === "empty" && "Geen adressen gevonden. Controleer je invoer."}
+        {status === "empty" && "Geen adressen gevonden. Typ alleen straat en huisnummer, zonder hotelnaam (bijv. Damrak 1), en kies daarna uit de lijst."}
         {status === "error" && "Adreszoeken is niet beschikbaar. Probeer het later opnieuw."}
         {status === "idle" && "Typ en kies een adres uit de lijst."}
       </small>

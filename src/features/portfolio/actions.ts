@@ -19,6 +19,7 @@ export type FormState = {
 
 // The database refuses a hotel over the account's limit with this English code; show Dutch instead.
 const HOTEL_LIMIT_REACHED = "Je account heeft geen ruimte meer voor een extra hotel. Archiveer er een of neem contact op.";
+const DUPLICATE_REVCONTROL_CODE = "Een ander hotel in je account gebruikt al deze RevControl-code (of deze naam). Kies een andere code.";
 
 export async function setHotelArchived(formData: FormData) {
   const { accountId } = await requireAccount();
@@ -118,7 +119,7 @@ export async function saveHotel(
   const row = {
     account_id: account.accountId,
     name: hotel.name,
-    revcontrol_code: hotel.revcontrolCode,
+    revcontrol_code: hotel.revcontrolCode || hotel.name,
     address: location.address,
     pdok_address_id: hotel.addressId,
     latitude: location.latitude,
@@ -142,7 +143,9 @@ export async function saveHotel(
     return {
       message: result.error.message.includes("hotel_limit_reached")
         ? HOTEL_LIMIT_REACHED
-        : result.error.message,
+        : result.error.message.includes("hotels_account_id_revcontrol_code_key")
+          ? DUPLICATE_REVCONTROL_CODE
+          : result.error.message,
     };
   const hotelId = result.data.id;
   const requiresCollection =

@@ -28,12 +28,17 @@ async function json(response: Response, notFoundMessage?: string) {
   return response.json();
 }
 
+// PDOK answers 400 to these characters (`!` and `|` count as search operators), which used to
+// surface as "address search unavailable" for an ordinary typo.
+const PDOK_REJECTED_CHARACTERS = /[<>*:\\|!]/g;
+
 export async function searchAddresses(query: string, fetcher: typeof fetch = fetch) {
-  if (query.trim().length < 3) return [];
+  const cleaned = query.replace(PDOK_REJECTED_CHARACTERS, " ").replace(/\s+/g, " ").trim();
+  if (cleaned.length < 3) return [];
 
   try {
     const searchUrl = new URL("https://api.pdok.nl/kadaster/location-api/v1/search");
-    searchUrl.searchParams.set("q", query.trim());
+    searchUrl.searchParams.set("q", cleaned);
     searchUrl.searchParams.set("adres[version]", "1");
     searchUrl.searchParams.set("limit", "5");
     searchUrl.searchParams.set("f", "json");

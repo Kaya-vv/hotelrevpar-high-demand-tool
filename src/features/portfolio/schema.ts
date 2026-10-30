@@ -13,7 +13,8 @@ export const sourceName = z.enum([
 export const hotelInput = z.object({
   id: z.preprocess((value) => value || undefined, z.uuid().optional()),
   name: z.string().trim().min(1, "Vul een hotelnaam in."),
-  revcontrolCode: z.string().trim().min(1, "Vul de RevControl-code in."),
+  // Optional: only RevControl users have a code. An empty code is stored as the hotel name.
+  revcontrolCode: z.string().trim(),
   address: z.string().trim().min(5, "Vul straat, huisnummer en plaats in.").regex(/\d/, "Vul ook een huisnummer in."),
   addressId: z.string().trim().min(1, "Kies een adres uit de suggesties."),
   demandRadiusKm: z.coerce.number().positive().max(250),

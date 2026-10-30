@@ -87,12 +87,18 @@ function HotelEditor({
       <fieldset>
         <legend>Export</legend>
         <label>
-          RevControl-code
+          RevControl-code (optioneel)
           <input
             name="revcontrolCode"
-            defaultValue={hotel?.revcontrol_code}
-            required
+            defaultValue={
+              hotel && hotel.revcontrol_code !== hotel.name
+                ? hotel.revcontrol_code
+                : ""
+            }
           />
+          <small className="muted">
+            Alleen nodig als je RevControl gebruikt. Leeg gelaten? Dan staat de hotelnaam in de Excel-export.
+          </small>
           <FieldError state={state} name="revcontrolCode" />
         </label>
       </fieldset>
