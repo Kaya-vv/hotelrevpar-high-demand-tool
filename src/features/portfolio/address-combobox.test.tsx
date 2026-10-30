@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AddressCombobox } from "./address-combobox";
@@ -23,5 +23,30 @@ describe("AddressCombobox", () => {
 
     fireEvent.change(input, { target: { value: "Kleine Berg 43, 5611JT Eindhoven" } });
     await waitFor(() => expect(identifier).toHaveValue(""));
+  });
+
+  it("keeps working after browser page translation has replaced its text", async () => {
+    // A real search takes a moment, so "searching…" replaces the translated hint before results arrive.
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      return new Response(JSON.stringify({
+        suggestions: [{ id: "address-1", label: "Eerste Ringdijkstraat 4, 1097BC Amsterdam" }],
+      }), { status: 200 });
+    }));
+    const { container } = render(<AddressCombobox defaultAddress="" defaultAddressId="" />);
+    // Chrome "Translate this page" swaps every text node for its own wrapper element.
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+    const texts: Node[] = [];
+    while (walker.nextNode()) texts.push(walker.currentNode);
+    for (const text of texts) {
+      const wrapper = document.createElement("span");
+      wrapper.textContent = `EN ${text.textContent}`;
+      text.parentNode!.replaceChild(wrapper, text);
+    }
+    const view = within(container);
+
+    fireEvent.change(view.getByRole("combobox"), { target: { value: "Eerste Ringdijkstraat 4" } });
+
+    expect(await view.findByRole("option", { name: "Eerste Ringdijkstraat 4, 1097BC Amsterdam" })).toBeInTheDocument();
   });
 });

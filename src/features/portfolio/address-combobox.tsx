@@ -5,6 +5,13 @@ import { type KeyboardEvent, useEffect, useId, useState } from "react";
 type Suggestion = { id: string; label: string };
 type Status = "idle" | "loading" | "empty" | "error";
 
+const statusMessages: Record<Status, string> = {
+  idle: "Typ en kies een adres uit de lijst.",
+  loading: "Adressen zoeken…",
+  empty: "Geen adressen gevonden. Typ alleen straat en huisnummer, zonder hotelnaam (bijv. Damrak 1), en kies daarna uit de lijst.",
+  error: "Adreszoeken is niet beschikbaar. Probeer het later opnieuw.",
+};
+
 export function AddressCombobox({
   defaultAddress,
   defaultAddressId,
@@ -117,11 +124,10 @@ export function AddressCombobox({
           ))}
         </ul>
       )}
+      {/* Page translation replaces bare text nodes, so each message is its own element that
+          React swaps whole instead of editing a text node the translator took over. */}
       <small role="status">
-        {status === "loading" && "Adressen zoeken…"}
-        {status === "empty" && "Geen adressen gevonden. Typ alleen straat en huisnummer, zonder hotelnaam (bijv. Damrak 1), en kies daarna uit de lijst."}
-        {status === "error" && "Adreszoeken is niet beschikbaar. Probeer het later opnieuw."}
-        {status === "idle" && "Typ en kies een adres uit de lijst."}
+        <span key={status}>{statusMessages[status]}</span>
       </small>
       {error && <small className="field-error">{error}</small>}
     </div>
