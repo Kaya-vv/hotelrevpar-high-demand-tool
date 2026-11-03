@@ -175,7 +175,7 @@ Ingekort tot drie events; echte uitvoer van 3 november 2026.
 
 | Veld | Type | Betekenis |
 | --- | --- | --- |
-| `id` | string (UUID) | Vaste DemandRadar-ID van het event. Blijft gelijk als het event van datum verandert. Gebruik deze ID om events aan je eigen gegevens te koppelen. |
+| `id` | string (UUID) | Vaste DemandRadar-ID van het event. Blijft in de regel gelijk als het event van datum verandert (zie *Verschuiven* in hoofdstuk 7). Gebruik deze ID om events aan je eigen gegevens te koppelen. |
 | `title` | string | Titel, inclusief eventuele aanpassing door de klant. |
 | `start_date` | string `JJJJ-MM-DD` | Eerste dag, Nederlandse lokale datum. |
 | `end_date` | string `JJJJ-MM-DD` | Laatste dag (inbegrepen), Nederlandse lokale datum. Bij een eendaags event gelijk aan `start_date`. |
@@ -214,7 +214,7 @@ Wil RevControl voor een klant minder events dan die klant kiest, gebruik dan `mi
 - **Gedeeltelijke overlap.** Een event dat maar voor een deel in de periode valt, komt mee. Een event van 28 mei t/m 2 juni staat dus in de lijst voor `from=2027-06-01&to=2027-06-30`.
 - **Datums.** Alle datums zijn Nederlandse lokale datums zonder tijd. `end_date` is de laatste dag van het event. Een event van 10 t/m 12 juni 2027 heeft `start_date` `2027-06-10` en `end_date` `2027-06-12`.
 - **Verdwijnen.** Een event dat geannuleerd is, door de klant is uitgesloten, is samengevoegd met een ander event, of onder het niveau is gezakt dat de klant of `min_level` vraagt, staat de volgende keer niet meer in de lijst. Dat geldt ook als de klant zijn keuze verandert, bijvoorbeeld van Medium naar alleen Hoog en Piek. Er komt geen apart verwijderbericht.
-- **Verschuiven.** Een event dat naar een andere datum verschuift, houdt dezelfde `id`. Alleen `start_date` en/of `end_date` veranderen.
+- **Verschuiven.** Als een event naar een andere datum verschuift, houdt het in de regel dezelfde `id`; alleen `start_date` en/of `end_date` veranderen. In sommige gevallen, bijvoorbeeld bij concerten en voorstellingen, kunnen we niet met zekerheid vaststellen dat het om hetzelfde event gaat. Dan verschijnt de nieuwe datum als nieuw event met een eigen `id`, en verdwijnt de oude datum uit de lijst zodra die voorbij is of de klant hem uitsluit.
 - **Sortering.** Op `start_date`, daarna op `title`.
 
 ## 8. Foutafhandeling
