@@ -7,7 +7,7 @@ Versie 1 · november 2026
 Met de DemandRadar API haalt een revenue management systeem de events van een DemandRadar-klant automatisch op, in plaats van via de Excel-export.
 
 - Eén klant is één DemandRadar-account. Een API-sleutel hoort bij precies één account en geeft alleen toegang tot de hotels en events van dat account.
-- Events worden altijd per hotel berekend. Hetzelfde event kan voor twee hotels een ander niveau, een andere score en een andere afstand hebben. Daarom vraag je events altijd voor één hotel tegelijk op.
+- Het niveau, de score en de afstand worden per hotel bepaald. Daarom vraag je events altijd voor één hotel tegelijk op.
 - De API is alleen-lezen.
 
 ## 2. Basis-URL
@@ -87,7 +87,7 @@ Geeft de events van één hotel in een periode.
 | `hotel_id` | Nee, als het account precies één hotel heeft; anders ja | UUID uit `GET /hotels` | Het hotel waarvoor de events worden berekend. |
 | `from` | Ja | `JJJJ-MM-DD` | Eerste dag van de periode. |
 | `to` | Ja | `JJJJ-MM-DD` | Laatste dag van de periode (inbegrepen). Maximaal 3 jaar na `from`. |
-| `min_level` | Nee | `Low`, `Medium`, `High` of `Peak` | Alleen events op dit niveau of hoger. Zonder deze parameter komt alles mee wat de klant naar RevControl stuurt (zie hoofdstuk 6). Deze parameter kan de lijst alleen kleiner maken, nooit groter dan de keuze van de klant. Hoofdletters maken niet uit. |
+| `min_level` | Nee | `Low`, `Medium`, `High` of `Peak` | Alleen events op dit niveau of hoger. Met `min_level` kun je verder filteren binnen de selectie van de klant (zie hoofdstuk 6). Zonder deze parameter komt de hele selectie mee. Hoofdletters maken niet uit. |
 
 ### Verzoek
 
@@ -98,7 +98,7 @@ curl -s "https://app.demandradar.nl/api/v1/events?hotel_id=c22bedf2-178a-4932-98
 
 ### Antwoord `200`
 
-Ingekort tot drie events; echte uitvoer van 3 november 2026.
+Voorbeeldantwoord met drie events, opgehaald op 3 november 2026.
 
 ```json
 {
@@ -190,7 +190,7 @@ Ingekort tot drie events; echte uitvoer van 3 november 2026.
 | `hotel_code` | string of `null` | De RevControl-hotelcode van het hotel (gelijk aan `hotel_code` in `GET /hotels`). |
 | `updated_at` | string (ISO 8601, UTC) | Laatste keer dat DemandRadar of de klant dit event heeft bijgewerkt. Dit verandert ook als DemandRadar het event alleen opnieuw heeft gecontroleerd. |
 
-`venue`, `city`, `latitude`, `longitude`, `distance_km` en `source_url` kunnen `null` zijn, bijvoorbeeld bij feestdagen of als de bron die gegevens niet noemt. Ga er niet van uit dat ze altijd gevuld zijn.
+`venue`, `city`, `latitude`, `longitude`, `distance_km` en `source_url` kunnen `null` zijn, bijvoorbeeld bij feestdagen of als de bron die gegevens niet noemt.
 
 ## 6. Welke events staan in de lijst
 
@@ -202,11 +202,9 @@ Elk event heeft per hotel één niveau: het niveau dat de klant in de DemandRada
 | Alleen Hoog en Piek | `High`, `Peak` |
 | Ook Laag | `Low`, `Medium`, `High`, `Peak` |
 
-- **High en Peak**: events met aangetoonde grote hotelvraag. Ook als de manager het niveau zelf op High of Peak heeft gezet.
+- **High en Peak**: events met aangetoonde grote hotelvraag. Ook als de klant het niveau zelf op High of Peak heeft gezet.
 - **Medium**: events die waarschijnlijk extra hotelgasten trekken, maar waarvan de omvang nog niet bekend is.
-- **Low**: de rest van de bevestigde events in de omgeving, zoals voorstellingen en exposities. De meeste zeggen weinig over hotelvraag. Standaard gaan ze niet mee.
-
-Wil RevControl voor een klant minder events dan die klant kiest, gebruik dan `min_level`.
+- **Low**: de rest van de bevestigde events in de omgeving, zoals voorstellingen en exposities. Deze events worden standaard niet meegestuurd. De klant kan ervoor kiezen ze wel op te nemen.
 
 ## 7. Afspraken over de lijst
 
@@ -241,7 +239,7 @@ Elke fout geeft een HTTP-foutstatus met een JSON-body in deze vorm:
 
 **Een fout geeft nooit `200` met een lege lijst. Een `200` met een lege lijst betekent dat er in die periode echt geen events zijn.** Verwerk een lijst dus alleen als de status `200` is; laat bij elke andere status de bestaande events ongemoeid.
 
-De tekst in `message` is bedoeld voor mensen en kan veranderen. Gebruik `code` in je programma.
+Gebruik `code` voor de foutafhandeling. De toelichting in `message` kan veranderen.
 
 ## 9. Ophaalfrequentie
 
