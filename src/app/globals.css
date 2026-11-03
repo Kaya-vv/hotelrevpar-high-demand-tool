@@ -2120,10 +2120,6 @@ td {
   background: #fff0e7;
   color: #974021;
 }
-.export-optional {
-  border-top: 1px solid var(--line);
-  padding-top: 8px;
-}
 .export-file-details {
   font-size: .85rem;
 }

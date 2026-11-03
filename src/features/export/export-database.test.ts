@@ -91,7 +91,7 @@ describe.skipIf(!enabled)("export transactions in isolated local Supabase", () =
     const inAugust = (await loadExportEvents(accountId, { start: "2027-08-02", end: "2027-08-02" }, [hotelId])).events;
     expect(inAugust.some((event) => event.id === id)).toBe(true);
     expect((await loadExportEvents(accountId, { start: "2027-06-01", end: "2027-06-30" }, [hotelId])).events.some((event) => event.id === id)).toBe(false);
-    expect(selectExportEvents(inAugust.filter((event) => event.id === id), "new", [], [])).toEqual([]);
+    expect(exportSnapshots(selectExportEvents(inAugust.filter((event) => event.id === id), "new", [], []))).toMatchObject([{ importance: "Medium", manual: true }]);
     const request = { ...input(id), selectedPairs: [`${hotelId}:${id}`], choices: [{ eventId: id, hotelId, importance: "Low" as const }] };
     await createExport(request, deps(id));
     expect(check(await db.from("hotel_event_scores").select("suggested_importance").eq("hotel_id", hotelId).eq("event_id", id).single()).data!.suggested_importance).toBe("Medium");

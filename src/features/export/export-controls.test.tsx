@@ -6,26 +6,23 @@ const refresh = vi.hoisted(() => vi.fn());
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
 const props = { hotelIds: ["hotel"], hotelNames: { hotel: "Hotel" }, from: "2026-09-08", to: "2027-12-31" };
-const announcement: ExportEvent = { id: "event", title: "Future Congress", startAt: "2027-10-01", endAt: "2027-10-03", hotels: [{ id: "hotel", code: "H", importance: "Medium", impactBasis: "demand_rule", announced: true, exportLevel: "High" }] };
+const announcement: ExportEvent = { id: "event", title: "Future Congress", startAt: "2027-10-01", endAt: "2027-10-03", hotels: [{ id: "hotel", code: "H", importance: "Medium", impactBasis: "demand_rule", announced: true, exportLevel: null }] };
 const ready: ExportEvent = { ...announcement, id: "ready", title: "Ready Congress", hotels: [{ id: "hotel", code: "H", importance: "High", impactBasis: "demand_rule" }] };
 
-it("adds and removes an announcement in one choice without automatically reusing a saved level", async () => {
+it("exports a shown Medium event by default and sends only a level the manager changed", async () => {
   const fetch = vi.fn().mockResolvedValue({ ok: false, status: 500, json: async () => ({ error: "Test failure" }) });
   vi.stubGlobal("fetch", fetch);
-  const { container } = render(<ExportControls {...props} events={[announcement]} />);
-  expect(screen.getByRole("button", { name: "Download voor RevControl" })).toBeDisabled();
-  expect(container.querySelector(".export-optional")).not.toHaveAttribute("open");
-  fireEvent.click(screen.getByText("Optioneel toevoegen"));
+  render(<ExportControls {...props} events={[announcement, { ...announcement, id: "saved", title: "Saved Congress", hotels: [{ ...announcement.hotels[0], exportLevel: "High" }] }]} />);
+  expect(screen.getByText("2 events klaar voor export")).toBeInTheDocument();
   const choice = screen.getByLabelText("Exportniveau Future Congress voor Hotel");
-  expect(choice).toHaveValue("");
+  expect(choice).toHaveValue("Medium");
+  // A level saved by an earlier export is what the API also sends, so the Excel starts there too.
+  expect(screen.getByLabelText("Exportniveau Saved Congress voor Hotel")).toHaveValue("High");
   fireEvent.change(choice, { target: { value: "Low" } });
-  expect(screen.getByText("1 event klaar voor export")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Download voor RevControl" }));
   await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
-  expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({ mode: "new", selectedPairs: ["hotel:event"], choices: [{ eventId: "event", hotelId: "hotel", importance: "Low" }] });
+  expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({ mode: "new", selectedPairs: [], choices: [{ eventId: "event", hotelId: "hotel", importance: "Low" }] });
   await screen.findByRole("alert");
-  fireEvent.change(choice, { target: { value: "" } });
-  expect(screen.getByRole("button", { name: "Download voor RevControl" })).toBeDisabled();
 });
 
 it("hides previous exports and sorts new events chronologically", () => {
@@ -48,13 +45,13 @@ it("groups hotels and keeps workbook details collapsed", () => {
   expect(within(disclosure as HTMLElement).getByText("A, B")).toBeVisible();
 });
 
-it("requires deliberate selection for re-export, including select all without opting in announcements", () => {
+it("requires deliberate selection for re-export, Medium events included", () => {
   render(<ExportControls {...props} events={[ready, announcement]} reexport />);
   expect(screen.getByText(/Opnieuw importeren kan duplicaten/)).toBeVisible();
   expect(screen.getByRole("button", { name: "Bewust opnieuw exporteren" })).toBeDisabled();
-  fireEvent.click(screen.getByLabelText("Alle 1 events selecteren"));
-  expect(screen.getByText("1 event klaar voor export")).toBeVisible();
-  fireEvent.click(screen.getByLabelText("Alle 1 events selecteren"));
+  fireEvent.click(screen.getByLabelText("Alle 2 events selecteren"));
+  expect(screen.getByText("2 events klaar voor export")).toBeVisible();
+  fireEvent.click(screen.getByLabelText("Alle 2 events selecteren"));
   expect(screen.getByRole("button", { name: "Bewust opnieuw exporteren" })).toBeDisabled();
 });
 

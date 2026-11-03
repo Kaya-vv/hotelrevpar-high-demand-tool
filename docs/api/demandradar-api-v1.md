@@ -197,15 +197,17 @@ Ingekort tot drie events; echte uitvoer van 3 november 2026.
 De lijst bevat precies de events die de klant ook in de Excel-export voor RevControl zou krijgen:
 
 - **High en Peak**: altijd. Dat geldt ook als de manager in DemandRadar zelf het niveau High of Peak heeft gekozen.
-- **Medium**: alleen als de manager het event eerder in een Excel-export heeft meegenomen. Het event komt dan mee op het niveau dat de manager daarbij heeft gekozen.
-- **Al het andere**: niet.
+- **Medium**: altijd, als `Medium`. Dit zijn events die waarschijnlijk extra hotelgasten trekken, maar waarvan de omvang nog niet bekend is. Heeft de manager zo'n event in een Excel-export op een ander niveau gezet, dan komt het op dat niveau mee.
+- **Laag**: nooit. Een event dat de manager op Laag zet, verdwijnt uit de lijst.
+
+Wil RevControl alleen de grotere events, gebruik dan `min_level=High`.
 
 ## 7. Afspraken over de lijst
 
 - **Volledige lijst.** Elk antwoord bevat alle events voor de gevraagde periode. Er is geen paginering en geen lijst met alleen wijzigingen.
 - **Gedeeltelijke overlap.** Een event dat maar voor een deel in de periode valt, komt mee. Een event van 28 mei t/m 2 juni staat dus in de lijst voor `from=2027-06-01&to=2027-06-30`.
 - **Datums.** Alle datums zijn Nederlandse lokale datums zonder tijd. `end_date` is de laatste dag van het event. Een event van 10 t/m 12 juni 2027 heeft `start_date` `2027-06-10` en `end_date` `2027-06-12`.
-- **Verdwijnen.** Een event dat geannuleerd is, door de klant is uitgesloten, is samengevoegd met een ander event, of onder het gevraagde `min_level` is gezakt, staat de volgende keer niet meer in de lijst. Er komt geen apart verwijderbericht.
+- **Verdwijnen.** Een event dat geannuleerd is, door de klant is uitgesloten of op Laag is gezet, is samengevoegd met een ander event, of onder het gevraagde `min_level` is gezakt, staat de volgende keer niet meer in de lijst. Er komt geen apart verwijderbericht.
 - **Verschuiven.** Een event dat naar een andere datum verschuift, houdt dezelfde `id`. Alleen `start_date` en/of `end_date` veranderen.
 - **Sortering.** Op `start_date`, daarna op `title`.
 

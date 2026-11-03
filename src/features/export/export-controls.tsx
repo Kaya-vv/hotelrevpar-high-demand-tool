@@ -2,11 +2,11 @@
 
 import { Fragment, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { demandLabels, demandLevels, isPublishableDemand, type DemandLevel } from "../events/importance";
+import { demandLabels, demandLevels, type DemandLevel } from "../events/importance";
 import { eventLocalDate } from "../events/normalize";
 import { exportMonth, exportPeriod } from "./display";
 import { mapRevControlRows } from "./map-rows";
-import { pairKey, selectExportEvents } from "./selection";
+import { exportedLevel, pairKey, selectExportEvents } from "./selection";
 import type { ExportEvent } from "./types";
 
 export function ExportControls({ events, hotelIds, hotelNames, from, to, reexport = false }: {
@@ -22,18 +22,18 @@ export function ExportControls({ events, hotelIds, hotelNames, from, to, reexpor
   const [download, setDownload] = useState("");
   const pending = useRef<{ signature: string; key: string } | null>(null);
   const mode = reexport ? "selected" : "new";
-  const rows = [...events].sort((a, b) => eventLocalDate(a.startAt).localeCompare(eventLocalDate(b.startAt)) || a.title.localeCompare(b.title, "nl")).flatMap((event) => event.hotels.filter((hotel) => hotel.available !== false && (reexport || !hotel.exportedAt) && (hotel.announced || isPublishableDemand(hotel.importance, hotel.impactBasis))).map((hotel) => ({ event, hotel, key: pairKey(event.id, hotel.id) })));
-  const ready = rows.filter(({ hotel }) => !hotel.announced);
-  const announcements = rows.filter(({ hotel }) => hotel.announced);
+  const rows = [...events].sort((a, b) => eventLocalDate(a.startAt).localeCompare(eventLocalDate(b.startAt)) || a.title.localeCompare(b.title, "nl")).flatMap((event) => event.hotels.filter((hotel) => (reexport || !hotel.exportedAt) && exportedLevel(hotel) !== null).map((hotel) => ({ event, hotel, key: pairKey(event.id, hotel.id) })));
   const effectivePairs = selected.filter((key) => rows.some((row) => row.key === key));
-  const choices = announcements.filter(({ key }) => effectivePairs.includes(key)).map(({ event, hotel, key }) => ({ eventId: event.id, hotelId: hotel.id, importance: levels[key] ?? "Medium" as DemandLevel }));
+  // Only levels changed here are sent; an untouched Medium event keeps its saved level, else Medium.
+  const choices = rows.filter(({ hotel, key }) => hotel.announced && levels[key] && (!reexport || effectivePairs.includes(key)))
+    .map(({ event, hotel, key }) => ({ eventId: event.id, hotelId: hotel.id, importance: levels[key] }));
   const preview = selectExportEvents(events, mode, effectivePairs, choices);
   const workbookRows = mapRevControlRows(preview, hotelIds);
   const locked = busy || refreshing;
+  const hasMedium = rows.some(({ hotel }) => hotel.announced);
 
-  function choose(key: string, level: string) {
-    setLevels({ ...levels, [key]: level as DemandLevel });
-    setSelected((current) => level ? [...current.filter((item) => item !== key), key] : current.filter((item) => item !== key));
+  function choose(key: string, level: DemandLevel) {
+    setLevels({ ...levels, [key]: level });
   }
 
   async function create() {
@@ -62,19 +62,19 @@ export function ExportControls({ events, hotelIds, hotelNames, from, to, reexpor
     finally { setBusy(false); }
   }
 
-  function eventTable(items: typeof rows, optional = false) {
+  function eventTable(items: typeof rows) {
     return hotelIds.map((hotelId) => {
       const hotelRows = items.filter(({ hotel }) => hotel.id === hotelId);
       if (!hotelRows.length) return null;
       return <section className="export-hotel-group" key={hotelId} aria-label={hotelNames[hotelId]}>
         {hotelIds.length > 1 && <h3>{hotelNames[hotelId]}</h3>}
-        <div className="table-wrap"><table className="export-event-table"><thead><tr><th>Event</th><th>Datum</th><th>{optional ? "Toevoegen aan export" : "Niveau"}</th></tr></thead><tbody>
+        <div className="table-wrap"><table className="export-event-table"><thead><tr><th>Event</th><th>Datum</th><th>Niveau</th></tr></thead><tbody>
           {hotelRows.map(({ event, hotel, key }, index) => <Fragment key={key}>
             {(index === 0 || exportMonth(hotelRows[index - 1].event.startAt) !== exportMonth(event.startAt)) && <tr className="export-month"><th colSpan={3} scope="rowgroup">{exportMonth(event.startAt)}</th></tr>}
             <tr>
-              <td>{reexport && !optional ? <label className="export-row-toggle"><input aria-label={`Selecteer ${event.title} voor ${hotelNames[hotel.id]}`} type="checkbox" checked={selected.includes(key)} onChange={(e) => setSelected(e.target.checked ? [...selected, key] : selected.filter((item) => item !== key))} />{event.title}</label> : event.title}</td>
+              <td>{reexport ? <label className="export-row-toggle"><input aria-label={`Selecteer ${event.title} voor ${hotelNames[hotel.id]}`} type="checkbox" checked={selected.includes(key)} onChange={(e) => setSelected(e.target.checked ? [...selected, key] : selected.filter((item) => item !== key))} />{event.title}</label> : event.title}</td>
               <td className="export-event-date">{exportPeriod(event.startAt, event.endAt)}</td>
-              <td>{optional ? <select aria-label={`Exportniveau ${event.title} voor ${hotelNames[hotel.id]}`} value={selected.includes(key) ? levels[key] ?? "Medium" : ""} onChange={(e) => choose(key, e.target.value)}><option value="">Niet meenemen</option>{demandLevels.map((level) => <option key={level} value={level}>Toevoegen als {demandLabels[level].toLowerCase()}</option>)}</select> : <span className={`export-level export-level-${hotel.importance.toLowerCase()}`}>{demandLabels[hotel.importance]}</span>}</td>
+              <td>{hotel.announced ? <select aria-label={`Exportniveau ${event.title} voor ${hotelNames[hotel.id]}`} value={levels[key] ?? hotel.exportLevel ?? "Medium"} onChange={(e) => choose(key, e.target.value as DemandLevel)}>{demandLevels.map((level) => <option key={level} value={level}>{demandLabels[level]}</option>)}</select> : <span className={`export-level export-level-${hotel.importance.toLowerCase()}`}>{demandLabels[hotel.importance]}</span>}</td>
             </tr>
           </Fragment>)}
         </tbody></table></div>
@@ -86,10 +86,10 @@ export function ExportControls({ events, hotelIds, hotelNames, from, to, reexpor
     <div className="export-section-heading"><h2>{reexport ? "Events opnieuw exporteren" : "Nieuwe events"}</h2><p className="muted">{reexport ? "Selecteer de events die je nogmaals wilt importeren." : "Eerder geëxporteerde events worden automatisch overgeslagen."}</p></div>
     {reexport && <p className="notice">Opnieuw importeren kan duplicaten in RevControl veroorzaken. Bestaande vermeldingen worden niet bijgewerkt. Wil je hetzelfde bestand? Download het bij Eerdere exports.</p>}
     <fieldset disabled={locked} className="export-selection"><legend className="visually-hidden">Events per hotel</legend>
-      {reexport && ready.length > 0 && <label className="export-row-toggle export-select-all"><input type="checkbox" checked={ready.every(({ key }) => selected.includes(key))} onChange={(e) => setSelected(e.target.checked ? [...new Set([...selected, ...ready.map(({ key }) => key)])] : selected.filter((key) => !ready.some((row) => row.key === key)))} />Alle {ready.length} events selecteren</label>}
-      {eventTable(ready)}
-      {!ready.length && <div className="export-empty"><h3>{reexport ? "Geen beschikbare events" : "Je bent bij"}</h3><p className="muted">{reexport ? "Kies een ander hotel of een ruimere periode." : "Er staan geen nieuwe events klaar voor deze hotels en periode."}</p></div>}
-      {announcements.length > 0 && <details className="export-disclosure export-optional"><summary>Optioneel toevoegen <span className="muted">· {announcements.length} Medium-event{announcements.length === 1 ? "" : "s"}{choices.length > 0 ? ` · ${choices.length} toegevoegd` : ""}</span></summary><p className="muted">Deze events gaan alleen mee als je ze selecteert. Medium is de standaard; je kunt het exportniveau aanpassen.</p>{eventTable(announcements, true)}</details>}
+      {reexport && rows.length > 0 && <label className="export-row-toggle export-select-all"><input type="checkbox" checked={rows.every(({ key }) => selected.includes(key))} onChange={(e) => setSelected(e.target.checked ? [...new Set([...selected, ...rows.map(({ key }) => key)])] : selected.filter((key) => !rows.some((row) => row.key === key)))} />Alle {rows.length} events selecteren</label>}
+      {eventTable(rows)}
+      {hasMedium && <p className="muted">Medium-events gaan standaard mee. Je kunt het niveau per event aanpassen. Wil je een event niet meesturen, zet het dan in de kalender op Laag.</p>}
+      {!rows.length && <div className="export-empty"><h3>{reexport ? "Geen beschikbare events" : "Je bent bij"}</h3><p className="muted">{reexport ? "Kies een ander hotel of een ruimere periode." : "Er staan geen nieuwe events klaar voor deze hotels en periode."}</p></div>}
     </fieldset>
     {workbookRows.length > 0 && <details className="export-disclosure export-file-details">
       <summary>Bekijk bestandsdetails</summary>

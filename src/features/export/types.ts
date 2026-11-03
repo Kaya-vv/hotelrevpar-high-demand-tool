@@ -11,12 +11,12 @@ export type ExportEvent = {
     code: string;
     importance: DemandLevel;
     impactBasis: string;
-    /** Shown as Medium; export only after manager selection. */
+    /** Shown as Medium: exported by default at `exportLevel`, else Medium. */
     announced?: boolean;
     available?: boolean;
+    /** Level a manager last exported this Medium event with. */
     exportLevel?: DemandLevel | null;
     exportedAt?: string | null;
-    manuallySelected?: boolean;
   }>;
 };
 

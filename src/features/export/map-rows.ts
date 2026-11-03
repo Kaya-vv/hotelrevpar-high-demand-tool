@@ -1,6 +1,6 @@
 import { eventLocalDate } from "@/features/events/normalize";
-import { isPublishableDemand } from "@/features/events/importance";
 
+import { exportedLevel } from "./selection";
 import type { ExportEvent, RevControlRow } from "./types";
 
 function excelDate(value: string) {
@@ -10,9 +10,7 @@ function excelDate(value: string) {
 }
 
 function publishableHotels(event: ExportEvent, selected: Set<string>) {
-  return event.hotels.filter(
-    (hotel) => selected.has(hotel.id) && hotel.available !== false && (isPublishableDemand(hotel.importance, hotel.impactBasis) || (hotel.announced && hotel.manuallySelected && hotel.exportLevel)),
-  );
+  return event.hotels.filter((hotel) => selected.has(hotel.id) && exportedLevel(hotel) !== null);
 }
 
 /** The events that actually reach the workbook, so a preview count matches its rows. */
@@ -27,7 +25,7 @@ export function mapRevControlRows(events: ExportEvent[], selectedHotelIds: strin
     .flatMap((event) => {
       const groups = new Map<RevControlRow["importance"], string[]>();
       publishableHotels(event, selected).forEach((hotel) => {
-        const level = hotel.announced && hotel.manuallySelected && hotel.exportLevel ? hotel.exportLevel : hotel.importance;
+        const level = exportedLevel(hotel)!;
         const importance = level === "Peak" ? "High" : level;
         groups.set(importance, [...(groups.get(importance) ?? []), hotel.code]);
       });

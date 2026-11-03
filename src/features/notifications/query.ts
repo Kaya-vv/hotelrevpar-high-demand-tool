@@ -17,7 +17,7 @@ export type NotificationEvent = {
   startAt: string;
   endAt: string;
   level: string;
-  /** Shown as Medium; exported only when the manager chooses it. */
+  /** Shown as Medium: likely hotel demand of unknown size. */
   announced: boolean;
 };
 

@@ -79,8 +79,8 @@ export function continuousRunCategory(category: string) {
 
 /**
  * Whether an event belongs to the shown Medium tier: likely hotel demand without a High or Peak
- * grade. These events appear in the normal calendar and email, but only enter an export when the
- * manager selects them.
+ * grade. These events appear in the normal calendar and email, and are exported as Medium unless
+ * the manager sets them to Laag.
  *
  * Beyond the near-term horizon a demand grade often cannot be earned yet: a future edition has
  * no attendance of its own and organisers rarely publish audience information a year ahead.
@@ -138,8 +138,8 @@ export type HotelCalendarVisibilityScore = {
 
 /**
  * One policy for the customer calendar, export selection, and new-event notifications.
- * `shownLevel` is the label every UI reader must render. `announced` means shown as Medium and
- * exported only by manager choice.
+ * `shownLevel` is the label every UI reader must render. `announced` means shown as Medium
+ * (exported as Medium by default).
  */
 export function hotelCalendarVisibility(input: {
   active: boolean;

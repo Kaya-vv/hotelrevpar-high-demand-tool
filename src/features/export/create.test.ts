@@ -20,18 +20,21 @@ describe("incremental hotel exports", () => {
     expect(mapRevControlRows(result, [hotelA, hotelB]).filter((row) => row.hotels === "B")).toHaveLength(40);
     expect(mapRevControlRows(result, [hotelA, hotelB]).filter((row) => row.hotels === "A, B")).toHaveLength(1);
   });
-  it("requires selection for shown Medium, defaults its export to Medium, and never changes AI scores", () => {
+  it("exports shown Medium by default at its saved level or Medium, takes a new choice, and never changes AI scores", () => {
     const event = makeEvent();
-    event.hotels = [{ ...event.hotels[0], importance: "Medium", announced: true, exportLevel: "Low" }];
-    const key = pairKey(event.id, hotelA);
-    expect(selectExportEvents([event], "all", [], [])).toEqual([]);
-    const defaulted = selectExportEvents([event], "new", [key], []);
-    expect(mapRevControlRows(defaulted, [hotelA])[0].importance).toBe("Medium");
-    const selected = selectExportEvents([event], "new", [key], [{ eventId: event.id, hotelId: hotelA, importance: "Low" }]);
-    expect(mapRevControlRows(selected, [hotelA])[0].importance).toBe("Low");
+    event.hotels = [{ ...event.hotels[0], importance: "Medium", announced: true, exportLevel: null }];
+    const level = (events: ExportEvent[]) => mapRevControlRows(events, [hotelA])[0]?.importance;
+    expect(level(selectExportEvents([event], "new", [], []))).toBe("Medium");
+    const saved = { ...event, hotels: [{ ...event.hotels[0], exportLevel: "Low" as const }] };
+    expect(level(selectExportEvents([saved], "new", [], []))).toBe("Low");
+    expect(level(selectExportEvents([saved], "new", [], [{ eventId: event.id, hotelId: hotelA, importance: "High" }]))).toBe("High");
     expect(event.hotels[0].importance).toBe("Medium");
-    expect(selectExportEvents([{ ...event, hotels: [{ ...event.hotels[0], announced: false }] }], "all", [key], [])).toEqual([]);
-    expect(selectExportEvents([{ ...event, hotels: [{ ...event.hotels[0], available: false }] }], "all", [key], [{ eventId: event.id, hotelId: hotelA, importance: "High" }])).toEqual([]);
+    // Re-export still needs a deliberate selection, Medium included.
+    expect(selectExportEvents([event], "selected", [], [])).toEqual([]);
+    expect(level(selectExportEvents([event], "selected", [pairKey(event.id, hotelA)], []))).toBe("Medium");
+    // A Medium score outside the shown tier is Laag and stays out, as does an unavailable one.
+    expect(selectExportEvents([{ ...event, hotels: [{ ...event.hotels[0], announced: false }] }], "all", [], [])).toEqual([]);
+    expect(selectExportEvents([{ ...event, hotels: [{ ...event.hotels[0], available: false }] }], "all", [], [{ eventId: event.id, hotelId: hotelA, importance: "High" }])).toEqual([]);
   });
   it("allows explicit selected/full re-export and flags changed or cancelled exports", () => {
     const event = makeEvent(); event.hotels[0].exportedAt = "2026-09-08";

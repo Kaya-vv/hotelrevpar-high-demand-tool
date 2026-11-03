@@ -53,7 +53,9 @@ async function addEvent(title: string, level: string, start = "2027-06-10T12:00:
   check(await db.from("event_sources").insert({ event_id: id, provider: "claude", provider_event_id: id, source_url: "https://arena.example/events", public_source_url: "https://arena.example/events", extracted_title: title, extracted_start_at: start, source_state: "active", certainty: "confirmed", primary_source_confirmed: true, evidence: { dateText: "10 June 2027", locationText: "Eindhoven", hostCity: "Eindhoven", locationScope: "venue", continuous: false, majorCompetition: false, demand: [], dateSourceUrl: "https://arena.example/events", checkedAt: "2026-09-09" } }));
   const areas = check(await db.from("collection_areas").select("id").eq("hotel_id", hotelId)).data!;
   check(await db.from("account_event_areas").insert(areas.map((area) => ({ account_id: accountId, event_id: id, collection_area_id: area.id }))));
-  check(await db.from("hotel_event_scores").insert({ hotel_id: hotelId, event_id: id, distance_km: 1.26, impact_points: 45, distance_points: 20, stay_pressure_points: 0, total: 65, suggested_importance: level, impact_basis: "demand_rule", demand_assessment: { version: 1, relevance: "supported", magnitude: level, confidence: "high", reasons: [], sourceUrls: [] } }));
+  // A Low event has no sign of hotel guests; with one, the calendar would show it as Medium.
+  const relevance = level === "Low" ? "not_relevant" : "supported";
+  check(await db.from("hotel_event_scores").insert({ hotel_id: hotelId, event_id: id, distance_km: 1.26, impact_points: 45, distance_points: 20, stay_pressure_points: 0, total: 65, suggested_importance: level, impact_basis: "demand_rule", demand_assessment: { version: 1, relevance, magnitude: level, confidence: "high", reasons: [], sourceUrls: [] } }));
   return id;
 }
 
@@ -87,6 +89,9 @@ describe.skipIf(!enabled)("public API v1 in isolated local Supabase", () => {
     const overlap = await addEvent("Beurs", "High", "2027-05-28T10:00:00+02:00", "2027-06-02T18:00:00+02:00");
     const manual = await addEvent("Congres", "Medium");
     check(await db.from("hotel_event_scores").update({ importance_override: "High", impact_basis: "default" }).eq("hotel_id", hotelId).eq("event_id", manual));
+    const medium = await addEvent("Workshop", "Medium");
+    const setToLaag = await addEvent("Kerstmarkt", "Medium");
+    check(await db.from("hotel_event_scores").update({ importance_override: "Low" }).eq("hotel_id", hotelId).eq("event_id", setToLaag));
 
     const response = await june();
     expect(response.status).toBe(200);
@@ -105,7 +110,9 @@ describe.skipIf(!enabled)("public API v1 in isolated local Supabase", () => {
     expect(byId.get(peak)?.level).toBe("Peak");
     expect(byId.get(overlap)).toMatchObject({ start_date: "2027-05-28", end_date: "2027-06-02" });
     expect(byId.get(manual)?.level).toBe("High");
-    for (const missing of [low, excluded, cancelled]) expect(byId.has(missing)).toBe(false);
+    // A shown Medium event goes along by default; one the manager set to Laag does not.
+    expect(byId.get(medium)?.level).toBe("Medium");
+    for (const missing of [low, excluded, cancelled, setToLaag]) expect(byId.has(missing)).toBe(false);
     expect(body.events[0].id).toBe(overlap);
 
     const peaks = await (await june("&min_level=peak")).json();
