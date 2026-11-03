@@ -41,7 +41,7 @@ export default async function AccountPage() {
         </form>
         <form action={logout}><button className="secondary" type="submit">Uitloggen</button></form>
       </section>
-      <section className="panel account-panel">
+      <section className="panel account-panel api-keys-panel">
         <h2>API-koppelingen</h2>
         <p className="muted">Met een API-sleutel kan een revenue management systeem, zoals RevControl, je events automatisch ophalen. Geef een sleutel alleen aan systemen die je vertrouwt.</p>
         <ApiKeyForm />
