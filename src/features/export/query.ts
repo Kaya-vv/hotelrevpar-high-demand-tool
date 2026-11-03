@@ -1,6 +1,7 @@
 import { eventLocalDate } from "@/features/events/normalize";
+import { readDemandAssessment } from "@/features/events/demand-assessment";
 import { readEventEvidence } from "@/features/events/evidence";
-import { gradedDemand, hotelCalendarVisibility, type DemandLevel } from "@/features/events/importance";
+import { gradedDemand, hotelCalendarVisibility } from "@/features/events/importance";
 import { createServerClient, type ServerClient } from "@/lib/supabase/server";
 import { fetchAllRows, fetchInBatches, fetchPagedInBatches } from "@/lib/supabase/fetch-in-batches";
 import { isEnabledPrimarySource } from "@/features/events/source-evidence";
@@ -88,7 +89,6 @@ export async function loadExportEvents(accountId: string, range: ExportRange, se
       )
     );
   };
-  const choices = await fetchAllRows((from, to) => supabase.from("announcement_export_choices").select("event_id, hotel_id, importance").eq("account_id", accountId).in("hotel_id", selectedHotelIds).order("hotel_id").order("event_id").range(from, to));
   const claims = await fetchAllRows((from, to) => supabase.from("hotel_event_exports").select("event_id, hotel_id, latest_batch_id").eq("account_id", accountId).in("hotel_id", selectedHotelIds).order("hotel_id").order("event_id").range(from, to));
   const batchIds = [...new Set(claims.map((claim) => claim.latest_batch_id))];
   const batches = batchIds.length ? await fetchInBatches(batchIds, (ids) => supabase.from("export_batches").select("id, created_at").in("id", ids)) : [];
@@ -117,12 +117,16 @@ export async function loadExportEvents(accountId: string, range: ExportRange, se
             return Boolean(evidence?.dateText && evidence.locationText);
           }),
           scores: [{ importance, impactBasis, manualLevel, distanceKm: score.distance_km, assessment: score.demand_assessment }],
+          includeLow: true,
         });
+        // Laag is the tier behind the calendar's "Ook Laag-events tonen". It leaves DemandRadar only
+        // for accounts that export Laag too, and never when a source argues against hotel demand.
+        const laagTier = visibility.visible && visibility.shownLevel === "Low";
         const claim = claims.find((claim) => claim.event_id === event.id && claim.hotel_id === hotel.id);
         return { id: hotel.id, code: hotelCodes.get(hotel.id)!,
           importance: visibility.shownLevel ?? importance, impactBasis,
-          available: visibility.visible, announced: visibility.announced,
-          exportLevel: (choices.find((choice) => choice.event_id === event.id && choice.hotel_id === hotel.id)?.importance as DemandLevel | undefined) ?? null,
+          available: visibility.visible && !laagTier, announced: visibility.announced,
+          laag: laagTier && readDemandAssessment(score.demand_assessment)?.relevance !== "not_relevant",
           exportedAt: batches.find((batch) => batch.id === claim?.latest_batch_id)?.created_at ?? null,
         };
       }),

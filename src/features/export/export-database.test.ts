@@ -11,6 +11,7 @@ import { exportRange, loadExportEvents } from "./query";
 import { loadExportHistory } from "./history";
 import { exportSnapshots, selectExportEvents } from "./selection";
 import { buildRevControlWorkbook } from "./build-workbook";
+import type { ExportMinLevel } from "./types";
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => db }));
@@ -57,14 +58,16 @@ async function addEvent(level = "High") {
   check(await db.from("hotel_event_scores").insert([hotelId, secondHotel].map((hotel) => ({ hotel_id: hotel, event_id: id, distance_km: 1, impact_points: 45, distance_points: 20, stay_pressure_points: 0, total: 65, suggested_importance: level, impact_basis: "demand_rule", demand_assessment: { version: 1, relevance: "supported", magnitude: level, confidence: "high", reasons: [], sourceUrls: [] } }))));
   return id;
 }
-const input = (id: string, mode: "new" | "selected" | "all" = "new"): ExportRequest => ({ requestKey: randomUUID(), from: "2027-01-01", to: "2027-12-31", hotelIds: [hotelId], mode, selectedPairs: mode === "selected" ? [`${hotelId}:${id}`] : [], choices: [] });
-function deps(id: string) {
+const input = (id: string, mode: "new" | "selected" | "all" = "new"): ExportRequest => ({ requestKey: randomUUID(), from: "2027-01-01", to: "2027-12-31", hotelIds: [hotelId], mode, selectedPairs: mode === "selected" ? [`${hotelId}:${id}`] : [] });
+function deps(id: string, minLevel: ExportMinLevel = "Medium") {
   return {
+    minLevel,
     find: async (key: string) => check(await db.from("export_batches").select("id, request_hash").eq("account_id", accountId).eq("request_key", key).maybeSingle()).data,
     load: async (request: ExportRequest) => (await loadExportEvents(accountId, { start: request.from, end: request.to }, request.hotelIds)).events.filter((event) => event.id === id),
-    commit: async (request: ExportRequest, hash: string, bytes: Buffer, items: unknown) => check(await db.rpc("commit_hotel_export", { p_account: accountId, p_user: userId, p_key: request.requestKey, p_hash: hash, p_selection: request as Json, p_workbook: bytes.toString("base64"), p_items: items as Json, p_choices: request.choices as Json })).data!,
+    commit: async (request: ExportRequest, hash: string, bytes: Buffer, items: unknown) => check(await db.rpc("commit_hotel_export", { p_account: accountId, p_user: userId, p_key: request.requestKey, p_hash: hash, p_selection: request as Json, p_workbook: bytes.toString("base64"), p_items: items as Json })).data!,
   };
 }
+const snapshotOf = async (id: string) => check(await db.from("export_items").select("snapshot").eq("event_id", id)).data![0]?.snapshot;
 
 describe.skipIf(!enabled)("export transactions in isolated local Supabase", () => {
   it("serializes competing exports, and returns identical bytes on retries and downloads after edits", async () => {
@@ -78,30 +81,39 @@ describe.skipIf(!enabled)("export transactions in isolated local Supabase", () =
     expect(await createExport(batch.selection as ExportRequest, deps(id))).toBe(batch.id);
     expect(check(await member.from("export_batches").select("workbook").eq("id", batch.id).single()).data!.workbook).toBe(batch.workbook);
     const events = (await loadExportEvents(accountId, exportRange("2027-01-01", "2027-12-31"), [hotelId, secondHotel])).events.filter((event) => event.id === id);
-    expect(selectExportEvents(events, "new", [], [])[0].hotels.map((hotel) => hotel.id)).toEqual([secondHotel]);
+    expect(selectExportEvents(events, "new", [], "Medium")[0].hotels.map((hotel) => hotel.id)).toEqual([secondHotel]);
     const history = await loadExportHistory(accountId, [hotelId], events);
     expect(history.find((entry) => entry.id === batch.id)!.items[0]).toMatchObject({ latest: true, changed: true });
     const reexport = input(id, "selected");
     const repeated = await Promise.all([createExport(reexport, deps(id)), createExport(reexport, deps(id))]);
     expect(repeated[0]).toBe(repeated[1]);
   });
-  it("filters effective override dates and permits explicit announcement levels without altering scores", async () => {
+  it("filters effective override dates and sends a shown Medium event as Medium without altering scores", async () => {
     const id = await addEvent("Medium");
     check(await db.from("account_events").update({ override_start_at: "2027-08-01T12:00:00+02:00", override_end_at: "2027-08-03T12:00:00+02:00" }).eq("account_id", accountId).eq("event_id", id));
     const inAugust = (await loadExportEvents(accountId, { start: "2027-08-02", end: "2027-08-02" }, [hotelId])).events;
     expect(inAugust.some((event) => event.id === id)).toBe(true);
     expect((await loadExportEvents(accountId, { start: "2027-06-01", end: "2027-06-30" }, [hotelId])).events.some((event) => event.id === id)).toBe(false);
-    expect(exportSnapshots(selectExportEvents(inAugust.filter((event) => event.id === id), "new", [], []))).toMatchObject([{ importance: "Medium", manual: true }]);
-    const request = { ...input(id), selectedPairs: [`${hotelId}:${id}`], choices: [{ eventId: id, hotelId, importance: "Low" as const }] };
-    await createExport(request, deps(id));
+    await expect(createExport(input(id), deps(id, "High"))).rejects.toThrow("Geen nieuwe");
+    await createExport(input(id), deps(id));
+    expect(await snapshotOf(id)).toMatchObject({ importance: "Medium", manual: true });
     expect(check(await db.from("hotel_event_scores").select("suggested_importance").eq("hotel_id", hotelId).eq("event_id", id).single()).data!.suggested_importance).toBe("Medium");
-    expect(check(await db.from("announcement_export_choices").select("importance").eq("hotel_id", hotelId).eq("event_id", id).single()).data!.importance).toBe("Low");
+  });
+  it("sends a Laag event only to an account that exports Laag, and never one a source argues against", async () => {
+    const unresolved = { version: 1, relevance: "unresolved", magnitude: null, confidence: "low", reasons: [], sourceUrls: [] };
+    const id = await addEvent("Low"), rejected = await addEvent("Low");
+    check(await db.from("hotel_event_scores").update({ demand_assessment: unresolved }).eq("event_id", id));
+    check(await db.from("hotel_event_scores").update({ demand_assessment: { ...unresolved, relevance: "not_relevant" } }).eq("event_id", rejected));
+    await expect(createExport(input(id), deps(id))).rejects.toThrow("Geen nieuwe");
+    await createExport(input(id), deps(id, "Low"));
+    expect(await snapshotOf(id)).toMatchObject({ importance: "Low", manual: true });
+    await expect(createExport(input(rejected), deps(rejected, "Low"))).rejects.toThrow("Geen nieuwe");
   });
   it("exports an all-day record on the day its stored end-of-day placeholder names", async () => {
     const id = await addEvent();
     check(await db.from("events").update({ start_at: "2027-06-10T00:00:00+00:00", end_at: "2027-06-12T23:59:59+00:00" }).eq("id", id));
     const request = input(id);
-    const snapshot = exportSnapshots(selectExportEvents(await deps(id).load(request), "new", [], []))[0];
+    const snapshot = exportSnapshots(selectExportEvents(await deps(id).load(request), "new", [], "Medium"))[0];
     expect(snapshot).toMatchObject({ startDate: "2027-06-10", endDate: "2027-06-12" });
     await expect(createExport(request, deps(id))).resolves.toBeTruthy();
   });
@@ -114,24 +126,16 @@ describe.skipIf(!enabled)("export transactions in isolated local Supabase", () =
     const events = await deps(id).load(request);
     expect(events[0].hotels.find((hotel) => hotel.id === hotelId)).toMatchObject({ importance: "High", available: true, announced: false });
     await expect(createExport(request, deps(id))).resolves.toBeTruthy();
-    expect(check(await db.from("export_items").select("snapshot").eq("event_id", id)).data![0].snapshot).toMatchObject({ importance: "High", manual: false });
+    expect(await snapshotOf(id)).toMatchObject({ importance: "High", manual: false });
   });
-  it("rolls back the entire batch on a bad choice and denies foreign accounts and direct client commits", async () => {
+  it("denies foreign accounts and direct client commits", async () => {
     const id = await addEvent(); const request = input(id);
-    const bytes = Buffer.from("test workbook");
-    const snapshots = exportSnapshots(await deps(id).load(request));
-    const invalid = await db.rpc("commit_hotel_export", { p_account: accountId, p_user: userId, p_key: request.requestKey, p_hash: "bad", p_selection: request as Json, p_workbook: bytes.toString("base64"), p_items: snapshots as unknown as Json, p_choices: [{ eventId: randomUUID(), hotelId, importance: "Low" }] });
-    expect(invalid.error).toBeTruthy();
-    expect(invalid.error?.message).toContain("Choice is not part of export");
-    expect(check(await db.from("export_batches").select("id").eq("request_key", request.requestKey)).data).toEqual([]);
-    expect(check(await db.from("hotel_event_exports").select("event_id").eq("hotel_id", hotelId).eq("event_id", id)).data).toEqual([]);
-    const args = { p_account: accountId, p_user: otherUserId, p_key: request.requestKey, p_hash: "x", p_selection: request as Json, p_workbook: "eA==", p_items: [], p_choices: [] };
+    const args = { p_account: accountId, p_user: otherUserId, p_key: request.requestKey, p_hash: "x", p_selection: request as Json, p_workbook: "eA==", p_items: [] };
     expect((await db.rpc("commit_hotel_export", args)).error?.code).toBe("42501");
     expect((await member.rpc("commit_hotel_export", { ...args, p_user: userId })).error?.code).toBe("42501");
     expect(check(await member.from("accounts").select("id").eq("id", otherAccount)).data).toEqual([]);
     const foreign = check(await db.from("export_batches").insert({ account_id: otherAccount, created_by: otherUserId, request_key: randomUUID(), request_hash: "foreign", selection: {}, workbook: "\\x0102" }).select("id").single()).data!;
     expect(check(await member.from("export_batches").select("workbook").eq("id", foreign.id)).data).toEqual([]);
-    expect((await member.from("announcement_export_choices").insert({ account_id: accountId, hotel_id: hotelId, event_id: id, importance: "High" })).error?.code).toBe("42501");
   });
   it("rejects a collection edit between selection and workbook commit", async () => {
     const id = await addEvent(); const request = input(id);

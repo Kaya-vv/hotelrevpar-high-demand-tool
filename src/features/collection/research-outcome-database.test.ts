@@ -120,7 +120,7 @@ it.skipIf(!process.env.RESEARCH_LOCAL_KEY)("repairs the retained DDW edition and
     expect(visible.filter((event) => startingVisibleIds.includes(event.id)).map((event) => event.id).sort()).toEqual([...startingVisibleIds].sort());
     expect(added[0].title).toMatch(/Dutch Design Week/i);
     const exported = await loadExportEvents(accountId, { start: "2027-01-01", end: "2027-12-31" }, [hotelId]);
-    const rows = mapRevControlRows(exported.events, [hotelId]);
+    const rows = mapRevControlRows(exported.events, [hotelId], "Medium");
     expect(rows).toHaveLength(startingVisibleIds.length + 1);
     const ddw = rows.find((row) => /Dutch Design Week/i.test(row.event))!;
     expect(ddw.startDate.toISOString().slice(0, 10)).toBe("2027-10-23");

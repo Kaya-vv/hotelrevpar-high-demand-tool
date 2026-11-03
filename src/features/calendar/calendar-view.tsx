@@ -55,7 +55,7 @@ export type CalendarEvent = {
   assessedScore?: CalendarHotelScore;
   /** Label chosen by the shared visibility policy; null when no quality-backed level exists. */
   shownLevel?: DemandLevel | null;
-  /** Shown as Medium: likely hotel demand of unknown size. Exported as Medium by default. */
+  /** Shown as Medium: likely hotel demand of unknown size. */
   announced?: boolean;
   /** Internal result of the shared calendar publication rule. */
   visible?: boolean;
@@ -179,8 +179,8 @@ function EventDetails({
       {event.announced && (
         <p className="demand-pending">
           Dit evenement trekt waarschijnlijk extra hotelgasten, maar hoeveel weten we nog
-          niet. Het gaat als Medium mee in de export en naar RevControl. Zet het hieronder
-          op Laag als je het niet wilt meesturen.
+          niet. Of het meegaat naar RevControl, kies je bij Exporteren. Je kunt het niveau
+          hieronder aanpassen.
         </p>
       )}
       {primarySource && (

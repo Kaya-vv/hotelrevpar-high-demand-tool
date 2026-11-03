@@ -91,7 +91,7 @@ export async function loadApiEvents(client: AdminClient, account: ApiAccount, ho
   const minRank = API_LEVELS.indexOf(query.minLevel);
   const selected = events.flatMap((event) => {
     const hotel = event.hotels.find((candidate) => candidate.id === hotelId);
-    const level = hotel ? exportedLevel(hotel) : null;
+    const level = hotel ? exportedLevel(hotel, account.exportMinLevel) : null;
     return hotel && level && API_LEVELS.indexOf(level) >= minRank ? [{ event, hotel, level }] : [];
   });
   if (!selected.length) return [];

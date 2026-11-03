@@ -77,7 +77,7 @@ describe.skipIf(!enabled)("public API v1 in isolated local Supabase", () => {
     expect(key.last_used_at).toBe("2026-11-03T08:00:00+00:00");
   });
 
-  it("returns the export selection with all four levels and drops what left the list", async () => {
+  it("returns the account's export selection and drops what left the list", async () => {
     const high = await addEvent("Concert", "High");
     const peak = await addEvent("Festival", "Peak");
     check(await db.from("account_events").update({ decided_at: "2030-01-01T00:00:00Z" }).eq("account_id", accountId).eq("event_id", peak));
@@ -117,6 +117,16 @@ describe.skipIf(!enabled)("public API v1 in isolated local Supabase", () => {
 
     const peaks = await (await june("&min_level=peak")).json();
     expect(peaks.events.map((event: { id: string }) => event.id)).toEqual([peak]);
+
+    // The account's own setting is the floor; min_level can only narrow it further.
+    const levels = async (extra = "") => new Map<string, string>((await (await june(extra)).json()).events.map((event: { id: string; level: string }) => [event.id, event.level]));
+    check(await db.from("accounts").update({ export_min_level: "High" }).eq("id", accountId));
+    expect((await levels()).has(medium)).toBe(false);
+    expect((await levels("&min_level=low")).has(medium)).toBe(false);
+    check(await db.from("accounts").update({ export_min_level: "Low" }).eq("id", accountId));
+    const withLaag = await levels();
+    expect([withLaag.get(setToLaag), withLaag.get(medium), withLaag.has(low)]).toEqual(["Low", "Medium", false]);
+    check(await db.from("accounts").update({ export_min_level: "Medium" }).eq("id", accountId));
   });
 
   it("rejects bad parameters and unknown hotels with an error status", async () => {

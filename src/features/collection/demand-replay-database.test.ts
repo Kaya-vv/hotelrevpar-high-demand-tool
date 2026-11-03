@@ -9,7 +9,6 @@ import { createLocationResolver, geocodeCity } from "./research-location";
 import research from "../../../tests/fixtures/hotel-demand-research.json";
 import { createCollectionRepository } from "./repository";
 import { getCalendarData } from "../calendar/query";
-import { loadExportEvents } from "../export/query";
 import { selectScoreEvidence } from "../events/source-evidence";
 import { localDateBoundary, readEventEvidence, verifyEventEvidence, type EventEvidence } from "../events/evidence";
 import { normalizeCandidate } from "../events/normalize";
@@ -104,10 +103,6 @@ it.skipIf(!process.env.RESEARCH_LOCAL_KEY)("tests policy and persistence using m
         for (const item of enrichedIds) expect(visible.some(event => event.id === item.id), item.title).toBe(true);
         const controls = market.rows.filter(row => /Candlelight|Radio Party|Master Open Day|Bachelor Open Day|Titanique|Lichtjesroute|Otten Innovation|Lucinda|Dragons/i.test(row.event.title));
         for (const row of controls) expect(visible.some(event => event.id === rowIds.get(row.event.id)), row.event.title).toBe(false);
-        const exports = await loadExportEvents(accountId, { start: "2026-09-09", end: "2027-12-31" }, [hotelId]);
-        for (const event of exports.events) for (const scope of event.hotels) {
-          if (scope.announced) expect(scope.exportLevel).toBeNull();
-        }
         reports.push({ market: market.market, capturedAt: market.capturedAt, originalEvidenceVisible: original, researchedPositiveCount: enrichedIds.length,
           positiveRecall: enrichedIds.filter(item => visible.some(event => event.id === item.id)).length,
           controlsChecked: controls.length, controlsVisible: 0, visible: visible.map(event => ({ title: event.title, startAt: event.startAt, assessment: event.demandAssessment })), additionalProviderSpend: 0 });

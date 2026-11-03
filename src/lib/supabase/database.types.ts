@@ -55,13 +55,6 @@ export type Database = {
         Relationships: [];
       };
 
-      announcement_export_choices: {
-        Row: { account_id: string; hotel_id: string; event_id: string; importance: string };
-        Insert: { account_id: string; hotel_id: string; event_id: string; importance: string };
-        Update: { account_id?: string; hotel_id?: string; event_id?: string; importance?: string };
-        Relationships: [];
-      };
-
       api_keys: {
         Row: { id: string; account_id: string; name: string; key_prefix: string; key_hash: string; created_by: string | null; created_at: string; last_used_at: string | null; revoked_at: string | null };
         Insert: { id?: string; account_id: string; name: string; key_prefix: string; key_hash: string; created_by?: string | null; created_at?: string; last_used_at?: string | null; revoked_at?: string | null };
@@ -378,6 +371,7 @@ export type Database = {
         Row: {
           active: boolean;
           created_at: string;
+          export_min_level: "Low" | "Medium" | "High";
           hotel_limit: number | null;
           id: string;
           name: string;
@@ -388,6 +382,7 @@ export type Database = {
         Insert: {
           active?: boolean;
           created_at?: string;
+          export_min_level?: "Low" | "Medium" | "High";
           hotel_limit?: number | null;
           id?: string;
           name: string;
@@ -398,6 +393,7 @@ export type Database = {
         Update: {
           active?: boolean;
           created_at?: string;
+          export_min_level?: "Low" | "Medium" | "High";
           hotel_limit?: number | null;
           id?: string;
           name?: string;
@@ -1111,7 +1107,7 @@ export type Database = {
     };
     Functions: {
       commit_hotel_export: {
-        Args: { p_account: string; p_user: string; p_key: string; p_hash: string; p_selection: Json; p_workbook: string; p_items: Json; p_choices: Json };
+        Args: { p_account: string; p_user: string; p_key: string; p_hash: string; p_selection: Json; p_workbook: string; p_items: Json };
         Returns: string;
       };
 

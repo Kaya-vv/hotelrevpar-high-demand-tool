@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 
 import { trialExpired } from "@/features/accounts/trial";
+import type { ExportMinLevel } from "@/features/export/types";
 import type { AdminClient } from "@/lib/supabase/admin";
 
 import { apiError, type ApiError } from "./respond";
@@ -17,7 +18,7 @@ export function generateApiKey(): { key: string; prefix: string; hash: string } 
   return { key, prefix: key.slice(0, 12), hash: hashApiKey(key) };
 }
 
-export type ApiAccount = { accountId: string; trialEndsAt: string | null };
+export type ApiAccount = { accountId: string; trialEndsAt: string | null; exportMinLevel: ExportMinLevel };
 
 const unauthorized = () => apiError(401, "unauthorized", "Missing, invalid or revoked API key.");
 
@@ -35,7 +36,7 @@ export async function authenticateApiKey(authorization: string | null, client: A
   if (!key || key.revoked_at !== null) return unauthorized();
 
   const { data: account, error: accountError } = await client.from("accounts")
-    .select("active, trial_ends_at").eq("id", key.account_id).single();
+    .select("active, trial_ends_at, export_min_level").eq("id", key.account_id).single();
   if (accountError) throw accountError;
   if (!account.active || (account.trial_ends_at !== null && trialExpired(account.trial_ends_at, now))) {
     return apiError(403, "account_inactive", "This DemandRadar account is not active.");
@@ -44,5 +45,5 @@ export async function authenticateApiKey(authorization: string | null, client: A
   const { error: touchError } = await client.from("api_keys").update({ last_used_at: now.toISOString() }).eq("id", key.id);
   if (touchError) console.error("API key last_used_at update failed", { keyId: key.id });
 
-  return { accountId: key.account_id, trialEndsAt: account.trial_ends_at };
+  return { accountId: key.account_id, trialEndsAt: account.trial_ends_at, exportMinLevel: account.export_min_level };
 }

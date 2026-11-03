@@ -5,23 +5,25 @@ import type { ExportEvent } from "./types";
 const refresh = vi.hoisted(() => vi.fn());
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
-const props = { hotelIds: ["hotel"], hotelNames: { hotel: "Hotel" }, from: "2026-09-08", to: "2027-12-31" };
-const announcement: ExportEvent = { id: "event", title: "Future Congress", startAt: "2027-10-01", endAt: "2027-10-03", hotels: [{ id: "hotel", code: "H", importance: "Medium", impactBasis: "demand_rule", announced: true, exportLevel: null }] };
+const props = { hotelIds: ["hotel"], hotelNames: { hotel: "Hotel" }, from: "2026-09-08", to: "2027-12-31", minLevel: "Medium" as const };
+const announcement: ExportEvent = { id: "event", title: "Future Congress", startAt: "2027-10-01", endAt: "2027-10-03", hotels: [{ id: "hotel", code: "H", importance: "Medium", impactBasis: "demand_rule", announced: true }] };
 const ready: ExportEvent = { ...announcement, id: "ready", title: "Ready Congress", hotels: [{ id: "hotel", code: "H", importance: "High", impactBasis: "demand_rule" }] };
+const laag: ExportEvent = { ...announcement, id: "laag", title: "Small Show", hotels: [{ id: "hotel", code: "H", importance: "Low", impactBasis: "demand_rule", available: false, laag: true }] };
 
-it("exports a shown Medium event by default and sends only a level the manager changed", async () => {
+it("lists events from the account's minimum level up and sends no level of its own", async () => {
   const fetch = vi.fn().mockResolvedValue({ ok: false, status: 500, json: async () => ({ error: "Test failure" }) });
   vi.stubGlobal("fetch", fetch);
-  render(<ExportControls {...props} events={[announcement, { ...announcement, id: "saved", title: "Saved Congress", hotels: [{ ...announcement.hotels[0], exportLevel: "High" }] }]} />);
-  expect(screen.getByText("2 events klaar voor export")).toBeInTheDocument();
-  const choice = screen.getByLabelText("Exportniveau Future Congress voor Hotel");
-  expect(choice).toHaveValue("Medium");
-  // A level saved by an earlier export is what the API also sends, so the Excel starts there too.
-  expect(screen.getByLabelText("Exportniveau Saved Congress voor Hotel")).toHaveValue("High");
-  fireEvent.change(choice, { target: { value: "Low" } });
+  const titles = () => [...document.querySelectorAll(".export-event-table tbody tr:not(.export-month) td:first-child")].map((cell) => cell.textContent);
+  const { rerender } = render(<ExportControls {...props} events={[ready, announcement, laag]} />);
+  expect(titles()).toEqual(["Future Congress", "Ready Congress"]);
+  rerender(<ExportControls {...props} minLevel="High" events={[ready, announcement, laag]} />);
+  expect(titles()).toEqual(["Ready Congress"]);
+  rerender(<ExportControls {...props} minLevel="Low" events={[ready, announcement, laag]} />);
+  expect(titles()).toEqual(["Future Congress", "Ready Congress", "Small Show"]);
+  expect(document.querySelector(".export-event-table .export-level-low")?.textContent).toBe("Laag");
   fireEvent.click(screen.getByRole("button", { name: "Download voor RevControl" }));
   await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
-  expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({ mode: "new", selectedPairs: [], choices: [{ eventId: "event", hotelId: "hotel", importance: "Low" }] });
+  expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({ from: props.from, to: props.to, hotelIds: ["hotel"], mode: "new", selectedPairs: [], requestKey: expect.any(String) });
   await screen.findByRole("alert");
 });
 
@@ -36,7 +38,7 @@ it("hides previous exports and sorts new events chronologically", () => {
 });
 
 it("groups hotels and keeps workbook details collapsed", () => {
-  const { container } = render(<ExportControls events={[{ ...ready, hotels: [ { ...ready.hotels[0], id: "a", code: "A" }, { ...ready.hotels[0], id: "b", code: "B" } ] }]} hotelIds={["a", "b"]} hotelNames={{ a: "Hotel A", b: "Hotel B" }} from={props.from} to={props.to} />);
+  const { container } = render(<ExportControls events={[{ ...ready, hotels: [ { ...ready.hotels[0], id: "a", code: "A" }, { ...ready.hotels[0], id: "b", code: "B" } ] }]} hotelIds={["a", "b"]} hotelNames={{ a: "Hotel A", b: "Hotel B" }} from={props.from} to={props.to} minLevel="Medium" />);
   expect(within(screen.getByRole("region", { name: "Hotel A" })).getByText("Ready Congress")).toBeVisible();
   expect(within(screen.getByRole("region", { name: "Hotel B" })).getByText("Ready Congress")).toBeVisible();
   const disclosure = container.querySelector(".export-file-details")!;

@@ -426,7 +426,7 @@ describe("coordinated long-range research", () => {
     expect(candidate.attendance).toBeNull();
     const score = scoreHotelEvent({ candidate, hotel: { latitude: 51.44, longitude: 5.48, demandRadiusKm: 25, holidayRegion: null }, overlaps: [] });
     expect(score.assessment).toMatchObject({ relevance: "probable", magnitude: null });
-    const rows = mapRevControlRows([{ id: "event", title: candidate.title, startAt: candidate.startAt, endAt: candidate.endAt, hotels: [{ id: "hotel", code: "TEST", importance: score.suggestedImportance, impactBasis: score.impactBasis, announced: true }] }], ["hotel"]);
+    const rows = mapRevControlRows([{ id: "event", title: candidate.title, startAt: candidate.startAt, endAt: candidate.endAt, hotels: [{ id: "hotel", code: "TEST", importance: score.suggestedImportance, impactBasis: score.impactBasis, announced: true }] }], ["hotel"], "Medium");
     expect(rows[0].startDate.toISOString().slice(0, 10)).toBe("2027-10-23");
     expect(rows[0].endDate.toISOString().slice(0, 10)).toBe("2027-10-31");
   });

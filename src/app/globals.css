@@ -2120,6 +2120,33 @@ td {
   background: #fff0e7;
   color: #974021;
 }
+.export-level-setting {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.export-level-setting fieldset {
+  display: grid;
+  gap: 10px;
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+.export-level-setting .export-level-option {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 10px;
+  text-align: left;
+}
+.export-level-setting .export-level-option input {
+  flex: none;
+  width: auto;
+  margin-top: 4px;
+}
+.export-level-setting button {
+  justify-self: start;
+}
 .export-file-details {
   font-size: .85rem;
 }

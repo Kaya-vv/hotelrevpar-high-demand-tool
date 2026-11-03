@@ -1,7 +1,7 @@
 import { eventLocalDate } from "@/features/events/normalize";
 
 import { exportedLevel } from "./selection";
-import type { ExportEvent, RevControlRow } from "./types";
+import type { ExportEvent, ExportMinLevel, RevControlRow } from "./types";
 
 function excelDate(value: string) {
   const date = eventLocalDate(value);
@@ -9,23 +9,23 @@ function excelDate(value: string) {
   return new Date(Date.UTC(year, month - 1, day));
 }
 
-function publishableHotels(event: ExportEvent, selected: Set<string>) {
-  return event.hotels.filter((hotel) => selected.has(hotel.id) && exportedLevel(hotel) !== null);
+function publishableHotels(event: ExportEvent, selected: Set<string>, minLevel: ExportMinLevel) {
+  return event.hotels.filter((hotel) => selected.has(hotel.id) && exportedLevel(hotel, minLevel) !== null);
 }
 
 /** The events that actually reach the workbook, so a preview count matches its rows. */
-export function exportableEvents(events: ExportEvent[], selectedHotelIds: string[]): ExportEvent[] {
+export function exportableEvents(events: ExportEvent[], selectedHotelIds: string[], minLevel: ExportMinLevel): ExportEvent[] {
   const selected = new Set(selectedHotelIds);
-  return events.filter((event) => publishableHotels(event, selected).length > 0);
+  return events.filter((event) => publishableHotels(event, selected, minLevel).length > 0);
 }
 
-export function mapRevControlRows(events: ExportEvent[], selectedHotelIds: string[]): RevControlRow[] {
+export function mapRevControlRows(events: ExportEvent[], selectedHotelIds: string[], minLevel: ExportMinLevel): RevControlRow[] {
   const selected = new Set(selectedHotelIds);
   return events
     .flatMap((event) => {
       const groups = new Map<RevControlRow["importance"], string[]>();
-      publishableHotels(event, selected).forEach((hotel) => {
-        const level = exportedLevel(hotel)!;
+      publishableHotels(event, selected, minLevel).forEach((hotel) => {
+        const level = exportedLevel(hotel, minLevel)!;
         const importance = level === "Peak" ? "High" : level;
         groups.set(importance, [...(groups.get(importance) ?? []), hotel.code]);
       });

@@ -3,6 +3,8 @@ import { trialHorizonEnd } from "@/features/accounts/trial";
 import { eventLocalDate } from "@/features/events/normalize";
 import { demandLabels } from "@/features/events/importance";
 import { ExportControls } from "@/features/export/export-controls";
+import { ExportLevelSetting } from "@/features/export/export-level-setting";
+import { loadExportMinLevel } from "@/features/export/min-level";
 import { ExportTabs, ExportPanel } from "@/features/export/export-tabs";
 import { ExportFilters } from "@/features/export/export-filters";
 import { exportPeriod } from "@/features/export/display";
@@ -12,6 +14,7 @@ import type { ExportSnapshot } from "@/features/export/types";
 import { getHotelScope } from "@/features/workspace/hotel-context";
 import { requireViewedAccount } from "@/features/workspace/viewed-account";
 import { OwnAccountOnly } from "@/features/workspace/viewing-notice";
+import { createServerClient } from "@/lib/supabase/server";
 
 const statusLabels: Record<string, string> = { active: "Actief", cancelled: "Geannuleerd", postponed: "Uitgesteld", excluded: "Verborgen", ended: "Afgelopen", needs_review: "Controle nodig", unavailable: "Niet beschikbaar" };
 function snapshotLabel(snapshot: ExportSnapshot | null) {
@@ -29,6 +32,7 @@ export default async function ExportPage({ searchParams }: { searchParams: Promi
   const requested = Array.isArray(params.hotel) ? params.hotel : typeof params.hotel === "string" ? [params.hotel] : [];
   const selectedHotelIds = requested.length ? [...new Set(requested)].filter((id) => scope.hotels.some((hotel) => hotel.id === id)) : params.selection === "1" ? [] : scope.selectedHotelId ? [scope.selectedHotelId] : [];
   const hotelNames = Object.fromEntries(scope.hotels.map((hotel) => [hotel.id, hotel.name]));
+  const minLevel = await loadExportMinLevel(await createServerClient(), accountId);
   const { events: current } = selectedHotelIds.length ? await loadExportEvents(accountId, range, selectedHotelIds, true) : { events: [] };
   const events = current.filter((event) => event.status === "active" && eventLocalDate(event.startAt) <= range.end && eventLocalDate(event.endAt) >= range.start);
   const view = params.view === "history" || (!params.view && typeof params.historyPage === "string") ? "history" : params.view === "reexport" ? "reexport" : "new";
@@ -46,7 +50,8 @@ export default async function ExportPage({ searchParams }: { searchParams: Promi
       {!scope.hotels.length ? <p className="panel">Voeg eerst een hotel toe.</p> : !selectedHotelIds.length ? <p className="panel">Kies een hotel via Aanpassen om de beschikbare events te bekijken.</p> : <>
         <ExportPanel>
           {changed > 0 && <p className="export-change-note">Er zijn events gewijzigd sinds een eerdere export. <Link href={viewLink("history")}>Bekijk wijzigingen</Link></p>}
-          <ExportControls key={`${query}-${view}`} events={events} hotelIds={selectedHotelIds} hotelNames={hotelNames} from={range.start} to={range.end} reexport={view === "reexport"} />
+          <ExportLevelSetting key={minLevel} current={minLevel} />
+          <ExportControls key={`${query}-${view}-${minLevel}`} events={events} hotelIds={selectedHotelIds} hotelNames={hotelNames} from={range.start} to={range.end} minLevel={minLevel} reexport={view === "reexport"} />
         </ExportPanel>
         <ExportPanel history><section className="panel export-history" aria-labelledby="export-history-title">
           <div className="export-history-heading"><div><h2 id="export-history-title">Eerdere exports</h2><p className="muted">Download een opgeslagen bestand opnieuw.</p></div><Link className="secondary" href={viewLink("reexport")}>Nieuwe export van eerdere events</Link></div>

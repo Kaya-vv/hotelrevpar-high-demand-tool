@@ -87,7 +87,7 @@ Geeft de events van één hotel in een periode.
 | `hotel_id` | Nee, als het account precies één hotel heeft; anders ja | UUID uit `GET /hotels` | Het hotel waarvoor de events worden berekend. |
 | `from` | Ja | `JJJJ-MM-DD` | Eerste dag van de periode. |
 | `to` | Ja | `JJJJ-MM-DD` | Laatste dag van de periode (inbegrepen). Maximaal 3 jaar na `from`. |
-| `min_level` | Nee | `Low`, `Medium`, `High` of `Peak` | Alleen events op dit niveau of hoger. Zonder deze parameter komt alles uit de selectie mee (zie hoofdstuk 6). Hoofdletters maken niet uit. |
+| `min_level` | Nee | `Low`, `Medium`, `High` of `Peak` | Alleen events op dit niveau of hoger. Zonder deze parameter komt alles mee wat de klant naar RevControl stuurt (zie hoofdstuk 6). Deze parameter kan de lijst alleen kleiner maken, nooit groter dan de keuze van de klant. Hoofdletters maken niet uit. |
 
 ### Verzoek
 
@@ -184,7 +184,7 @@ Ingekort tot drie events; echte uitvoer van 3 november 2026.
 | `city` | string of `null` | Plaats van het event, als die bekend is. |
 | `latitude`, `longitude` | number of `null` | Coördinaten van het event. |
 | `distance_km` | number of `null` | Afstand tot het hotel in kilometers, op 0,1 km afgerond. |
-| `level` | string | Verwachte vraag voor dit hotel: `Low`, `Medium`, `High` of `Peak`. `Peak` is het hoogste niveau. |
+| `level` | string | Verwachte vraag voor dit hotel: `Low`, `Medium`, `High` of `Peak`. `Peak` is het hoogste niveau. `Low` komt alleen voor als de klant ervoor kiest ook Laag-events te sturen (zie hoofdstuk 6). |
 | `score` | integer | Score van 0 tot 100 voor dit hotel. Hoger betekent meer verwachte vraag. Het niveau volgt niet rechtstreeks uit de score: een Medium-event kan een hogere score hebben dan een High-event. Gebruik `level` voor de indeling. |
 | `source_url` | string of `null` | Openbare webpagina waar het event is bevestigd. |
 | `hotel_code` | string of `null` | De RevControl-hotelcode van het hotel (gelijk aan `hotel_code` in `GET /hotels`). |
@@ -194,20 +194,26 @@ Ingekort tot drie events; echte uitvoer van 3 november 2026.
 
 ## 6. Welke events staan in de lijst
 
-De lijst bevat precies de events die de klant ook in de Excel-export voor RevControl zou krijgen:
+Elk event heeft per hotel één niveau: het niveau dat de klant in de DemandRadar-kalender ziet. De klant kiest in DemandRadar zelf (onder *Exporteren*) vanaf welk niveau events naar RevControl gaan. Die keuze geldt voor de Excel-export en voor deze API:
 
-- **High en Peak**: altijd. Dat geldt ook als de manager in DemandRadar zelf het niveau High of Peak heeft gekozen.
-- **Medium**: altijd, als `Medium`. Dit zijn events die waarschijnlijk extra hotelgasten trekken, maar waarvan de omvang nog niet bekend is. Heeft de manager zo'n event in een Excel-export op een ander niveau gezet, dan komt het op dat niveau mee.
-- **Laag**: nooit. Een event dat de manager op Laag zet, verdwijnt uit de lijst.
+| Keuze van de klant | Niveaus in de lijst |
+| --- | --- |
+| Medium, Hoog en Piek (standaard) | `Medium`, `High`, `Peak` |
+| Alleen Hoog en Piek | `High`, `Peak` |
+| Ook Laag | `Low`, `Medium`, `High`, `Peak` |
 
-Wil RevControl alleen de grotere events, gebruik dan `min_level=High`.
+- **High en Peak**: events met aangetoonde grote hotelvraag. Ook als de manager het niveau zelf op High of Peak heeft gezet.
+- **Medium**: events die waarschijnlijk extra hotelgasten trekken, maar waarvan de omvang nog niet bekend is.
+- **Low**: de rest van de bevestigde events in de omgeving, zoals voorstellingen en exposities. De meeste zeggen weinig over hotelvraag. Standaard gaan ze niet mee.
+
+Wil RevControl voor een klant minder events dan die klant kiest, gebruik dan `min_level`.
 
 ## 7. Afspraken over de lijst
 
 - **Volledige lijst.** Elk antwoord bevat alle events voor de gevraagde periode. Er is geen paginering en geen lijst met alleen wijzigingen.
 - **Gedeeltelijke overlap.** Een event dat maar voor een deel in de periode valt, komt mee. Een event van 28 mei t/m 2 juni staat dus in de lijst voor `from=2027-06-01&to=2027-06-30`.
 - **Datums.** Alle datums zijn Nederlandse lokale datums zonder tijd. `end_date` is de laatste dag van het event. Een event van 10 t/m 12 juni 2027 heeft `start_date` `2027-06-10` en `end_date` `2027-06-12`.
-- **Verdwijnen.** Een event dat geannuleerd is, door de klant is uitgesloten of op Laag is gezet, is samengevoegd met een ander event, of onder het gevraagde `min_level` is gezakt, staat de volgende keer niet meer in de lijst. Er komt geen apart verwijderbericht.
+- **Verdwijnen.** Een event dat geannuleerd is, door de klant is uitgesloten, is samengevoegd met een ander event, of onder het niveau is gezakt dat de klant of `min_level` vraagt, staat de volgende keer niet meer in de lijst. Dat geldt ook als de klant zijn keuze verandert, bijvoorbeeld van Medium naar alleen Hoog en Piek. Er komt geen apart verwijderbericht.
 - **Verschuiven.** Een event dat naar een andere datum verschuift, houdt dezelfde `id`. Alleen `start_date` en/of `end_date` veranderen.
 - **Sortering.** Op `start_date`, daarna op `title`.
 

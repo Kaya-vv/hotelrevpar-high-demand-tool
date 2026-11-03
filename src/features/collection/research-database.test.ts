@@ -94,7 +94,7 @@ it.skipIf(!enabled || live)("persists recorded DDW evidence and uses it after re
   expect(calendar.events.map((event) => event.id)).toContain(eventId);
   expect(calendar.events.find((event) => event.id === eventId)?.locationApproximate).toBe(true);
   const exported = await loadExportEvents(accountId, { start: "2027-01-01", end: "2027-12-31" }, [hotelId]);
-  const rows = mapRevControlRows(exported.events, [hotelId]);
+  const rows = mapRevControlRows(exported.events, [hotelId], "Medium");
   expect(rows).toHaveLength(1);
   expect(rows[0].startDate.toISOString().slice(0, 10)).toBe("2027-10-23");
   expect(rows[0].endDate.toISOString().slice(0, 10)).toBe("2027-10-31");
@@ -102,7 +102,7 @@ it.skipIf(!enabled || live)("persists recorded DDW evidence and uses it after re
   await db.from("hotels").update({ enabled_sources: [] }).eq("id", hotelId);
   vi.mocked(getHotelScope).mockResolvedValue({ ...(await getHotelScope(accountId)), enabledSources: [] });
   expect((await getCalendarData(accountId, { month: "2027-10" })).events).toEqual([]);
-  expect(mapRevControlRows((await loadExportEvents(accountId, { start: "2027-01-01", end: "2027-12-31" }, [hotelId])).events, [hotelId])).toEqual([]);
+  expect(mapRevControlRows((await loadExportEvents(accountId, { start: "2027-01-01", end: "2027-12-31" }, [hotelId])).events, [hotelId], "Medium")).toEqual([]);
 }, 30_000);
 
 // Invoked only by the bounded runner after real discovery; no model replies are synthesised here.
@@ -115,7 +115,7 @@ it.skipIf(!enabled || !live)("measures isolated live results through persistence
     await createCollectionRepository().recalculateScores(await createCollectionRepository().loadContext(accountId, areaId));
     const calendar = (await Promise.all(Array.from({ length: 12 }, (_, month) => getCalendarData(accountId, { month: `2027-${String(month + 1).padStart(2, "0")}` })))).flatMap((month) => month.events);
     const exported = await loadExportEvents(accountId, { start: "2027-01-01", end: "2027-12-31" }, [hotelId]);
-    const rows = mapRevControlRows(exported.events, [hotelId]);
+    const rows = mapRevControlRows(exported.events, [hotelId], "Medium");
     writeFileSync(`${live!.output}-workbook.xlsx`, Buffer.from(await buildRevControlWorkbook(rows)));
     writeFileSync(`${live!.output}-publication.json`, JSON.stringify({ summary, calendar: [...new Map(calendar.map((event) => [event.id, event])).values()], exported: exported.events, rows }, null, 2));
   } finally {

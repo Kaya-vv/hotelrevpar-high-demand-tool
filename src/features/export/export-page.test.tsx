@@ -4,6 +4,9 @@ import ExportPage from "@/app/(protected)/export/page";
 vi.mock("@/features/workspace/viewed-account", () => ({ requireViewedAccount: async () => ({ accountId: "account", viewedAccountName: "Robert", viewingOtherAccount: false }) }));
 vi.mock("@/features/workspace/hotel-context", () => ({ getHotelScope: async () => ({ hotels: [{ id: "hotel", name: "Hotel" }], selectedHotelId: "hotel" }) }));
 vi.mock("./query", () => ({ exportRange: () => ({ start: "2026-09-08", end: "2027-12-31" }), loadExportEvents: async () => ({ events: [] }) }));
+vi.mock("./min-level", () => ({ exportMinLevelLabels: { Low: "Ook Laag", Medium: "Medium, Hoog en Piek", High: "Alleen Hoog en Piek" }, loadExportMinLevel: async () => "Medium" }));
+vi.mock("./min-level-actions", () => ({ saveExportMinLevel: vi.fn() }));
+vi.mock("@/lib/supabase/server", () => ({ createServerClient: async () => ({}) }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), replace: vi.fn() }), useSearchParams: () => new URLSearchParams(window.location.search) }));
 vi.mock("./history", () => ({ loadExportHistory: async () => [{
   id: "batch", created_at: "2026-09-08T12:00:00Z", selection: { from: "2026-09-08", to: "2027-12-31", hotelIds: ["hotel"] },

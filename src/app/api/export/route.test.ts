@@ -4,6 +4,7 @@ vi.mock("@/lib/auth/require-account", () => ({ requireAccount: vi.fn(async () =>
 vi.mock("@/lib/supabase/server", () => ({ createServerClient: vi.fn() }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: vi.fn() }));
 vi.mock("@/features/export/create", async (original) => ({ ...await original<typeof import("@/features/export/create")>(), createExport: vi.fn() }));
+vi.mock("@/features/export/min-level", () => ({ loadExportMinLevel: vi.fn(async () => "Medium") }));
 import { POST } from "./route";
 import { GET } from "./[batchId]/route";
 import { createExport, ExportConflict } from "@/features/export/create";

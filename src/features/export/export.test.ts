@@ -23,6 +23,7 @@ describe("RevControl export", () => {
         ],
       }],
       ["hotel-1", "hotel-2", "hotel-3", "hotel-4", "hotel-5"],
+      "Medium",
     );
     const buffer = await buildRevControlWorkbook(rows);
     const workbook = new ExcelJS.Workbook();
@@ -68,8 +69,8 @@ describe("RevControl export", () => {
 
     // The preview headline used every active decision in range, so it read far higher than
     // the row count it sat next to.
-    expect(exportableEvents(events, ["hotel-1"]).map((event) => event.id)).toEqual(["event-1"]);
-    expect(mapRevControlRows(exportableEvents(events, ["hotel-1"]), ["hotel-1"])).toHaveLength(1);
+    expect(exportableEvents(events, ["hotel-1"], "Medium").map((event) => event.id)).toEqual(["event-1"]);
+    expect(mapRevControlRows(exportableEvents(events, ["hotel-1"], "Medium"), ["hotel-1"], "Medium")).toHaveLength(1);
   });
 
   it("defaults the export range to the full research horizon", () => {
