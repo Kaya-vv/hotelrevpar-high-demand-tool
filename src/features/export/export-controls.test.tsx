@@ -20,7 +20,7 @@ it("lists events from the account's minimum level up and sends no level of its o
   expect(titles()).toEqual(["Ready Congress"]);
   rerender(<ExportControls {...props} minLevel="Low" events={[ready, announcement, laag]} />);
   expect(titles()).toEqual(["Future Congress", "Ready Congress", "Small Show"]);
-  expect(document.querySelector(".export-event-table .export-level-low")?.textContent).toBe("Laag");
+  expect(document.querySelector(".export-event-table .importance.low")?.textContent).toBe("Laag");
   fireEvent.click(screen.getByRole("button", { name: "Download voor RevControl" }));
   await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
   expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({ from: props.from, to: props.to, hotelIds: ["hotel"], mode: "new", selectedPairs: [], requestKey: expect.any(String) });

@@ -3,7 +3,7 @@
 import { useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { exportPeriod } from "./display";
-import { useExportView } from "./export-tabs";
+import { useExportView, useSettingsTab } from "./export-tabs";
 import { ExportSkeleton } from "./export-skeleton";
 
 export function ExportFilters({ hotels, hotelIds, from, to, horizonEnd, children }: {
@@ -14,6 +14,7 @@ export function ExportFilters({ hotels, hotelIds, from, to, horizonEnd, children
 }) {
   const router = useRouter();
   const activeView = useExportView();
+  const settingsTab = useSettingsTab();
   const [pending, startTransition] = useTransition();
   function update(form: HTMLFormElement) {
     if (!form.reportValidity()) return;
@@ -23,7 +24,7 @@ export function ExportFilters({ hotels, hotelIds, from, to, horizonEnd, children
     startTransition(() => router.replace(`/export?${query}`, { scroll: false }));
   }
   return <>
-    <details className="panel export-filter-panel">
+    <details className="panel export-filter-panel" hidden={settingsTab}>
       <summary><span><strong>{hotelIds.length === 1 ? hotels.find((hotel) => hotel.id === hotelIds[0])?.name : `${hotelIds.length} hotels`}</strong><span className="muted">{exportPeriod(from, to)}</span></span><span className="export-edit">Aanpassen</span></summary>
       <form className="export-settings" onSubmit={(event) => { event.preventDefault(); update(event.currentTarget); }}>
         <input type="hidden" name="selection" value="1" />
@@ -38,6 +39,6 @@ export function ExportFilters({ hotels, hotelIds, from, to, horizonEnd, children
     </details>
     <div role="status" className="export-loading">{pending ? "Selectie bijwerken…" : ""}</div>
     {pending && <ExportSkeleton />}
-    <fieldset hidden={pending} disabled={pending} aria-busy={pending} className="export-content">{children}</fieldset>
+    <fieldset hidden={pending || settingsTab} disabled={pending} aria-busy={pending} className="export-content">{children}</fieldset>
   </>;
 }

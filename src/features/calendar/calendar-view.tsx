@@ -179,8 +179,8 @@ function EventDetails({
       {event.announced && (
         <p className="demand-pending">
           Dit evenement trekt waarschijnlijk extra hotelgasten, maar hoeveel weten we nog
-          niet. Of het meegaat naar RevControl, kies je bij Exporteren. Je kunt het niveau
-          hieronder aanpassen.
+          niet. Of het meegaat in je export, kies je bij Exporteren onder Instellingen. Je kunt
+          het niveau hieronder aanpassen.
         </p>
       )}
       {primarySource && (

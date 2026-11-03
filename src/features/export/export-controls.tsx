@@ -68,7 +68,7 @@ export function ExportControls({ events, hotelIds, hotelNames, from, to, minLeve
             <tr>
               <td>{reexport ? <label className="export-row-toggle"><input aria-label={`Selecteer ${event.title} voor ${hotelNames[hotel.id]}`} type="checkbox" checked={selected.includes(key)} onChange={(e) => setSelected(e.target.checked ? [...selected, key] : selected.filter((item) => item !== key))} />{event.title}</label> : event.title}</td>
               <td className="export-event-date">{exportPeriod(event.startAt, event.endAt)}</td>
-              <td><span className={`export-level export-level-${level.toLowerCase()}`}>{demandLabels[level]}</span></td>
+              <td><span className={`importance ${level.toLowerCase()}`}>{demandLabels[level]}</span></td>
             </tr>
           </Fragment>)}
         </tbody></table></div>

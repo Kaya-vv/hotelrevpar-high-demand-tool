@@ -10,7 +10,7 @@ vi.mock("next/link", () => ({ default: ({ href, children, onNavigate, ...props }
 } }));
 afterEach(() => { cleanup(); vi.restoreAllMocks(); window.history.replaceState(null, "", "/export"); });
 function Views() {
-  return <><ExportTabs initialView="new" newHref="/export?view=new&hotel=a&historyPage=2" historyHref="/export?view=history&hotel=a&historyPage=2" /><ExportPanel><input aria-label="My selection" defaultValue="" /></ExportPanel><ExportPanel history><p>Saved files</p></ExportPanel></>;
+  return <><ExportTabs initialView="new" hrefs={{ new: "/export?view=new&hotel=a&historyPage=2", history: "/export?view=history&hotel=a&historyPage=2", settings: "/export?view=settings&hotel=a" }} /><ExportPanel><input aria-label="My selection" defaultValue="" /></ExportPanel><ExportPanel tab="history"><p>Saved files</p></ExportPanel><ExportPanel tab="settings"><p>Export levels</p></ExportPanel></>;
 }
 it("switches with native history and preserves the mounted export selection", () => {
   const push = vi.spyOn(window.history, "pushState");
@@ -27,6 +27,17 @@ it("switches with native history and preserves the mounted export selection", ()
   expect(input).toBeVisible();
   expect(input).toHaveValue("Selected announcement");
   expect(screen.getByText("Saved files")).not.toBeVisible();
+});
+it("opens the settings tab without unmounting the export selection", () => {
+  const { rerender } = render(<Views />);
+  fireEvent.change(screen.getByLabelText("My selection"), { target: { value: "Kept" } });
+  fireEvent.click(screen.getByRole("link", { name: "Instellingen" }));
+  rerender(<Views />);
+  expect(screen.getByText("Export levels")).toBeVisible();
+  expect(screen.getByText("Saved files")).not.toBeVisible();
+  fireEvent.click(screen.getByRole("link", { name: "Nieuwe export" }));
+  rerender(<Views />);
+  expect(screen.getByLabelText("My selection")).toHaveValue("Kept");
 });
 it("uses the URL view on history restoration, including the original URL without a view", () => {
   window.history.replaceState(null, "", "/export?view=history");

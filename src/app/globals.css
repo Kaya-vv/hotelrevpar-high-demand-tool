@@ -2108,18 +2108,6 @@ td {
   font-weight: 600;
   text-transform: capitalize;
 }
-.export-level {
-  display: inline-block;
-  border-radius: 6px;
-  padding: 4px 10px;
-  background: #edf4f6;
-  color: #18556a;
-  font-size: .85rem;
-}
-.export-level-peak {
-  background: #fff0e7;
-  color: #974021;
-}
 .export-level-setting {
   display: grid;
   gap: 12px;
@@ -2142,7 +2130,10 @@ td {
 .export-level-setting .export-level-option input {
   flex: none;
   width: auto;
-  margin-top: 4px;
+  height: auto;
+  min-height: 0;
+  /* Centres the radio on the first line of its label. */
+  margin: 0.3em 0 0;
 }
 .export-level-setting button {
   justify-self: start;

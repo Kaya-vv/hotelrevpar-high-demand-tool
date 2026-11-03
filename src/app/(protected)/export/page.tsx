@@ -45,15 +45,14 @@ export default async function ExportPage({ searchParams }: { searchParams: Promi
   const changed = history.filter((batch) => batch.items.some((item) => item.latest && item.changed)).length;
   return <div className="export-page">
     <header className="page-title"><span className="eyebrow">RevControl</span><h1>Exporteren naar RevControl</h1><p>Download je events en importeer het bestand in RevControl.</p></header>
-    <ExportTabs initialView={view} newHref={`${viewLink("new")}${page > 0 ? `&historyPage=${page}` : ""}`} historyHref={`${viewLink("history")}${page > 0 ? `&historyPage=${page}` : ""}`} />
+    <ExportTabs initialView={view} hrefs={{ new: `${viewLink("new")}${page > 0 ? `&historyPage=${page}` : ""}`, history: `${viewLink("history")}${page > 0 ? `&historyPage=${page}` : ""}`, settings: viewLink("settings") }} />
     <ExportFilters hotels={scope.hotels} hotelIds={selectedHotelIds} from={range.start} to={range.end} horizonEnd={horizonEnd} view={view}>
       {!scope.hotels.length ? <p className="panel">Voeg eerst een hotel toe.</p> : !selectedHotelIds.length ? <p className="panel">Kies een hotel via Aanpassen om de beschikbare events te bekijken.</p> : <>
         <ExportPanel>
           {changed > 0 && <p className="export-change-note">Er zijn events gewijzigd sinds een eerdere export. <Link href={viewLink("history")}>Bekijk wijzigingen</Link></p>}
-          <ExportLevelSetting key={minLevel} current={minLevel} />
           <ExportControls key={`${query}-${view}-${minLevel}`} events={events} hotelIds={selectedHotelIds} hotelNames={hotelNames} from={range.start} to={range.end} minLevel={minLevel} reexport={view === "reexport"} />
         </ExportPanel>
-        <ExportPanel history><section className="panel export-history" aria-labelledby="export-history-title">
+        <ExportPanel tab="history"><section className="panel export-history" aria-labelledby="export-history-title">
           <div className="export-history-heading"><div><h2 id="export-history-title">Eerdere exports</h2><p className="muted">Download een opgeslagen bestand opnieuw.</p></div><Link className="secondary" href={viewLink("reexport")}>Nieuwe export van eerdere events</Link></div>
           <p className="muted">We houden bij welke bestanden zijn gemaakt. Of ze in RevControl zijn geïmporteerd, is hier niet bekend.</p>
           {!history.length && <div className="export-empty"><h3>Nog geen exports</h3><p>Je bestanden verschijnen hier na je eerste download.</p></div>}
@@ -70,5 +69,6 @@ export default async function ExportPage({ searchParams }: { searchParams: Promi
         </section></ExportPanel>
       </>}
     </ExportFilters>
+    <ExportPanel tab="settings"><ExportLevelSetting key={minLevel} current={minLevel} /></ExportPanel>
   </div>;
 }
