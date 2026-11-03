@@ -17,6 +17,8 @@ export type SourceResult = {
   requests: number;
   usage: Record<string, number>;
   invalidatedUrls?: string[];
+  /** Stored event pages this run re-read in full; only these can show that an event moved. */
+  refreshedUrls?: string[];
   funnel?: DiscoveryFunnel;
   error?: string;
   quarantinedProviderEventIds?: string[];

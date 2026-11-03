@@ -258,6 +258,11 @@ export type CollectionRepository = {
     sourceUrls: string[]
   ) => Promise<void>;
   quarantineClaudeEditions: (context: CollectionContext, providerEventIds: string[]) => Promise<void>;
+  /**
+   * Gives a re-dated Claude event its stored source back, so saving it updates the existing event
+   * instead of creating a second one.
+   */
+  carryMovedClaudeSources: (context: CollectionContext, reported: EventCandidate[], refreshedUrls: string[]) => Promise<void>;
   shouldRunClaudeDiscovery: (context: CollectionContext, trigger: RunCollectionInput["trigger"]) => Promise<boolean>;
   recalculateScores: (context: CollectionContext) => Promise<void | Record<string, number>>;
   recordUsage: (
@@ -614,6 +619,8 @@ export async function runCollection(
       if (source === "claude" && value.quarantinedProviderEventIds?.length) {
         await repository.quarantineClaudeEditions(context, value.quarantinedProviderEventIds);
       }
+      // Before saving: an event the page moved to a new date must keep its ID (see `movedClaudeSources`).
+      if (source === "claude") await repository.carryMovedClaudeSources(context, dated, value.refreshedUrls ?? []);
       // Verified but impossible to place on the map. `relevantToHotel` has to reject these and
       // scoring cannot rank them, so park them for an operator rather than discarding them.
       // Counted after date repair and de-duplication, so the reported number is the number of

@@ -185,6 +185,7 @@ function repository(overrides: Partial<CollectionRepository> = {}): CollectionRe
     recordUnresolvedLocations: vi.fn().mockResolvedValue(undefined),
     invalidateClaudeSources: vi.fn().mockResolvedValue(undefined),
     quarantineClaudeEditions: vi.fn().mockResolvedValue(undefined),
+    carryMovedClaudeSources: vi.fn().mockResolvedValue(undefined),
     shouldRunClaudeDiscovery: vi.fn().mockResolvedValue(true),
     recalculateScores: vi.fn().mockResolvedValue(undefined),
     recordUsage: vi.fn().mockResolvedValue(undefined),

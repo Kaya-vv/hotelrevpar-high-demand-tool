@@ -1,7 +1,7 @@
 import { readEventEvidence } from "@/features/events/evidence";
 import { distanceKm } from "@/features/events/distance";
 import { normalizeCandidate, eventLocalDate } from "@/features/events/normalize";
-import { fetchInBatches } from "@/lib/supabase/fetch-in-batches";
+import { fetchAllRows, fetchInBatches, fetchPagedInBatches } from "@/lib/supabase/fetch-in-batches";
 import { classifyMatch } from "@/features/events/match";
 import { gradedDemand, isPublishableDemand } from "@/features/events/importance";
 import {
@@ -36,6 +36,7 @@ import {
   type StoredEvidenceReview,
 } from "./run";
 import { shouldRefreshCanonical, sourceChange } from "./source-change";
+import { movedClaudeSources } from "./moved-events";
 import { longRangeWindow } from "./sources/claude";
 import { isAggregatorUrl } from "./sources/long-range";
 
@@ -481,6 +482,43 @@ export function createCollectionRepository(): CollectionRepository {
         const { error } = await supabase.from("account_events").update({ state: "needs_review", review_reason: "date_conflict" })
           .eq("account_id", context.area.accountId).eq("state", "active")
           .in("event_id", eventIds.slice(index, index + 50));
+        if (error) throw error;
+      }
+    },
+
+    async carryMovedClaudeSources(context, reported, refreshedUrls) {
+      if (!refreshedUrls.length || !reported.some((candidate) => candidate.provider === "claude")) return;
+      const links = await fetchAllRows((from, to) => supabase
+        .from("account_event_areas")
+        .select("event_id")
+        .eq("account_id", context.area.accountId)
+        .eq("collection_area_id", context.area.id)
+        .order("event_id")
+        .range(from, to));
+      if (!links.length) return;
+      const sources = await fetchPagedInBatches(links.map((link) => link.event_id), (ids, from, to) => supabase
+        .from("event_sources")
+        .select("id, event_id, provider, provider_event_id, source_url, extracted_title, extracted_start_at")
+        .in("event_id", ids)
+        .order("id")
+        .range(from, to));
+      const moves = movedClaudeSources(reported, refreshedUrls, sources.map((source) => ({
+        eventId: source.event_id,
+        provider: source.provider,
+        providerEventId: source.provider_event_id,
+        sourceUrl: source.source_url,
+        title: source.extracted_title,
+        startAt: source.extracted_start_at,
+      })), eventLocalDate(new Date().toISOString()));
+      for (const move of moves) {
+        // Another area may already hold the new date as its own event; merging two stored events
+        // is the normal duplicate check's job, so leave both untouched.
+        const { data: taken, error: takenError } = await supabase.from("event_sources").select("id")
+          .eq("provider", "claude").eq("provider_event_id", move.toProviderEventId).maybeSingle();
+        if (takenError) throw takenError;
+        if (taken) continue;
+        const { error } = await supabase.from("event_sources").update({ provider_event_id: move.toProviderEventId })
+          .eq("provider", "claude").eq("provider_event_id", move.fromProviderEventId);
         if (error) throw error;
       }
     },

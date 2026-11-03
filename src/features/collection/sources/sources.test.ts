@@ -953,7 +953,7 @@ describe("source adapters", () => {
     queueClaudeSearches(create, [discoveredCandidate({ officialUrl: official })]);
     create.mockResolvedValue(verificationResponse(official, []));
 
-    await collectClaude({
+    const result = await collectClaude({
       ...claudeWindow,
       location: "Eindhoven",
       radiusKm: 25,
@@ -965,6 +965,9 @@ describe("source adapters", () => {
 
     expect(create.mock.calls[12][0].messages[0].content).toContain(knownUrl);
     expect(create.mock.calls[13][0].messages[0].content).toContain(official);
+    // Only the stored page counts as re-read: the discovered page answered a title search, so a
+    // date missing from its answer must not move a stored event.
+    expect(result.refreshedUrls).toEqual([knownUrl]);
   });
 
   it("confirms current-edition dates from a second official owner page", async () => {

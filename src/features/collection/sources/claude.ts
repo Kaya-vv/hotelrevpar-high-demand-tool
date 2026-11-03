@@ -692,7 +692,7 @@ export async function collectClaudeCalendar(
     input.runNearTerm === false ? Promise.resolve<SourceResult>({ source: "claude", candidates: [], requests: 0, usage: {} }) : collect({ ...scoped, agendaSeedUrls: [] }),
     collectFuture({ ...scoped, ...longRangeWindow(scoped), seeds: input.longRangeSeeds }),
   ]);
-  const merged: SourceResult = { source: "claude", candidates: [], requests: 0, usage: {}, invalidatedUrls: [],
+  const merged: SourceResult = { source: "claude", candidates: [], requests: 0, usage: {}, invalidatedUrls: [], refreshedUrls: [],
     funnel: { namesDiscovered: 0, urlsResolved: 0, pagesVerified: 0, demandAccepted: 0, drops: [] } };
   // Compare the near-term result with the monitoring evidence available on this run.
   // These are candidate identities, not a claim of hotel publication or fresh recall.
@@ -732,6 +732,7 @@ export async function collectClaudeCalendar(
     }
     merged.requests += value.requests;
     merged.invalidatedUrls!.push(...(value.invalidatedUrls ?? []));
+    merged.refreshedUrls!.push(...(value.refreshedUrls ?? []));
     if (value.quarantinedProviderEventIds?.length) merged.quarantinedProviderEventIds = [...(merged.quarantinedProviderEventIds ?? []), ...value.quarantinedProviderEventIds];
     merged.usage[`${horizon}Candidates`] = value.candidates.length;
     merged.usage[`${horizon}Requests`] = value.requests;
@@ -1311,6 +1312,9 @@ async function collectClaudeFresh(
   let urlsResolved = 0;
   let pagesVerified = 0;
   const invalidatedUrls: string[] = [];
+  // A title search returns only the event it searched for, so a date missing from its answer
+  // proves nothing. A stored page re-read in full does: its events are listed as they stand now.
+  const refreshedUrls: string[] = [];
   const parseVerification = (entry: VerificationEntry, message: Anthropic.Message) => {
     const label = entry.title ?? entry.officialUrl ?? "";
     try {
@@ -1322,6 +1326,7 @@ async function collectClaudeFresh(
       const observed = fetchedUrls(message);
       const parsed = outputSchema.parse(normalizeEventResponse(JSON.parse(text)));
       parsedFetches += 1;
+      if (entry.title === null && entry.officialUrl) refreshedUrls.push(entry.officialUrl);
       return parsed.events.flatMap((event) => {
         const sourceUrl = stripFragment(supportedObservedUrl(
           event.sourceUrl,
@@ -1505,6 +1510,7 @@ async function collectClaudeFresh(
       recoveryPending: longRange ? 0 : recoverable.length - recoveryAttempts,
     },
     invalidatedUrls: [...new Set(invalidatedUrls)],
+    refreshedUrls: [...new Set(refreshedUrls)],
     funnel: {
       namesDiscovered,
       urlsResolved,
