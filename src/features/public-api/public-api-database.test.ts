@@ -78,6 +78,7 @@ describe.skipIf(!enabled)("public API v1 in isolated local Supabase", () => {
   it("returns the export selection with all four levels and drops what left the list", async () => {
     const high = await addEvent("Concert", "High");
     const peak = await addEvent("Festival", "Peak");
+    check(await db.from("account_events").update({ decided_at: "2030-01-01T00:00:00Z" }).eq("account_id", accountId).eq("event_id", peak));
     const low = await addEvent("Lezing", "Low");
     const excluded = await addEvent("Uitgesloten", "High");
     check(await db.from("account_events").update({ state: "excluded" }).eq("account_id", accountId).eq("event_id", excluded));
@@ -97,6 +98,10 @@ describe.skipIf(!enabled)("public API v1 in isolated local Supabase", () => {
       latitude: 51.44, longitude: 5.47, distance_km: 1.3, level: "High", score: 65, source_url: "https://arena.example/events",
       hotel_code: `RC-${hotelId.slice(0, 4)}`, updated_at: expect.any(String),
     });
+    // Untouched by a manager: the event's own last change. Touched later: the manager's decision.
+    const stored = check(await db.from("events").select("updated_at").eq("id", high).single()).data!.updated_at;
+    expect(byId.get(high)?.updated_at).toBe(new Date(stored).toISOString());
+    expect(byId.get(peak)?.updated_at).toBe("2030-01-01T00:00:00.000Z");
     expect(byId.get(peak)?.level).toBe("Peak");
     expect(byId.get(overlap)).toMatchObject({ start_date: "2027-05-28", end_date: "2027-06-02" });
     expect(byId.get(manual)?.level).toBe("High");

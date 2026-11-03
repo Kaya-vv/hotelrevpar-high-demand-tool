@@ -119,7 +119,8 @@ export async function loadApiEvents(client: AdminClient, account: ApiAccount, ho
       .filter((row) => row.event_id === event.id && isEnabledPrimarySource(row, enabledSources))
       .sort((left, right) => right.checked_at.localeCompare(left.checked_at))[0];
     const scope = detail?.region_scope ?? null;
-    const updated = Math.max(Date.parse(detail?.updated_at ?? ""), Date.parse(decision?.decided_at ?? "")) || 0;
+    // A manager who never touched the event leaves `decided_at` empty; the event's own change counts then.
+    const updated = Math.max(...[detail?.updated_at, decision?.decided_at].flatMap((stamp) => stamp ? [Date.parse(stamp)] : []));
     return {
       id: event.id,
       title: event.title,
