@@ -7,6 +7,7 @@ import {
   baselineMemberNotifications,
   disableMemberNotifications,
 } from "@/features/notifications/service";
+import { generateApiKey } from "@/features/public-api/keys";
 import { requireAccount } from "@/lib/auth/require-account";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createServerClient } from "@/lib/supabase/server";
@@ -38,6 +39,30 @@ export async function updateEventNotifications(formData: FormData) {
     .eq("user_id", userId);
   if (updateError) throw updateError;
   if (!enabled) await disableMemberNotifications(accountId, userId, admin);
+  revalidatePath("/account");
+}
+
+export type ApiKeyState = { key?: string; error?: string };
+
+export async function createApiKey(_state: ApiKeyState, formData: FormData): Promise<ApiKeyState> {
+  const { accountId, userId } = await requireAccount();
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name || name.length > 60) return { error: "Geef de sleutel een naam van maximaal 60 tekens." };
+  const { key, prefix, hash } = generateApiKey();
+  const { error } = await createAdminClient().from("api_keys")
+    .insert({ account_id: accountId, name, key_prefix: prefix, key_hash: hash, created_by: userId });
+  if (error) throw error;
+  revalidatePath("/account");
+  return { key };
+}
+
+export async function revokeApiKey(formData: FormData) {
+  const { accountId } = await requireAccount();
+  const id = String(formData.get("id"));
+  const { error } = await createAdminClient().from("api_keys")
+    .update({ revoked_at: new Date().toISOString() })
+    .eq("id", id).eq("account_id", accountId).is("revoked_at", null);
+  if (error) throw error;
   revalidatePath("/account");
 }
 

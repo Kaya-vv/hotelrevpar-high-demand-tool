@@ -9,6 +9,8 @@ describe("isPublicPath", () => {
     expect(isPublicPath("/api/cron/trials")).toBe(true);
     expect(isPublicPath("/api/queues/collect-hotel")).toBe(true);
     expect(isPublicPath("/api/webhooks/plugandpay")).toBe(true);
+    expect(isPublicPath("/api/v1/events")).toBe(true);
+    expect(isPublicPath("/api/v1/hotels")).toBe(true);
     expect(isPublicPath("/api/export")).toBe(false);
   });
 });

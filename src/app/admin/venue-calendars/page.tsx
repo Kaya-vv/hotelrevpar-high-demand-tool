@@ -4,7 +4,7 @@ import {
 import { requirePlatformAdmin } from "@/lib/auth/require-account";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-import { SubmitButton } from "../accounts/submit-button";
+import { SubmitButton } from "@/components/submit-button";
 
 const messages: Record<string, { text: string; success?: boolean }> = {
   added: { text: "Agenda toegevoegd. Het onderzoek leest deze pagina vanaf de volgende wekelijkse ronde.", success: true },

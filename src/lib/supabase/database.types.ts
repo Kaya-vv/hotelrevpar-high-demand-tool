@@ -62,6 +62,13 @@ export type Database = {
         Relationships: [];
       };
 
+      api_keys: {
+        Row: { id: string; account_id: string; name: string; key_prefix: string; key_hash: string; created_by: string | null; created_at: string; last_used_at: string | null; revoked_at: string | null };
+        Insert: { id?: string; account_id: string; name: string; key_prefix: string; key_hash: string; created_by?: string | null; created_at?: string; last_used_at?: string | null; revoked_at?: string | null };
+        Update: { id?: string; account_id?: string; name?: string; key_prefix?: string; key_hash?: string; created_by?: string | null; created_at?: string; last_used_at?: string | null; revoked_at?: string | null };
+        Relationships: [];
+      };
+
       long_range_markets: {
         Row: { market_key: string; state: Json; updated_at: string; lease_owner: string | null; lease_until: string | null; search_location: string | null; radius_km: number | null };
         Insert: { market_key: string; state: Json; updated_at?: string; lease_owner?: string | null; lease_until?: string | null; search_location?: string | null; radius_km?: number | null };

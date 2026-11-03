@@ -1,14 +1,14 @@
 import { eventLocalDate } from "@/features/events/normalize";
 import { readEventEvidence } from "@/features/events/evidence";
 import { gradedDemand, hotelCalendarVisibility, type DemandLevel } from "@/features/events/importance";
-import { createServerClient } from "@/lib/supabase/server";
+import { createServerClient, type ServerClient } from "@/lib/supabase/server";
 import { fetchAllRows, fetchInBatches, fetchPagedInBatches } from "@/lib/supabase/fetch-in-batches";
 import { isEnabledPrimarySource } from "@/features/events/source-evidence";
 
 import type { ExportEvent } from "./types";
 
 
-const isDate = (value: string | null | undefined): value is string => {
+export const isDate = (value: string | null | undefined): value is string => {
   if (!/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(value ?? "")) return false;
   const date = new Date(`${value}T00:00:00Z`);
   return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
@@ -33,8 +33,8 @@ export function exportRange(
   return end < start ? { start: end, end: start } : { start, end };
 }
 
-export async function loadExportEvents(accountId: string, range: ExportRange, selectedHotelIds: string[], includeInactive = false) {
-  const supabase = await createServerClient();
+export async function loadExportEvents(accountId: string, range: ExportRange, selectedHotelIds: string[], includeInactive = false, client?: ServerClient) {
+  const supabase = client ?? await createServerClient();
   const { data: hotels, error: hotelError } = await supabase
     .from("hotels")
     .select("id, name, revcontrol_code, demand_radius_km")

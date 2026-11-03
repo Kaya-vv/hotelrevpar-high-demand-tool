@@ -4,7 +4,7 @@ import { fetchAllRows } from "@/lib/supabase/fetch-in-batches";
 
 import { createSubscriberAccount, deleteSubscriberUser, resendSubscriberLink, setAccountHotelLimit, setSubscriberHotelArchived } from "./actions";
 import { accountMessages } from "./messages";
-import { SubmitButton } from "./submit-button";
+import { SubmitButton } from "@/components/submit-button";
 
 export default async function AccountsPage({ searchParams }: { searchParams: Promise<{ notice?: string; account?: string }> }) {
   const current = await requirePlatformAdmin();

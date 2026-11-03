@@ -1,4 +1,4 @@
-import { isPublishableDemand } from "../events/importance";
+import { isPublishableDemand, type DemandLevel } from "../events/importance";
 import { eventLocalDate } from "../events/normalize";
 import type { ExportChoice, ExportEvent, ExportMode, ExportSnapshot } from "./types";
 
@@ -25,10 +25,17 @@ export function exportSnapshots(events: ExportEvent[]): ExportSnapshot[] {
   }));
 }
 
+/** Whether a hotel's row belongs in the saved export selection, and at which level. Null = not exported. */
+export function exportedLevel(hotel: ExportEvent["hotels"][number]): DemandLevel | null {
+  if (hotel.available === false) return null;
+  if (isPublishableDemand(hotel.importance, hotel.impactBasis)) return hotel.importance;
+  return hotel.announced && hotel.exportLevel ? hotel.exportLevel : null;
+}
+
 export function currentExportSnapshot(event: ExportEvent | undefined, hotelId: string, previous: ExportSnapshot): { snapshot: ExportSnapshot | null; eligible: boolean; changed: boolean } {
   const hotel = event?.hotels.find((hotel) => hotel.id === hotelId);
   if (!event || !hotel) return { snapshot: null, eligible: false, changed: true };
-  const eligible = hotel.available !== false && (isPublishableDemand(hotel.importance, hotel.impactBasis) || Boolean(hotel.announced && hotel.exportLevel));
+  const eligible = exportedLevel(hotel) !== null;
   const snapshot = exportSnapshots([{ ...event, hotels: [{ ...hotel, manuallySelected: Boolean(hotel.announced && hotel.exportLevel) }] }])[0];
   const fields = ["title", "startDate", "endDate", "hotelCode", "importance", "status"] as const;
   return { snapshot, eligible, changed: !eligible || fields.some((field) => snapshot[field] !== previous[field]) };
