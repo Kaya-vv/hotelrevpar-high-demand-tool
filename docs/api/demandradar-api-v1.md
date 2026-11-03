@@ -212,7 +212,6 @@ Elk event heeft per hotel één niveau: het niveau dat de klant in de DemandRada
 - **Gedeeltelijke overlap.** Een event dat maar voor een deel in de periode valt, komt mee. Een event van 28 mei t/m 2 juni staat dus in de lijst voor `from=2027-06-01&to=2027-06-30`.
 - **Datums.** Alle datums zijn Nederlandse lokale datums zonder tijd. `end_date` is de laatste dag van het event. Een event van 10 t/m 12 juni 2027 heeft `start_date` `2027-06-10` en `end_date` `2027-06-12`.
 - **Verdwijnen.** Een event dat geannuleerd is, door de klant is uitgesloten, is samengevoegd met een ander event, of onder het niveau is gezakt dat de klant of `min_level` vraagt, staat de volgende keer niet meer in de lijst. Dat geldt ook als de klant zijn keuze verandert, bijvoorbeeld van Medium naar alleen Hoog en Piek. Er komt geen apart verwijderbericht.
-- **Verschuiven.** Als een event naar een andere datum verschuift, houdt het in de regel dezelfde `id`; alleen `start_date` en/of `end_date` veranderen. In sommige gevallen, bijvoorbeeld bij concerten en voorstellingen, kunnen we niet met zekerheid vaststellen dat het om hetzelfde event gaat. Dan verschijnt de nieuwe datum als nieuw event met een eigen `id`, en verdwijnt de oude datum uit de lijst zodra die voorbij is of de klant hem uitsluit.
 - **Sortering.** Op `start_date`, daarna op `title`.
 
 ## 8. Foutafhandeling
