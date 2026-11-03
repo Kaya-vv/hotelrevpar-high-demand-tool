@@ -182,8 +182,8 @@ Voorbeeldantwoord met drie events, opgehaald op 3 november 2026.
 | `category` | string | Soort event, vrije tekst (bijvoorbeeld `festival`, `sports`, `Design fair`). Geen vaste lijst. |
 | `venue` | string of `null` | Locatie, inclusief eventuele aanpassing door de klant. |
 | `city` | string of `null` | Plaats van het event, als die bekend is. |
-| `latitude`, `longitude` | number of `null` | Coördinaten van het event. |
-| `distance_km` | number of `null` | Afstand tot het hotel in kilometers, op 0,1 km afgerond. |
+| `latitude`, `longitude` | number of `null` | Coördinaten van de locatie. Is de precieze locatie niet bekend, dan is dit het centrum van de plaats. |
+| `distance_km` | number of `null` | Afstand tot het hotel in kilometers, op 0,1 km afgerond. Gemeten vanaf `latitude`/`longitude`, dus bij benadering als dat het centrum van de plaats is. |
 | `level` | string | Verwachte vraag voor dit hotel: `Low`, `Medium`, `High` of `Peak`. `Peak` is het hoogste niveau. `Low` komt alleen voor als de klant ervoor kiest ook Laag-events te sturen (zie hoofdstuk 6). |
 | `score` | integer | Score van 0 tot 100 voor dit hotel. Hoger betekent meer verwachte vraag. Het niveau volgt niet rechtstreeks uit de score: een Medium-event kan een hogere score hebben dan een High-event. Gebruik `level` voor de indeling. |
 | `source_url` | string of `null` | Openbare webpagina waar het event is bevestigd. |
@@ -208,7 +208,7 @@ Elk event heeft per hotel één niveau: het niveau dat de klant in de DemandRada
 
 ## 7. Afspraken over de lijst
 
-- **Volledige lijst.** Elk antwoord bevat alle events voor de gevraagde periode. Er is geen paginering en geen lijst met alleen wijzigingen.
+- **Volledige lijst.** Elk antwoord bevat alle events voor de gevraagde periode. Er is geen paginering en geen lijst met alleen wijzigingen. Events buiten de gevraagde periode, of na `available_until`, staan er niet in. Verwijder bij het verwerken dus alleen events die binnen de gevraagde periode vallen en niet na `available_until` beginnen.
 - **Gedeeltelijke overlap.** Een event dat maar voor een deel in de periode valt, komt mee. Een event van 28 mei t/m 2 juni staat dus in de lijst voor `from=2027-06-01&to=2027-06-30`.
 - **Datums.** Alle datums zijn Nederlandse lokale datums zonder tijd. `end_date` is de laatste dag van het event. Een event van 10 t/m 12 juni 2027 heeft `start_date` `2027-06-10` en `end_date` `2027-06-12`.
 - **Verdwijnen.** Een event dat geannuleerd is, door de klant is uitgesloten, is samengevoegd met een ander event, of onder het niveau is gezakt dat de klant of `min_level` vraagt, staat de volgende keer niet meer in de lijst. Dat geldt ook als de klant zijn keuze verandert, bijvoorbeeld van Medium naar alleen Hoog en Piek. Er komt geen apart verwijderbericht.
@@ -242,7 +242,7 @@ Gebruik `code` voor de foutafhandeling. De toelichting in `message` kan verander
 
 ## 9. Ophaalfrequentie
 
-Eén keer per dag per hotel ophalen is prima. DemandRadar zoekt 's nachts naar nieuwe en gewijzigde events; ophalen vanaf 08:00 Nederlandse tijd geeft de meest actuele stand.
+Eén keer per dag per hotel ophalen is prima. DemandRadar zoekt elke ochtend vroeg naar nieuwe en gewijzigde events; ophalen vanaf 09:00 Nederlandse tijd geeft de meest actuele stand.
 
 ## 10. Versiebeheer
 
