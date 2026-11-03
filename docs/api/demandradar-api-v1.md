@@ -142,21 +142,21 @@ Ingekort tot drie events; echte uitvoer van 3 november 2026.
       "updated_at": "2026-11-03T05:00:58.108Z"
     },
     {
-      "id": "1c09797e-efa2-45ca-8c07-f92103707693",
-      "title": "Destination Design",
-      "start_date": "2027-01-24",
-      "end_date": "2027-01-26",
-      "category": "Design fair",
-      "venue": "Klokgebouw",
+      "id": "31612a83-483f-41fa-b2a9-ff623d656d81",
+      "title": "Matsuru Dutch Open Espoir 2027",
+      "start_date": "2027-01-09",
+      "end_date": "2027-01-10",
+      "category": "judo",
+      "venue": "Indoor Sport Centrum Eindhoven",
       "city": "Eindhoven",
-      "latitude": 51.44860724,
-      "longitude": 5.45728433,
+      "latitude": 51.45016172,
+      "longitude": 5.45853544,
       "distance_km": 1.9,
-      "level": "High",
+      "level": "Medium",
       "score": 69,
-      "source_url": "https://www.destinationdesign.nl/programma/",
+      "source_url": "https://jbn.nl/matsuru-dutch-open-espoirtoernooi",
       "hotel_code": "MATCH",
-      "updated_at": "2026-11-03T05:58:57.479Z"
+      "updated_at": "2026-11-03T05:59:02.816Z"
     }
   ]
 }
@@ -185,7 +185,7 @@ Ingekort tot drie events; echte uitvoer van 3 november 2026.
 | `latitude`, `longitude` | number of `null` | Coördinaten van het event. |
 | `distance_km` | number of `null` | Afstand tot het hotel in kilometers, op 0,1 km afgerond. |
 | `level` | string | Verwachte vraag voor dit hotel: `Low`, `Medium`, `High` of `Peak`. `Peak` is het hoogste niveau. |
-| `score` | integer | Score van 0 tot 100 voor dit hotel. Hoger betekent meer verwachte vraag. |
+| `score` | integer | Score van 0 tot 100 voor dit hotel. Hoger betekent meer verwachte vraag. Het niveau volgt niet rechtstreeks uit de score: een Medium-event kan een hogere score hebben dan een High-event. Gebruik `level` voor de indeling. |
 | `source_url` | string of `null` | Openbare webpagina waar het event is bevestigd. |
 | `hotel_code` | string of `null` | De RevControl-hotelcode van het hotel (gelijk aan `hotel_code` in `GET /hotels`). |
 | `updated_at` | string (ISO 8601, UTC) | Laatste keer dat DemandRadar of de klant dit event heeft bijgewerkt. Dit verandert ook als DemandRadar het event alleen opnieuw heeft gecontroleerd. |
