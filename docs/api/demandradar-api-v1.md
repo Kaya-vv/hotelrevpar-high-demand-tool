@@ -175,7 +175,7 @@ Voorbeeldantwoord met drie events, opgehaald op 3 november 2026.
 
 | Veld | Type | Betekenis |
 | --- | --- | --- |
-| `id` | string (UUID) | Vaste DemandRadar-ID van het event. Blijft in de regel gelijk als het event van datum verandert (zie *Verschuiven* in hoofdstuk 7). Gebruik deze ID om events aan je eigen gegevens te koppelen. |
+| `id` | string (UUID) | Vaste DemandRadar-ID van het event. |
 | `title` | string | Titel, inclusief eventuele aanpassing door de klant. |
 | `start_date` | string `JJJJ-MM-DD` | Eerste dag, Nederlandse lokale datum. |
 | `end_date` | string `JJJJ-MM-DD` | Laatste dag (inbegrepen), Nederlandse lokale datum. Bij een eendaags event gelijk aan `start_date`. |
