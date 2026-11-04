@@ -14,7 +14,7 @@ import { scoreHotelEvent } from "@/features/events/score";
 import { selectScoreEvidence } from "@/features/events/source-evidence";
 import { readEventSizeCheck } from "@/features/events/size-check";
 import type { EventCandidate, ValidationReason } from "@/features/events/types";
-import { validateCandidate } from "@/features/events/validate";
+import { validateCandidate, validationWindow } from "@/features/events/validate";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Database, Json } from "@/lib/supabase/database.types";
 import { NEAR_TERM_SEARCH_DAYS } from "./schedule";
@@ -168,7 +168,7 @@ export function createCollectionRepository(): CollectionRepository {
 
       const { data, error } = await supabase
         .from("collection_runs")
-        .insert({ account_id: input.accountId, collection_area_id: input.areaId, trigger: input.trigger })
+        .insert({ account_id: input.accountId, collection_area_id: input.areaId, trigger: input.trigger, scope: input.scope ?? "full" })
         .select("id")
         .single();
       if (error) throw error;
@@ -273,6 +273,7 @@ export function createCollectionRepository(): CollectionRepository {
           .select("id", { count: "exact", head: true })
           .eq("account_id", accountId)
           .eq("collection_area_id", areaId)
+          .eq("scope", "full")
           .not("finished_at", "is", null)).count,
         knownClaudeUrls: selectClaudeRefreshUrls(
           refreshSources,
@@ -774,9 +775,8 @@ export function createCollectionRepository(): CollectionRepository {
 
       const validation = validateCandidate(
         { ...candidate, primarySourceConfirmed },
-        ["claude", "openholidays", "rijksoverheid"].includes(candidate.provider)
-          ? { start: context.window.start, end: longRangeWindow(context.window).end }
-          : context.window,
+        // A trial's run never saves past its 90 days, so the year-ahead window is safe for it.
+        validationWindow(candidate.provider, context.window, longRangeWindow(context.window).end),
         conflict as Parameters<typeof validateCandidate>[2],
       );
       const { data: existingDecision, error: decisionReadError } = await supabase

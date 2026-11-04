@@ -314,10 +314,15 @@ type RunDependencies = {
   evidenceReviewer?: EvidenceReviewer;
   sizeChecker?: SizeChecker;
 };
+/** `ticketmaster`: the daily check between weekly searches. It reads Ticketmaster only - free, and
+ * where stadium and arena shows are listed first - so it never buys an AI search. */
+export type CollectionScope = "full" | "ticketmaster";
 export type RunCollectionInput = {
   accountId: string;
   areaId: string;
   trigger: "cron" | "manual";
+  /** Defaults to `full`. */
+  scope?: CollectionScope;
   /** Continue an open run whose previous delivery left an Anthropic batch pending. */
   resume?: boolean;
 };
@@ -357,9 +362,11 @@ function defaultCollectors(
     // A free trial only ever sees the near-term window, so it is not sent further-out holidays.
     rijksoverheid: (context) => collectRijksoverheid({ start: context.window.start, end: context.longRangeAllowed ? longRangeWindow(context.window).end : context.window.end }),
     openholidays: (context) => collectOpenHolidays({ start: context.window.start, end: context.longRangeAllowed ? longRangeWindow(context.window).end : context.window.end }),
+    // Big shows are announced and listed a year ahead; a 90-day window hid U2 at the Johan Cruijff
+    // ArenA (5-6 June 2027) from the hotel next door. A trial still stops at its 90 days.
     ticketmaster: (context) =>
       collectTicketmaster({
-        ...context.window,
+        windows: context.longRangeAllowed ? [context.window, longRangeWindow(context.window)] : [context.window],
         city: context.area.searchLocation,
         latitude: context.area.latitude,
         longitude: context.area.longitude,
@@ -531,8 +538,9 @@ export async function runCollection(
   let fatalError: unknown;
 
   try {
+    const ticketmasterOnly = input.scope === "ticketmaster";
     let context = await repository.loadContext(input.accountId, input.areaId);
-    const reused = await repository.reuseNearTermEvidence?.(context) ?? 0;
+    const reused = ticketmasterOnly ? 0 : await repository.reuseNearTermEvidence?.(context) ?? 0;
     if (reused) {
       await repository.recalculateScores(context);
       context = await repository.loadContext(input.accountId, input.areaId);
@@ -554,6 +562,7 @@ export async function runCollection(
     // fresh successful search, which is how a three-minute empty run read as a success.
     let claudeDiscoveryMode: "fresh" | "reused" | "deferred" = "fresh";
     for (const source of context.area.enabledSources) {
+      if (ticketmasterOnly && source !== "ticketmaster") continue;
       if (
         source === "claude" &&
         !(await repository.shouldRunClaudeDiscovery(context, input.trigger))

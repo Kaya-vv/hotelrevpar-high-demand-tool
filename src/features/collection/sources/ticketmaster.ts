@@ -39,13 +39,18 @@ function state(code: string) {
   return "active" as const;
 }
 
+/**
+ * Ticketmaster returns at most 1,000 events per date range, sorted by date. A whole Amsterdam
+ * year is ~870 events and growing, so a single range would first drop the furthest-out shows -
+ * exactly the newly announced stadium concerts. Each range is therefore paged on its own.
+ */
 export async function collectTicketmaster(
-  input: CollectionWindow & { city: string; latitude: number; longitude: number; radiusKm: number; apiKey: string; fetcher?: Fetcher },
+  input: { windows: CollectionWindow[]; city: string; latitude: number; longitude: number; radiusKm: number; apiKey: string; fetcher?: Fetcher },
 ): Promise<SourceResult> {
   const candidates: SourceResult["candidates"] = [];
   let requests = 0;
 
-  for (let page = 0; page < 5; page += 1) {
+  for (const window of input.windows) for (let page = 0; page < 5; page += 1) {
     const url = new URL("https://app.ticketmaster.com/discovery/v2/events.json");
     url.search = new URLSearchParams({
       apikey: input.apiKey,
@@ -53,8 +58,8 @@ export async function collectTicketmaster(
       radius: String(input.radiusKm),
       unit: "km",
       countryCode: "NL",
-      startDateTime: `${input.start}T00:00:00Z`,
-      endDateTime: `${input.end}T23:59:59Z`,
+      startDateTime: `${window.start}T00:00:00Z`,
+      endDateTime: `${window.end}T23:59:59Z`,
       size: "200",
       page: String(page),
       sort: "date,asc",

@@ -28,6 +28,8 @@ export async function getDashboardData(accountId: string): Promise<DashboardHote
   const areas = await fetchInBatches(hotelIds, ids => supabase.from("collection_areas")
     .select("id, hotel_id, collection_runs(finished_at, error_summary), collection_jobs(status)")
     .eq("account_id", accountId).in("hotel_id", ids)
+    // The daily Ticketmaster check is not a search; the dashboard reports searches and refreshes.
+    .eq("collection_runs.scope", "full").eq("collection_jobs.scope", "full")
     .order("started_at", { referencedTable: "collection_runs", ascending: false })
     .limit(1, { referencedTable: "collection_runs" })
     .order("created_at", { referencedTable: "collection_jobs", ascending: false })

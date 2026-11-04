@@ -88,7 +88,8 @@ function sourceEntries(value: unknown) {
 
 export async function getSourceHealthRuns(page = 0, runId?: string): Promise<SourceHealthRun[]> {
   const admin = createAdminClient();
-  const runQuery = admin.from("collection_runs").select("id, account_id, collection_area_id, started_at, finished_at, error_summary, source_results").order("started_at", { ascending: false }).order("id");
+  // Daily Ticketmaster checks would bury the searches, 25 of them a day against 20 rows a page.
+  const runQuery = admin.from("collection_runs").select("id, account_id, collection_area_id, started_at, finished_at, error_summary, source_results").eq("scope", "full").order("started_at", { ascending: false }).order("id");
   const runsResult = await (runId ? runQuery.eq("id", runId).limit(1) : runQuery.range(page * 20, page * 20 + 19));
   if (runsResult.error) throw runsResult.error;
   if (!runsResult.data.length) return [];
@@ -196,7 +197,7 @@ export async function getSourceHealthSummaries(page = 0): Promise<SourceHealthSu
   const admin = createAdminClient();
   const { data: runs, error } = await admin.from("collection_runs")
     .select("id, account_id, collection_area_id, started_at, finished_at, error_summary, requested:source_results->claude->researchPending, claude:source_results->claude->>state, ticketmaster:source_results->ticketmaster->>state, predicthq:source_results->predicthq->>state, rijksoverheid:source_results->rijksoverheid->>state, openholidays:source_results->openholidays->>state, footballdata:source_results->footballdata->>state, uefa:source_results->uefa->>state")
-    .order("started_at", { ascending: false }).order("id").range(page * 20, page * 20 + 19);
+    .eq("scope", "full").order("started_at", { ascending: false }).order("id").range(page * 20, page * 20 + 19);
   if (error) throw error;
   if (!runs.length) return [];
   const [accounts, areas] = await Promise.all([

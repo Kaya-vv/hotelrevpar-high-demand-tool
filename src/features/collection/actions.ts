@@ -58,7 +58,7 @@ export async function refreshHotel(
     return { error: true, message: "Hotel niet gevonden in dit account." };
 
   if (formData.get("operation") === "publication") {
-    const { data: run, error } = await (await createServerClient()).from("collection_runs").select("id").eq("account_id", accountId).eq("collection_area_id", area.id).order("started_at", { ascending: false }).limit(1).maybeSingle();
+    const { data: run, error } = await (await createServerClient()).from("collection_runs").select("id").eq("account_id", accountId).eq("collection_area_id", area.id).eq("scope", "full").order("started_at", { ascending: false }).limit(1).maybeSingle();
     if (error) throw error;
     if (!run) return { error: true, message: "Er zijn nog geen opgeslagen resultaten." };
     // A new queue message targets this deployment; retries of an older message stay pinned.

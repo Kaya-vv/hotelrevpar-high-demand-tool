@@ -4,7 +4,7 @@ import { unexpiredTrialFilter } from "@/features/accounts/trial";
 
 import { BatchPendingError } from "./anthropic-batches";
 import { mergeCalendarCopies } from "./calendar-copies";
-import { errorMessage, runCollection } from "./run";
+import { errorMessage, runCollection, type CollectionScope } from "./run";
 import { processMarketWork, type MarketWork } from "./market-research";
 
 export const COLLECTION_TOPIC = "hotel-collection";
@@ -60,6 +60,7 @@ export async function enqueueCollectionAreas(
     accountId: string;
     areaIds: string[];
     trigger: CollectionJobTrigger;
+    scope?: CollectionScope;
     createdBy?: string | null;
   },
   publisher: Publisher = publishCollectionJob,
@@ -101,6 +102,7 @@ export async function enqueueCollectionAreas(
         account_id: input.accountId,
         collection_area_id: areaId,
         trigger: input.trigger,
+        scope: input.scope ?? "full",
         status,
         created_by: input.createdBy ?? null,
         finished_at: status === "skipped" ? now : null,
@@ -116,6 +118,7 @@ export async function enqueueCollectionAreas(
           account_id: input.accountId,
           collection_area_id: areaId,
           trigger: input.trigger,
+          scope: input.scope ?? "full",
           status: "skipped",
           created_by: input.createdBy ?? null,
           finished_at: now,
@@ -160,7 +163,7 @@ export async function processCollectionJob(
   const admin = createAdminClient();
   const { data: job, error: jobError } = await admin
     .from("collection_jobs")
-    .select("id, account_id, collection_area_id, trigger, status, pending_since, attempts")
+    .select("id, account_id, collection_area_id, trigger, scope, status, pending_since, attempts")
     .eq("id", messageBody.jobId)
     .maybeSingle();
   if (jobError) throw jobError;
@@ -225,6 +228,7 @@ export async function processCollectionJob(
       accountId: job.account_id,
       areaId: job.collection_area_id,
       trigger: job.trigger,
+      scope: job.scope === "ticketmaster" ? "ticketmaster" : "full",
       resume,
     });
     const status = result.status === "completed"

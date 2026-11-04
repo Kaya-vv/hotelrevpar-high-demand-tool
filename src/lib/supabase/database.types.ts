@@ -476,6 +476,7 @@ export type Database = {
           finished_at: string | null;
           id: string;
           pending_since: string | null;
+          scope: string;
           started_at: string | null;
           status: Database["public"]["Enums"]["collection_job_status"];
           trigger: Database["public"]["Enums"]["run_trigger"];
@@ -492,6 +493,7 @@ export type Database = {
           finished_at?: string | null;
           id?: string;
           pending_since?: string | null;
+          scope?: string;
           started_at?: string | null;
           status?: Database["public"]["Enums"]["collection_job_status"];
           trigger: Database["public"]["Enums"]["run_trigger"];
@@ -508,6 +510,7 @@ export type Database = {
           finished_at?: string | null;
           id?: string;
           pending_since?: string | null;
+          scope?: string;
           started_at?: string | null;
           status?: Database["public"]["Enums"]["collection_job_status"];
           trigger?: Database["public"]["Enums"]["run_trigger"];
@@ -586,6 +589,7 @@ export type Database = {
           error_summary: string | null;
           finished_at: string | null;
           id: string;
+          scope: string;
           source_results: Json;
           started_at: string;
           trigger: Database["public"]["Enums"]["run_trigger"];
@@ -597,6 +601,7 @@ export type Database = {
           error_summary?: string | null;
           finished_at?: string | null;
           id?: string;
+          scope?: string;
           source_results?: Json;
           started_at?: string;
           trigger: Database["public"]["Enums"]["run_trigger"];
@@ -608,6 +613,7 @@ export type Database = {
           error_summary?: string | null;
           finished_at?: string | null;
           id?: string;
+          scope?: string;
           source_results?: Json;
           started_at?: string;
           trigger?: Database["public"]["Enums"]["run_trigger"];

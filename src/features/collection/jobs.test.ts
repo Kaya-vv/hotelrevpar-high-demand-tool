@@ -141,6 +141,7 @@ describe("collection jobs", () => {
       account_id: "account-1",
       collection_area_id: "area-1",
       trigger: "manual",
+      scope: "ticketmaster",
       status: "running",
     });
     Object.assign(jobQuery, {
@@ -176,6 +177,7 @@ describe("collection jobs", () => {
       accountId: "account-1",
       areaId: "area-1",
       trigger: "manual",
+      scope: "ticketmaster",
       resume: false,
     });
     expect(runQuery.update).toHaveBeenCalledWith(expect.objectContaining({

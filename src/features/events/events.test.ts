@@ -9,7 +9,7 @@ import { classifyMatch } from "./match";
 import { normalizeCandidate, normalizeText, repairEventRange } from "./normalize";
 import { isEnabledPrimarySource } from "./source-evidence";
 import type { EventCandidate } from "./types";
-import { validateCandidate } from "./validate";
+import { validateCandidate, validationWindow } from "./validate";
 
 const candidate: EventCandidate = {
   provider: "ticketmaster",
@@ -312,6 +312,18 @@ describe("event domain", () => {
       state: "excluded",
       reason: "missing_primary_evidence",
     });
+  });
+
+  // Production 2026-11-04: the first year-ahead Ticketmaster pass for JAZ Amsterdam excluded U2
+  // (5-6 June 2027) and 231 other shows for the whole account, because Ticketmaster was still
+  // judged against the 90-day window it used to be asked about.
+  it("judges a year-ahead source's later show against the year, not the near-term window", () => {
+    const nearTerm = { start: "2026-11-04", end: "2027-02-02" };
+    const show = { ...candidate, startAt: "2027-06-05T19:30:00+02:00", endAt: "2027-06-05T19:30:00+02:00" };
+    expect(validateCandidate(show, validationWindow("ticketmaster", nearTerm, "2027-12-31"), null))
+      .toMatchObject({ state: "active", reason: null });
+    expect(validateCandidate({ ...show, provider: "predicthq" }, validationWindow("predicthq", nearTerm, "2027-12-31"), null))
+      .toMatchObject({ state: "excluded", reason: "out_of_window" });
   });
 
   it("does not match the same title in a different city", () => {

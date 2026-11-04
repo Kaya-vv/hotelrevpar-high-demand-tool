@@ -299,17 +299,19 @@ describe("source adapters", () => {
     });
   });
 
-  it("maps Ticketmaster status and stops at the last page", async () => {
+  it("maps Ticketmaster status and pages each date range from its own first page", async () => {
     const secondPage = {
       _embedded: { events: [] },
       page: { number: 1, totalPages: 2, totalElements: 2 },
     };
+    const laterRange = { _embedded: { events: [] }, page: { number: 0, totalPages: 1, totalElements: 0 } };
     const fetcher = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse(ticketmasterFixture))
-      .mockResolvedValueOnce(jsonResponse(secondPage));
+      .mockResolvedValueOnce(jsonResponse(secondPage))
+      .mockResolvedValueOnce(jsonResponse(laterRange));
     const result = await collectTicketmaster({
-      ...window,
+      windows: [window, { start: "2028-01-01", end: "2028-12-31" }],
       city: "Eindhoven",
       latitude: 51.44,
       longitude: 5.48,
@@ -317,7 +319,7 @@ describe("source adapters", () => {
       apiKey: "test",
       fetcher,
     });
-    expect(result.requests).toBe(2);
+    expect(result.requests).toBe(3);
     expect(result.candidates.map((event) => event.sourceState)).toEqual([
       "active",
       "cancelled",
@@ -327,6 +329,9 @@ describe("source adapters", () => {
     expect(url.searchParams.get("radius")).toBe("25");
     expect(url.searchParams.get("unit")).toBe("km");
     expect(url.searchParams.has("city")).toBe(false);
+    const later = new URL(String(fetcher.mock.calls[2][0])).searchParams;
+    expect([later.get("startDateTime"), later.get("endDateTime"), later.get("page")])
+      .toEqual(["2028-01-01T00:00:00Z", "2028-12-31T23:59:59Z", "0"]);
   });
 
   it("keeps only Dutch home Champions League ties inside the window", async () => {

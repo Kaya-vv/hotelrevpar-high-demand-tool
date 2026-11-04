@@ -25,10 +25,12 @@ export async function getCollectionStatus(
   platform = false,
 ): Promise<CollectionStatus> {
   const db = await createServerClient();
+  // The daily Ticketmaster check runs unattended at 05:00; the status follows refreshes and searches.
   const { data: latest, error } = await db
     .from("collection_jobs")
     .select("batch_id")
     .eq("account_id", accountId)
+    .eq("scope", "full")
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -51,11 +53,13 @@ export async function getCollectionStatus(
     ? createAdminClient()
         .from("collection_runs")
         .select(columns)
+        .eq("scope", "full")
         .order("started_at", { ascending: false })
         .limit(100)
     : db
         .from("collection_runs")
         .select(columns)
+        .eq("scope", "full")
         .eq("account_id", accountId)
         .eq(
           "collection_area_id",

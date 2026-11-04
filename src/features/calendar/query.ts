@@ -87,6 +87,8 @@ export async function getCalendarData(
             .select("started_at, finished_at, error_summary, source_results")
             .eq("account_id", accountId)
             .eq("collection_area_id", areaId)
+            // The daily Ticketmaster check is not a search; the status line describes the search.
+            .eq("scope", "full")
             .order("started_at", { ascending: false })
             .limit(1)
             .maybeSingle()

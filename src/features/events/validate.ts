@@ -11,6 +11,17 @@ type Conflict = Extract<
   "duplicate_uncertain" | "date_conflict" | "changed_date" | "changed_venue"
 > | null;
 
+const yearAheadProviders: Partial<Record<EventCandidate["provider"], true>> = {
+  claude: true, openholidays: true, rijksoverheid: true, ticketmaster: true, footballdata: true,
+};
+
+/** Sources a paid run asks about the year ahead are judged against it; the rest stop at the
+ * near-term window. A source missing here has every later event it confirms excluded - which is
+ * how Ticketmaster hid U2 after the AI search had already published it. */
+export function validationWindow(provider: EventCandidate["provider"], nearTerm: Window, yearAheadEnd: string): Window {
+  return yearAheadProviders[provider] ? { start: nearTerm.start, end: yearAheadEnd } : nearTerm;
+}
+
 export function validateCandidate(
   candidate: EventCandidate,
   window: Window,
