@@ -121,10 +121,12 @@ function placeKey(candidate: EventCandidate) {
 /**
  * Categories whose editions are individual performances rather than one continuous run. A page
  * listing a series ("17, 19, 22 January") is routinely extracted as one event spanning first to
- * last date, so duration cannot be trusted to mean a stay for these.
+ * last date, so duration cannot be trusted to mean a stay for these. A bare "Music" is
+ * Ticketmaster's label for a single dated show: U2's two ArenA nights (5 and 6 June 2027) arrived
+ * that way and were merged into one row whose date flipped between the nights on every run.
  */
 export function perPerformanceCategory(category: string) {
-  return /concert|musical|theat|performance/i.test(category);
+  return /concert|musical|theat|performance|^music$/i.test(category);
 }
 
 export function performanceTime(candidate: Pick<EventCandidate, "category" | "startAt">) {

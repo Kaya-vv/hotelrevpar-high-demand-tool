@@ -41,6 +41,18 @@ describe("event domain", () => {
     }
   });
 
+  // Production 2026-11-04: Ticketmaster labels U2's ArenA shows "Music". The second night was
+  // folded into the first, and the row's date then flipped between 5 and 6 June on every run.
+  it("keeps Ticketmaster's consecutive Music nights apart, also from the AI's concert listing", () => {
+    const night = (day: string, category: string, providerEventId: string) => normalizeCandidate({ ...candidate, providerEventId,
+      category, title: "U2: The Greatest Show On Earth World Tour", venue: "Johan Cruijff ArenA", latitude: 52.3137, longitude: 4.9405,
+      startAt: `2027-06-0${day}T19:30:00+02:00`, endAt: `2027-06-0${day}T19:30:00+02:00` });
+    const saturday = { ...night("5", "music", "tm-sat"), id: "saturday" };
+    expect(classifyMatch(night("6", "music", "tm-sun"), [saturday])).toEqual({ kind: "new", eventId: null });
+    expect(classifyMatch(night("6", "music", "tm-sun"), [{ ...night("5", "concert", "ai"), id: "ai" }])).toEqual({ kind: "new", eventId: null });
+    expect(classifyMatch(night("5", "music", "tm-sat-again"), [saturday]).kind).toBe("exact");
+  });
+
   it("uses supported aliases only with the same date and host location", () => {
     const first = normalizeCandidate({ ...candidate, title: "Arts and Design Week" });
     const alias = normalizeCandidate({ ...candidate, providerEventId: "alias", title: "ADW", evidence: { dateText: "Official dated edition", locationText: "Official host location", hostCity: "Eindhoven", locationScope: "citywide", continuous: true, majorCompetition: false, demand: [], aliases: ["Arts and Design Week"], dateSourceUrl: candidate.sourceUrl!, checkedAt: "2026-09-07" } });

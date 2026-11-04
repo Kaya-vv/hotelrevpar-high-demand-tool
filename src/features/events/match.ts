@@ -1,4 +1,4 @@
-import { meaningfulTokens, normalizeText, performanceTime } from "./normalize";
+import { meaningfulTokens, normalizeText, performanceTime, perPerformanceCategory } from "./normalize";
 import type { NormalizedCandidate } from "./types";
 import { distanceKm } from "./distance";
 
@@ -155,10 +155,11 @@ export function classifyMatch(
   if (strong) return { kind: "exact", eventId: strong.id };
 
   // A venue agenda lists each day of a multi-day programme as its own entry. An identical title
-  // at the same place on a touching or overlapping date range is one event, not two.
+  // at the same place on a touching or overlapping date range is one event, not two - unless
+  // either side is a performance: two concert nights are two events.
   const consecutive = existing.find(
     (event) =>
-      !/concert|musical|theat|performance/i.test(candidate.category) &&
+      !perPerformanceCategory(candidate.category) && !perPerformanceCategory(event.category) &&
       event.normalizedTitle === candidate.normalizedTitle &&
       samePlace(event, candidate) &&
       event.localStartDate <= nextDay(candidate.localEndDate) &&

@@ -720,6 +720,15 @@ export function createCollectionRepository(): CollectionRepository {
         updated_at: new Date().toISOString(),
       };
       let sizeCheck: EventCandidate["sizeCheck"];
+      // A ticket seller's listing carries the show's own date, time and hall. The ArenA page the AI
+      // read said "5 & 6 juni" for both U2 nights; letting that text rewrite the Ticketmaster night
+      // would undo it after every AI search. The AI still updates events no ticket seller lists.
+      if (eventId && !preserveCanonical && !structuredUpdateProviders.has(candidate.provider)) {
+        const { data: structured, error: structuredError } = await supabase.from("event_sources").select("id")
+          .eq("event_id", eventId).eq("source_state", "active").in("provider", [...structuredUpdateProviders]).limit(1);
+        if (structuredError) throw structuredError;
+        if (structured.length) preserveCanonical = true;
+      }
       if (!eventId) {
         const { data, error } = await supabase.from("events").insert(eventRow).select("id").single();
         if (error) throw error;
