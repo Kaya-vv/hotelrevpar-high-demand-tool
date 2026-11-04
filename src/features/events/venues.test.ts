@@ -46,13 +46,18 @@ describe("venue capacity", () => {
     ]) expect(isAncillaryListing(title, "Ziggo Dome")).toBe(false);
   });
 
-  it("sends only real shows at the two biggest arenas to be judged by name", () => {
+  it("sends only real shows at the big arenas and concert grounds to be judged by name", () => {
     expect(isArenaShow("concert", "Muse", "Ziggo Dome")).toBe(true);
     expect(isArenaShow("electronic music event", "A State of Trance", "Hall 1 to Hall 4, Ahoy Arena")).toBe(true);
     // A 6,000-seat hall, an add-on listing and a congress in the arena's halls are not arena shows.
     expect(isArenaShow("concert", "Froukje", "AFAS Live")).toBe(false);
     expect(isArenaShow("concert", "Westlife | Comfort Seats", "Ziggo Dome")).toBe(false);
     expect(isArenaShow("conference", "Breakbulk Europe", "Rotterdam Ahoy")).toBe(false);
+    // Production 2026-11-04: Toto and Robbie Williams at Summerstage sat hidden for a Groningen
+    // hotel 2.2 km away because the open-air ground was unknown. A bare "Stadspark" stays unknown.
+    expect(isArenaShow("music", "Robbie Williams Live 2027", "Stadspark Groningen")).toBe(true);
+    expect(isArenaShow("music", "TOTO", "Summerstage, Stadspark Groningen")).toBe(true);
+    expect(isArenaShow("concert", "Noah Kahan", "Stadspark")).toBe(false);
   });
 });
 

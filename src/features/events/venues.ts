@@ -42,6 +42,10 @@ const venueCapacities: Record<string, number> = {
   "stadion galgenwaard": 23_750,
   gelredome: 34_000,
   euroborg: 22_550,
+  // Open-air ground of the Summerstage series (Toto, Robbie Williams in 2027). Not a building: the
+  // municipality's 2026 permit planning (CVDR739336) lists its Summerstage nights at 25,000 to
+  // 35,000 visitors, so the lowest is recorded. A bare "Stadspark" is left out: many cities have one.
+  "stadspark groningen": 25_000,
 };
 
 /**
