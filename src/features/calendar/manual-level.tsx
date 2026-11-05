@@ -4,7 +4,7 @@ import { useActionState } from "react";
 
 import { demandLabels, demandLevels } from "@/features/events/importance";
 import type { DemandLevel } from "@/features/events/importance";
-import type { ManualLevelResult } from "@/features/review/actions";
+import type { ManualLevelResult } from "./manual-level-actions";
 
 export type ManualLevelAction = (
   previous: ManualLevelResult | null,

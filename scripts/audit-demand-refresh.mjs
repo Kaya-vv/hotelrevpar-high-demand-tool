@@ -67,7 +67,7 @@ try {
       const stage = decision?.state !== "active" ? "validation" : event.latitude === null || event.longitude === null ? "location"
         : !eventSources.some(row => row.primary_source_confirmed && row.source_state === "active") ? "verification"
           : !assessment ? "not_recalculated" : ["supported", "probable"].includes(assessment.relevance) ? "calendar_filter" : "demand";
-      traces.push({ title: event.title, start: event.start_at, end: event.end_at, stage, reason: decision?.review_reason ?? assessment?.reasons.join("; ") });
+      traces.push({ title: event.title, start: event.start_at, end: event.end_at, stage, reason: decision?.automation_reason ?? assessment?.reasons.join("; ") });
     }
     // Expectations cannot affect any request, extraction or publication above.
     const key = JSON.parse(readFileSync("tests/fixtures/hotel-demand-expectations.json", "utf8"));

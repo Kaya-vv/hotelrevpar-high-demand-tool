@@ -14,15 +14,12 @@ const adminLinks = [
   ["/admin/accounts", "Abonnees"],
   ["/admin/source-health", "Bronstatus"],
   ["/admin/venue-calendars", "Zaalagenda’s"],
-  ["/review", "Datakwaliteit"],
 ] as const;
 
 export function AppNavigation({
   isPlatformAdmin,
-  reviewCount,
 }: {
   isPlatformAdmin: boolean;
-  reviewCount: number;
 }) {
   const pathname = usePathname();
   const links = (items: typeof mainLinks | typeof adminLinks) =>
@@ -33,9 +30,6 @@ export function AppNavigation({
         aria-current={pathname.startsWith(href) ? "page" : undefined}
       >
         <span>{label}</span>
-        {href === "/review" && reviewCount > 0 && (
-          <span className="nav-badge">{reviewCount}</span>
-        )}
       </Link>
     ));
 

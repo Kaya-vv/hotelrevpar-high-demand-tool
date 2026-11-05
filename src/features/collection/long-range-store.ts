@@ -68,7 +68,8 @@ export type Lead = {
   attempts?: number;
   nextCheck: string;
   checkedAt: string | null;
-  outcome: "pending" | "confirmed" | "unannounced" | "failed" | "conflict";
+  /** Research stored before 2026-11 can still read "conflict"; loading a market recovers it. */
+  outcome: "pending" | "confirmed" | "unannounced" | "failed";
   editions: EventCandidate[];
   notes: string[];
 };

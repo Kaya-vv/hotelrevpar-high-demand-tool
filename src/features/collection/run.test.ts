@@ -18,7 +18,7 @@ import {
   selectLongRangeSeeds,
   type CollectionRepository,
 } from "./run";
-import { shouldRefreshCanonical, sourceChange } from "./source-change";
+import { shouldRefreshCanonical, sourceChanged } from "./source-change";
 import { LongRangeLeaseError } from "./long-range-store";
 import { BatchPendingError } from "./anthropic-batches";
 
@@ -182,9 +182,7 @@ function repository(overrides: Partial<CollectionRepository> = {}): CollectionRe
     loadEvidenceReviews: vi.fn().mockResolvedValue({}),
     saveEvidenceReviews: vi.fn().mockResolvedValue(undefined),
     hideCandidates: vi.fn().mockResolvedValue(undefined),
-    recordUnresolvedLocations: vi.fn().mockResolvedValue(undefined),
     invalidateClaudeSources: vi.fn().mockResolvedValue(undefined),
-    quarantineClaudeEditions: vi.fn().mockResolvedValue(undefined),
     carryMovedClaudeSources: vi.fn().mockResolvedValue(undefined),
     shouldRunClaudeDiscovery: vi.fn().mockResolvedValue(true),
     recalculateScores: vi.fn().mockResolvedValue(undefined),
@@ -385,7 +383,7 @@ describe("runCollection", () => {
     expect(result.sourceResults.ticketmaster).not.toHaveProperty("funnel");
   });
 
-  it("parks a verified candidate it cannot place on the map instead of discarding it", async () => {
+  it("counts a verified candidate it cannot place on the map once, and never scores it", async () => {
     const nearTerm = { ...candidate, provider: "claude" as const, providerEventId: "claude-near",
       title: "Military Boekelo", latitude: null, longitude: null,
       startAt: "2026-10-01T00:00:00+02:00", endAt: "2026-10-04T23:59:59+02:00" };
@@ -406,11 +404,7 @@ describe("runCollection", () => {
         },
       },
     );
-    expect(repo.recordUnresolvedLocations).toHaveBeenCalledWith(
-      expect.anything(), [expect.objectContaining({ providerEventId: "claude-near" })], "near_term");
-    expect(repo.recordUnresolvedLocations).toHaveBeenCalledWith(
-      expect.anything(), [expect.objectContaining({ providerEventId: "claude-far" })], "long_range");
-    // A holiday needs no map point, so it keeps its normal path and never queues for an address.
+    // A holiday needs no map point, so it keeps its normal path.
     expect(repo.persistCandidate).toHaveBeenCalledTimes(1);
     expect(repo.persistCandidate).toHaveBeenCalledWith(
       expect.anything(), expect.objectContaining({ providerEventId: "claude-holiday" }));
@@ -514,22 +508,22 @@ describe("runCollection", () => {
     expect(repo.persistCandidate).toHaveBeenCalledWith(expect.anything(), matchingHoliday);
   });
 
-  it("reviews a changed date without changing the canonical event", () => {
+  it("treats a changed start time as a change", () => {
     expect(
-      sourceChange(
+      sourceChanged(
         { extractedStartAt: candidate.startAt, extractedLocation: candidate.venue },
         { ...candidate, startAt: "2027-10-11T10:00:00Z" },
       ),
-    ).toEqual({ conflict: "changed_date", preserveCanonical: true });
+    ).toBe(true);
   });
 
-  it("does not review the same instant written with a different timezone offset", () => {
+  it("treats the same instant written with a different timezone offset as unchanged", () => {
     expect(
-      sourceChange(
+      sourceChanged(
         { extractedStartAt: "2027-10-10T08:00:00+00:00", extractedLocation: candidate.venue },
         { ...candidate, startAt: "2027-10-10T10:00:00+02:00" },
       ),
-    ).toEqual({ conflict: null, preserveCanonical: false });
+    ).toBe(false);
   });
 
   it("refreshes canonical data only from confirmed primary Claude evidence", () => {

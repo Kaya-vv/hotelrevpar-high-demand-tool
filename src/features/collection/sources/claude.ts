@@ -733,7 +733,6 @@ export async function collectClaudeCalendar(
     merged.requests += value.requests;
     merged.invalidatedUrls!.push(...(value.invalidatedUrls ?? []));
     merged.refreshedUrls!.push(...(value.refreshedUrls ?? []));
-    if (value.quarantinedProviderEventIds?.length) merged.quarantinedProviderEventIds = [...(merged.quarantinedProviderEventIds ?? []), ...value.quarantinedProviderEventIds];
     merged.usage[`${horizon}Candidates`] = value.candidates.length;
     merged.usage[`${horizon}Requests`] = value.requests;
     Object.entries(value.usage).forEach(([key, count]) => {

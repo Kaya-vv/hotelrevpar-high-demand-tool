@@ -19,7 +19,6 @@ const source = (overrides: Partial<SourceHealth> = {}): SourceHealth => ({
   discoveryMode: null,
   unresolvedLocations: 0,
   drops: [],
-  reviews: 0,
   requests: 0,
   inputTokens: 0,
   outputTokens: 0,
@@ -58,7 +57,6 @@ describe("SourceHealthTable", () => {
         discoveryMode: "fresh",
         unresolvedLocations: 0,
         drops: [{ title: "Weekmarkt", stage: "verification", reason: "Geen aantoonbare hotelvraag (impactPoints 20)." }],
-        reviews: 1,
         requests: 2,
         inputTokens: 300,
         outputTokens: 80,
@@ -115,7 +113,7 @@ describe("SourceHealthTable", () => {
       startedAt: "2027-08-27T05:00:00Z",
       finishedAt: null,
       errorSummary: null,
-      sources: [{ name: "predicthq", state: "not_run", lastSuccess: null, currentError: null, found: 0, unique: 0, duplicates: 0, namesDiscovered: 0, urlsResolved: 0, pagesVerified: 0, demandAccepted: 0, discoveryMode: null, unresolvedLocations: 0, drops: [], reviews: 0, requests: 0, inputTokens: 0, outputTokens: 0, webSearchRequests: 0, webFetchRequests: 0, usageCalls: 0 }],
+      sources: [{ name: "predicthq", state: "not_run", lastSuccess: null, currentError: null, found: 0, unique: 0, duplicates: 0, namesDiscovered: 0, urlsResolved: 0, pagesVerified: 0, demandAccepted: 0, discoveryMode: null, unresolvedLocations: 0, drops: [], requests: 0, inputTokens: 0, outputTokens: 0, webSearchRequests: 0, webFetchRequests: 0, usageCalls: 0 }],
     }]} />);
 
     expect(within(container).getByText("Bezig")).toBeInTheDocument();
@@ -131,7 +129,7 @@ describe("SourceHealthTable", () => {
       startedAt: "2027-08-27T05:00:00Z",
       finishedAt: "2027-08-27T05:01:00Z",
       errorSummary: null,
-      sources: [{ name: "predicthq", state: "partial", lastSuccess: null, currentError: "Een controle mislukte.", found: 20, unique: 18, duplicates: 2, namesDiscovered: 0, urlsResolved: 0, pagesVerified: 0, demandAccepted: 0, discoveryMode: null, unresolvedLocations: 0, drops: [], reviews: 0, requests: 6, inputTokens: 300, outputTokens: 80, webSearchRequests: 5, webFetchRequests: 0, usageCalls: 6 }],
+      sources: [{ name: "predicthq", state: "partial", lastSuccess: null, currentError: "Een controle mislukte.", found: 20, unique: 18, duplicates: 2, namesDiscovered: 0, urlsResolved: 0, pagesVerified: 0, demandAccepted: 0, discoveryMode: null, unresolvedLocations: 0, drops: [], requests: 6, inputTokens: 300, outputTokens: 80, webSearchRequests: 5, webFetchRequests: 0, usageCalls: 6 }],
     }]} />);
 
     expect(within(container).getByText("Deels voltooid")).toBeInTheDocument();

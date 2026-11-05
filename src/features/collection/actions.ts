@@ -81,7 +81,6 @@ export async function refreshHotel(
     };
   }
   revalidatePath("/calendar");
-  revalidatePath("/review");
   return {
     error: !result.queued && Boolean(result.failed),
     batchId: result.batchId,
@@ -108,7 +107,6 @@ export async function refreshAllHotels(): Promise<RefreshState> {
       createdBy: userId,
     });
     revalidatePath("/calendar");
-    revalidatePath("/review");
     return {
       error: !result.queued && Boolean(result.failed),
       batchId: result.batchId,

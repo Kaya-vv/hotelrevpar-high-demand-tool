@@ -14,6 +14,6 @@ export default async function AdminLayout({ children }: { children: ReactNode })
     listSelectableHotels(account),
   ]);
   return <AppShell accountName={account.viewedAccountName} isPlatformAdmin hotels={hotels} selectedHotelId={workspace.selectedHotelId}
-      reviewCount={account.viewingOtherAccount ? 0 : workspace.reviewCount} batch={workspace.batch}
+      batch={workspace.batch}
       collectionStatus={workspace.collectionStatus} viewingOtherAccount={account.viewingOtherAccount}>{children}</AppShell>;
 }

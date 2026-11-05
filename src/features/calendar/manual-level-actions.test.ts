@@ -6,7 +6,7 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/navigation", () => ({ unstable_rethrow: vi.fn() }));
 import { requireAccount } from "@/lib/auth/require-account";
 import { createServerClient } from "@/lib/supabase/server";
-import { overrideImportance } from "./actions";
+import { overrideImportance } from "./manual-level-actions";
 
 function query(data: unknown) {
   const result = { data, error: null };

@@ -7,7 +7,6 @@ import { createServerClient } from "@/lib/supabase/server";
 import {
   gradedDemand,
   hotelCalendarVisibility,
-  publishableReviewEventIds,
   type DemandLevel,
 } from "@/features/events/importance";
 import { getHotelScope } from "@/features/workspace/hotel-context";
@@ -15,7 +14,6 @@ import { fetchAllRows, fetchInBatches, fetchPagedInBatches } from "@/lib/supabas
 import { isEnabledPrimarySource } from "@/features/events/source-evidence";
 
 import type { CalendarContextMarker, CalendarEvent, LatestRun } from "./calendar-view";
-import type { ReviewEvent } from "@/features/review/review-list";
 
 export type CalendarFilters = {
   month: string;
@@ -31,15 +29,14 @@ export type CalendarFilters = {
 
 async function loadAccountEvents(
   accountId: string,
-  state: "active" | "needs_review",
   linkedIds: Set<string>,
   bounds?: { start: string; end: string },
 ) {
   const supabase = await createServerClient();
   const decisions = await fetchInBatches([...linkedIds], ids => supabase
     .from("account_events")
-    .select("event_id, state, merged_into_event_id, override_title, override_venue, override_start_at, override_end_at, review_target_event_id, review_source_id, review_reason")
-    .eq("account_id", accountId).eq("state", state).in("event_id", ids));
+    .select("event_id, state, merged_into_event_id, override_title, override_venue, override_start_at, override_end_at")
+    .eq("account_id", accountId).eq("state", "active").in("event_id", ids));
   const eventIds = decisions.map(decision => decision.event_id);
   const candidates = await fetchInBatches(eventIds, ids => supabase.from("events")
     .select("id, title, category, venue, start_at, end_at, certainty, latitude, longitude, region_scope").in("id", ids));
@@ -80,7 +77,7 @@ export async function getCalendarData(
   const bounds = calendarBounds(filters.month, filters.view, filters.period, undefined, filters.horizonEnd ?? null);
   const [{ decisions, events, sources }, runResult] =
     await Promise.all([
-      loadAccountEvents(accountId, "active", linkedIds, bounds),
+      loadAccountEvents(accountId, linkedIds, bounds),
       areaId
         ? supabase
             .from("collection_runs")
@@ -264,90 +261,4 @@ export async function getCalendarData(
     selectedHotelId,
     categories,
   };
-}
-
-export async function getReviewData(accountId: string) {
-  const { supabase, hotels, selectedHotelId, areaId } = await getHotelScope(
-    accountId
-  );
-  const linkedIds = await linkedEventIds(accountId, areaId);
-  const { decisions, events, sources } = await loadAccountEvents(
-    accountId,
-    "needs_review",
-    linkedIds,
-  );
-  const decisionsByEvent = new Map(
-    decisions.map((decision) => [decision.event_id, decision])
-  );
-  const reviewEventIds = events
-    .filter((event) => linkedIds.has(event.id))
-    .map((event) => event.id);
-  const scores =
-    reviewEventIds.length && selectedHotelId
-      ? await fetchInBatches(reviewEventIds, (ids) =>
-          supabase
-            .from("hotel_event_scores")
-            .select("event_id, suggested_importance, importance_override, impact_basis, demand_assessment")
-            .in("event_id", ids)
-            .eq("hotel_id", selectedHotelId)
-        )
-      : [];
-  const reviewableIds = publishableReviewEventIds(decisions, scores);
-  const targetIds = decisions
-    .filter((decision) => reviewableIds.has(decision.event_id))
-    .map((decision) => decision.review_target_event_id)
-    .filter((id): id is string => Boolean(id));
-  const targets = targetIds.length
-    ? await fetchInBatches(targetIds, (ids) =>
-        supabase
-          .from("events")
-          .select("id, title, venue, start_at, end_at")
-          .in("id", ids)
-      )
-    : [];
-  const targetsById = new Map(targets.map((target) => [target.id, target]));
-  const reviewEvents: ReviewEvent[] = events
-    .filter((event) => linkedIds.has(event.id) && reviewableIds.has(event.id))
-    .map((event) => {
-      const decision = decisionsByEvent.get(event.id);
-      const proposed = sources.find(
-        (source) => source.id === decision?.review_source_id
-      );
-      const target = decision?.review_target_event_id
-        ? targetsById.get(decision.review_target_event_id)
-        : null;
-      return {
-        id: event.id,
-        title: decision?.override_title ?? event.title,
-        venue: decision?.override_venue ?? event.venue,
-        startAt: decision?.override_start_at ?? event.start_at,
-        endAt: decision?.override_end_at ?? event.end_at,
-        reviewReason: decision?.review_reason ?? null,
-        proposed: proposed
-          ? {
-              title: proposed.extracted_title,
-              venue: proposed.extracted_location,
-              startAt: proposed.extracted_start_at,
-              endAt: proposed.extracted_end_at ?? proposed.extracted_start_at,
-            }
-          : null,
-        target: target
-          ? {
-              title: target.title,
-              venue: target.venue,
-              startAt: target.start_at,
-              endAt: target.end_at,
-            }
-          : null,
-        sources: sources
-          .filter((source) => source.event_id === event.id)
-          .map((source) => ({
-            provider: source.provider,
-            url: source.public_source_url,
-            state: source.source_state,
-            primarySourceConfirmed: source.primary_source_confirmed,
-          })),
-      };
-    });
-  return { events: reviewEvents, hotels, selectedHotelId };
 }

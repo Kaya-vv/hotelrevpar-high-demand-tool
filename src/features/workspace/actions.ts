@@ -8,7 +8,7 @@ import { createServerClient } from "@/lib/supabase/server";
 
 import { SELECTED_HOTEL_COOKIE } from "./hotel-context";
 
-const destinations = new Set(["/calendar", "/review", "/portfolio", "/export"]);
+const destinations = new Set(["/calendar", "/portfolio", "/export"]);
 
 export async function selectHotel(formData: FormData) {
   const account = await requireAccount();

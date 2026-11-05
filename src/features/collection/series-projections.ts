@@ -16,7 +16,7 @@ export function rememberEdition(lead: Lead, edition: SeriesEdition) {
 
 export function projectEditions(lead: Lead, start: string, end: string): ProjectedEdition[] {
   const basis = lead.lastKnownEdition;
-  if (lead.kind !== "event" || lead.outcome === "conflict" || !basis || !validDate(basis.start) || !validDate(basis.end)) return [];
+  if (lead.kind !== "event" || !basis || !validDate(basis.start) || !validDate(basis.end)) return [];
   const duration = (Date.parse(basis.end) - Date.parse(basis.start)) / day;
   // A whole season is not a dated event. Recurrence itself remains an explicit assumption.
   if (duration < 0 || duration > 31) return [];

@@ -26,7 +26,7 @@ it.skipIf(!process.env.RESEARCH_LOCAL_KEY)("shares fresh public evidence across 
   const checked = <T,>(result: { data: T; error: unknown }) => { if (result.error) throw result.error; return result.data; };
   const accounts = [randomUUID(), randomUUID()];
   const ids = Array.from({ length: 8 }, () => randomUUID());
-  const [fresh, excluded, stale, outside, oldVersion, cancelled, conflict, beyondWindow] = ids;
+  const [fresh, excluded, stale, outside, oldVersion, cancelled, probableCopy, beyondWindow] = ids;
   const now = new Date().toISOString();
   const start = new Date(Date.now() + 20 * 86400000).toISOString();
   const end = new Date(Date.now() + 22 * 86400000).toISOString();
@@ -54,9 +54,9 @@ it.skipIf(!process.env.RESEARCH_LOCAL_KEY)("shares fresh public evidence across 
       source_state: event.id === cancelled ? "cancelled" : "active",
     })) as Database["public"]["Tables"]["event_sources"]["Insert"][]));
     // The owner's exclusion must not exclude the client's event; the client's own exclusion must survive.
+    // A probable copy of another event stays out for every account.
     checked(await db.from("account_events").insert(ids.map((event_id) => ({ account_id: owner.account_id, event_id,
-      state: event_id === conflict ? "needs_review" as const : "excluded" as const,
-      review_reason: event_id === conflict ? "date_conflict" : null }))));
+      state: "excluded" as const, automation_reason: event_id === probableCopy ? "duplicate_uncertain" : null }))));
     checked(await db.from("account_event_areas").insert(ids.map((event_id) => ({ account_id: owner.account_id, collection_area_id: ownerArea.id, event_id }))));
     checked(await db.from("account_events").insert({ account_id: client.account_id, event_id: excluded, state: "excluded" }));
     const repo = createCollectionRepository();

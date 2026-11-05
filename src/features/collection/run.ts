@@ -207,7 +207,7 @@ export function selectLongRangeSeeds(
 }
 
 export type PersistResult = {
-  state: "active" | "needs_review" | "excluded";
+  state: "active" | "excluded";
   duplicate: boolean;
   eventId?: string;
 };
@@ -241,23 +241,10 @@ export type CollectionRepository = {
     context: CollectionContext,
     candidates: EventCandidate[]
   ) => Promise<void>;
-  /**
-   * A candidate the collector verified but could not place on the map. `relevantToHotel` cannot
-   * accept it and scoring cannot rank it, so before this existed it was dropped without trace:
-   * Grand Hotel Ter Duin lost four of its five verified near-term events that way on 2026-09-14.
-   * Parking it keeps the verified quotes so an operator can supply the address and put the event
-   * through the normal check and score. It never reaches a calendar on its own.
-   */
-  recordUnresolvedLocations: (
-    context: CollectionContext,
-    candidates: EventCandidate[],
-    horizon: "near_term" | "long_range",
-  ) => Promise<void>;
   invalidateClaudeSources: (
     context: CollectionContext,
     sourceUrls: string[]
   ) => Promise<void>;
-  quarantineClaudeEditions: (context: CollectionContext, providerEventIds: string[]) => Promise<void>;
   /**
    * Gives a re-dated Claude event its stored source back, so saving it updates the existing event
    * instead of creating a second one.
@@ -478,21 +465,10 @@ function relevantToHotel(candidate: EventCandidate, hotel: HotelContext) {
 export async function publishLongRangeResult(repository: CollectionRepository, context: CollectionContext, result: SourceResult) {
   // Research is shared per city, but a free trial must never receive what lies past its 90 days.
   if (!context.area.enabledSources.includes("claude") || !context.longRangeAllowed) return;
-  if (result.quarantinedProviderEventIds?.length) await repository.quarantineClaudeEditions(context, result.quarantinedProviderEventIds);
-  const unplaceable: EventCandidate[] = [];
   for (const event of result.candidates) {
     const candidate = repairEventRange(event);
-    if (!candidate) continue;
-    if (context.hotels.some((hotel) => relevantToHotel(candidate, hotel))) {
-      await repository.persistCandidate(context, candidate);
-      continue;
-    }
-    // Long-range research already keeps these leads, but nothing surfaced them. Park the edition
-    // so an operator can supply the address; Enschede Marathon sat here scoring nothing.
-    if (!["school_holiday", "public_holiday"].includes(candidate.category)
-      && (candidate.latitude === null || candidate.longitude === null)) unplaceable.push(candidate);
+    if (candidate && context.hotels.some((hotel) => relevantToHotel(candidate, hotel))) await repository.persistCandidate(context, candidate);
   }
-  if (unplaceable.length) await repository.recordUnresolvedLocations(context, unplaceable, "long_range");
   return repository.recalculateScores(context);
 }
 
@@ -625,28 +601,15 @@ export async function runCollection(
           value.invalidatedUrls,
         );
       }
-      if (source === "claude" && value.quarantinedProviderEventIds?.length) {
-        await repository.quarantineClaudeEditions(context, value.quarantinedProviderEventIds);
-      }
       // Before saving: an event the page moved to a new date must keep its ID (see `movedClaudeSources`).
       if (source === "claude") await repository.carryMovedClaudeSources(context, dated, value.refreshedUrls ?? []);
-      // Verified but impossible to place on the map. `relevantToHotel` has to reject these and
-      // scoring cannot rank them, so park them for an operator rather than discarding them.
-      // Counted after date repair and de-duplication, so the reported number is the number of
-      // rows actually waiting - the old count read straight off the raw list and could exceed
-      // the candidate total.
-      const unplaceable = [...new Map(dated
+      // Verified but impossible to place on the map: `relevantToHotel` rejects these and scoring
+      // cannot rank them. Counted after date repair and de-duplication for source health.
+      const missingLocationCount = new Set(dated
         .filter((event) =>
           !["school_holiday", "public_holiday"].includes(event.category) &&
           (event.latitude === null || event.longitude === null))
-        .map((event) => [`${event.provider}:${event.providerEventId}`, event])).values()];
-      const missingLocationCount = unplaceable.length;
-      for (const horizon of ["near_term", "long_range"] as const) {
-        // The 90-day collection window is the same boundary that splits the two AI searches.
-        const slice = unplaceable.filter((event) =>
-          (eventLocalDate(event.startAt) <= context.window.end) === (horizon === "near_term"));
-        if (slice.length) await repository.recordUnresolvedLocations(context, slice, horizon);
-      }
+        .map((event) => `${event.provider}:${event.providerEventId}`)).size;
       const unique = new Map(
         relevant.map((event) => [
           `${event.provider}:${event.providerEventId}`,
@@ -873,20 +836,15 @@ export async function runCollection(
         candidates = [...direct, ...verifiedCandidates, ...provisional];
       }
 
-      let reviewCount = 0;
       let duplicateCount = relevant.length - unique.size;
       const canonicalIds = new Set<string>();
-      const canonicalReviewIds = new Set<string>();
       // Every collector's results are saved here (shared city research goes through
       // `publishLongRangeResult`, which refuses trials), so this enforces a trial's 90-day wall.
       const trialWall = context.longRangeAllowed ? null : nearTermHorizonEnd();
       for (const event of candidates) {
         if (trialWall && eventLocalDate(event.startAt) > trialWall) continue;
         const persisted = await repository.persistCandidate(context, event);
-        if (persisted.state === "needs_review") reviewCount += 1;
         if (persisted.eventId) canonicalIds.add(persisted.eventId);
-        if (persisted.state === "needs_review" && persisted.eventId)
-          canonicalReviewIds.add(persisted.eventId);
         if (persisted.duplicate) duplicateCount += 1;
       }
       Object.entries(sourceUsage).forEach(([key, count]) => {
@@ -906,7 +864,6 @@ export async function runCollection(
         cached: cachedCount,
         excluded: hiddenCount,
         provisional: provisionalCount,
-        reviews: canonicalReviewIds.size || reviewCount,
         missingLocation: missingLocationCount,
         invalidDates: invalidDateCandidates,
         duplicates: duplicateCount,

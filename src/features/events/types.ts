@@ -60,16 +60,13 @@ export type ValidationReason =
   | "missing_fields"
   | "out_of_window"
   | "duplicate_uncertain"
-  | "date_conflict"
-  | "changed_date"
-  | "changed_venue"
   | "cancelled"
   | "postponed"
   | "removed"
   | "missing_primary_evidence";
 
 export type ValidationOutcome = {
-  state: "active" | "needs_review" | "excluded";
+  state: "active" | "excluded";
   reason: ValidationReason | null;
   certainty: EventCandidate["certainty"];
 };

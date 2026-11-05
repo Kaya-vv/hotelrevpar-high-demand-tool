@@ -241,12 +241,6 @@ export function PortfolioForm({
                       )}
                     </dd>
                   </div>
-                  {isPlatformAdmin && (
-                    <div>
-                      <dt>Datakwaliteit</dt>
-                      <dd>{insight?.reviewCount ?? 0} in quarantaine</dd>
-                    </div>
-                  )}
                   <div>
                     <dt>Bijgewerkt</dt>
                     <dd>

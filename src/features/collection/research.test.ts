@@ -718,19 +718,17 @@ describe("coordinated long-range research", () => {
     test.state().pageCache = {};
     test.state().leads[0].nextCheck = now.toISOString();
     const result = await collectLongRange(test.input);
-    expect(result.quarantinedProviderEventIds).toEqual([]);
     expect(result.candidates).toHaveLength(1);
     expect(test.state().leads[0].editions).toHaveLength(1);
   });
 
-  it("does not merge separate performances or quarantine them as changed dates", async () => {
+  it("does not merge separate performances or withdraw one as a moved date", async () => {
     const test = setup();
     let call = 0;
     const concert = { ...event, category: "concerts", facts: { ...facts, continuous: false } };
     test.create.mockImplementation(async () => ({ id: `performance-${++call}`, stop_reason: "end_turn", usage: { input_tokens: 100, output_tokens: 100 }, content: [{ type: "text", text: JSON.stringify({ events: [{ ...concert, startAt: call === 1 ? "2027-10-23" : "2027-10-25", endAt: call === 1 ? "2027-10-23" : "2027-10-25" }], reason: "Separate performances", more: call === 1 }) }] }));
     const result = await collectLongRange(test.input);
     expect(result.candidates).toHaveLength(2);
-    expect(result.quarantinedProviderEventIds).toEqual([]);
     expect(new Set(result.candidates.map((candidate) => candidate.providerEventId)).size).toBe(2);
   });
 

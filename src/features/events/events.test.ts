@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  isPublishableDemand,
-  publishableDemandLevels,
-  publishableReviewEventIds,
-} from "./importance";
+import { isPublishableDemand, publishableDemandLevels } from "./importance";
 import { classifyMatch } from "./match";
 import { normalizeCandidate, normalizeText, repairEventRange } from "./normalize";
 import { isEnabledPrimarySource } from "./source-evidence";
@@ -67,30 +63,6 @@ describe("event domain", () => {
     expect(isPublishableDemand("Peak", "demand_rule")).toBe(true);
     expect(isPublishableDemand("High", "default")).toBe(false);
     expect(isPublishableDemand("Low", "attendance")).toBe(false);
-  });
-
-  it("reviews only events that could be published", () => {
-    const decisions = [
-      { event_id: "medium", state: "needs_review" },
-      { event_id: "high", state: "needs_review" },
-      { event_id: "default", state: "needs_review" },
-      { event_id: "active", state: "active" },
-    ];
-    const score = (event_id: string, suggested_importance: string, impact_basis = "demand_rule") => ({
-      event_id,
-      suggested_importance,
-      importance_override: null,
-      impact_basis,
-    });
-
-    expect(
-      [...publishableReviewEventIds(decisions, [
-        score("medium", "Medium"),
-        score("high", "High"),
-        score("default", "Peak", "default"),
-        score("active", "Peak"),
-      ])],
-    ).toEqual(["high"]);
   });
 
   it("requires an enabled active primary source with a public URL", () => {
@@ -318,7 +290,6 @@ describe("event domain", () => {
     const result = validateCandidate(
       { ...candidate, provider: "claude", primarySourceConfirmed: false },
       { start: "2027-01-01", end: "2027-12-31" },
-      null
     );
     expect(result).toMatchObject({
       state: "excluded",
@@ -332,9 +303,9 @@ describe("event domain", () => {
   it("judges a year-ahead source's later show against the year, not the near-term window", () => {
     const nearTerm = { start: "2026-11-04", end: "2027-02-02" };
     const show = { ...candidate, startAt: "2027-06-05T19:30:00+02:00", endAt: "2027-06-05T19:30:00+02:00" };
-    expect(validateCandidate(show, validationWindow("ticketmaster", nearTerm, "2027-12-31"), null))
+    expect(validateCandidate(show, validationWindow("ticketmaster", nearTerm, "2027-12-31")))
       .toMatchObject({ state: "active", reason: null });
-    expect(validateCandidate({ ...show, provider: "predicthq" }, validationWindow("predicthq", nearTerm, "2027-12-31"), null))
+    expect(validateCandidate({ ...show, provider: "predicthq" }, validationWindow("predicthq", nearTerm, "2027-12-31")))
       .toMatchObject({ state: "excluded", reason: "out_of_window" });
   });
 
@@ -357,7 +328,6 @@ describe("event domain", () => {
     const result = validateCandidate(
       { ...candidate, sourceState: "predicted", certainty: "provisional" },
       { start: "2027-01-01", end: "2027-12-31" },
-      null
     );
     expect(result).toEqual({
       state: "active",
@@ -373,7 +343,6 @@ describe("event domain", () => {
         validateCandidate(
           { ...candidate, sourceState },
           { start: "2027-01-01", end: "2027-12-31" },
-          null
         )
       ).toMatchObject({
         state: "excluded",
@@ -391,7 +360,6 @@ describe("event domain", () => {
         certainty: "provisional",
       },
       { start: "2027-01-01", end: "2027-12-31" },
-      null
     );
     expect(result).toEqual({
       state: "active",

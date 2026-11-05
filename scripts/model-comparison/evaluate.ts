@@ -80,7 +80,7 @@ export function evaluateAnswer(test: Case, answer: unknown) {
         evidenceText: evidence?.demand.map(f => f.text).join(' ') ?? null, primarySourceConfirmed: Boolean(evidence?.dateText && evidence.locationText), evidence,
       };
       if (!validEventRange(candidate)) issues.push('invalid_range');
-      validation = validateCandidate(candidate, test.window ?? { start: '2000-01-01', end: '2100-01-01' }, null);
+      validation = validateCandidate(candidate, test.window ?? { start: '2000-01-01', end: '2100-01-01' });
       // A city-only record still has testable dates/location evidence. Missing venue
       // coordinates are a publication gap, not an extraction mistake by the model.
       if (validation.state !== 'active' && validation.reason !== 'missing_fields' && !issues.includes(validation.reason ?? 'excluded')) issues.push(validation.reason ?? 'excluded');

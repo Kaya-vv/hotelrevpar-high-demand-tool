@@ -4,16 +4,11 @@ import { normalizeCandidate, eventLocalDate } from "@/features/events/normalize"
 import { fetchAllRows, fetchInBatches, fetchPagedInBatches } from "@/lib/supabase/fetch-in-batches";
 import { classifyMatch } from "@/features/events/match";
 import { gradedDemand, isPublishableDemand } from "@/features/events/importance";
-import {
-  automatedExclusionReason,
-  providerStatusReasons,
-  resolvedReviewState,
-  reviewFingerprint,
-} from "@/features/events/review-fingerprint";
+import { automatedExclusionReason, providerStatusReasons } from "@/features/events/decision-state";
 import { scoreHotelEvent } from "@/features/events/score";
 import { selectScoreEvidence } from "@/features/events/source-evidence";
 import { readEventSizeCheck } from "@/features/events/size-check";
-import type { EventCandidate, ValidationReason } from "@/features/events/types";
+import type { EventCandidate } from "@/features/events/types";
 import { validateCandidate, validationWindow } from "@/features/events/validate";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Database, Json } from "@/lib/supabase/database.types";
@@ -35,7 +30,7 @@ import {
   type StoredDemandTriage,
   type StoredEvidenceReview,
 } from "./run";
-import { shouldRefreshCanonical, sourceChange } from "./source-change";
+import { shouldRefreshCanonical, sourceChanged } from "./source-change";
 import { movedClaudeSources } from "./moved-events";
 import { longRangeWindow } from "./sources/claude";
 import { isAggregatorUrl } from "./sources/long-range";
@@ -107,12 +102,11 @@ export function createCollectionRepository(): CollectionRepository {
           && context.hotels.some((hotel) => distanceKm(hotel.latitude, hotel.longitude, event.latitude!, event.longitude!) <= hotel.demandRadiusKm));
         const sources = await fetchInBatches(nearby.map((event) => event.id), (ids) => supabase.from("event_sources")
           .select("*").eq("provider", "claude").in("event_id", ids));
-        // A recorded date/identity conflict is unresolved research, not reusable evidence.
-        const conflicts = await fetchInBatches(nearby.map((event) => event.id), (ids) => supabase.from("account_events")
-          .select("event_id").eq("state", "needs_review")
-          .in("review_reason", ["date_conflict", "changed_date", "changed_venue", "duplicate_uncertain"]).in("event_id", ids));
+        // Another account's run judged this a probable copy of an event it already shows.
+        const duplicates = await fetchInBatches(nearby.map((event) => event.id), (ids) => supabase.from("account_events")
+          .select("event_id").eq("state", "excluded").eq("automation_reason", "duplicate_uncertain").in("event_id", ids));
         for (const event of nearby) {
-          if (conflicts.some((row) => row.event_id === event.id)) continue;
+          if (duplicates.some((row) => row.event_id === event.id)) continue;
           const source = selectScoreEvidence(sources.filter((row) => row.event_id === event.id), ["claude"]);
           if (!source || source.checked_at < cutoff || source.assessment_version < CLAUDE_ASSESSMENT_VERSION) continue;
           if (sources.some((row) => row.event_id === event.id && row.checked_at >= source.checked_at
@@ -122,8 +116,8 @@ export function createCollectionRepository(): CollectionRepository {
           if (Date.parse(source.extracted_start_at) !== Date.parse(event.start_at)
             || Date.parse(source.extracted_end_at ?? source.extracted_start_at) !== Date.parse(event.end_at ?? event.start_at)) continue;
           const candidate = storedCandidate(event, source);
-          if (validateCandidate(candidate, context.window, null).state !== "active") continue;
-          // Insert only: preserve this account's exclusions, reviews and manual decisions.
+          if (validateCandidate(candidate, context.window).state !== "active") continue;
+          // Insert only: preserve this account's exclusions and manual decisions.
           const decision = await supabase.from("account_events").upsert({
             account_id: context.area.accountId, event_id: event.id, state: "active",
           }, { onConflict: "account_id,event_id", ignoreDuplicates: true });
@@ -475,18 +469,6 @@ export function createCollectionRepository(): CollectionRepository {
       });
     },
 
-    async quarantineClaudeEditions(context, providerEventIds) {
-      const sources = await fetchInBatches(providerEventIds, (ids) => supabase.from("event_sources")
-        .select("event_id").eq("provider", "claude").in("provider_event_id", ids));
-      const eventIds = [...new Set(sources.map((source) => source.event_id))];
-      for (let index = 0; index < eventIds.length; index += 50) {
-        const { error } = await supabase.from("account_events").update({ state: "needs_review", review_reason: "date_conflict" })
-          .eq("account_id", context.area.accountId).eq("state", "active")
-          .in("event_id", eventIds.slice(index, index + 50));
-        if (error) throw error;
-      }
-    },
-
     async carryMovedClaudeSources(context, reported, refreshedUrls) {
       if (!refreshedUrls.length || !reported.some((candidate) => candidate.provider === "claude")) return;
       const links = await fetchAllRows((from, to) => supabase
@@ -524,37 +506,6 @@ export function createCollectionRepository(): CollectionRepository {
       }
     },
 
-    async recordUnresolvedLocations(context, candidates, horizon) {
-      const unresolved = new Map(
-        candidates
-          .filter((candidate) => candidate.providerEventId)
-          .map((candidate) => [
-            `${candidate.provider}\0${candidate.providerEventId}`,
-            candidate,
-          ]),
-      );
-      if (!unresolved.size) return;
-      const rows = [...unresolved.values()].map((candidate) => ({
-        collection_area_id: context.area.id,
-        provider: candidate.provider,
-        provider_event_id: candidate.providerEventId,
-        horizon,
-        title: candidate.title,
-        venue: candidate.venue,
-        start_at: candidate.startAt,
-        end_at: candidate.endAt,
-        candidate: JSON.parse(JSON.stringify(candidate)) as Json,
-      }));
-      for (let index = 0; index < rows.length; index += 200) {
-        const { error } = await supabase
-          .from("unresolved_event_locations")
-          .upsert(rows.slice(index, index + 200), {
-            onConflict: "collection_area_id,provider,provider_event_id",
-          });
-        if (error) throw error;
-      }
-    },
-
     async persistCandidate(context, candidate) {
       const { data: existingSource, error: sourceError } = await supabase
         .from("event_sources")
@@ -574,30 +525,20 @@ export function createCollectionRepository(): CollectionRepository {
       const normalized = normalizeCandidate(candidate);
 
       let eventId: string | null = existingSource?.event_id ?? null;
-      let conflict: ValidationReason | null = null;
+      let uncertainDuplicate = false;
       let preserveCanonical = automatedSourceStates.has(candidate.sourceState);
       let duplicate = false;
       let canonicalStartAt = candidate.startAt;
       let canonicalEndAt = candidate.endAt;
-      let reviewTargetEventId: string | null = null;
 
-      if (existingSource) {
-        const change = sourceChange(
-          { extractedStartAt: existingSource.extracted_start_at, extractedLocation: existingSource.extracted_location },
-          candidate,
-        );
-        conflict = change.conflict;
-        preserveCanonical = preserveCanonical || change.preserveCanonical;
-        if (
-          conflict &&
-          (structuredUpdateProviders.has(candidate.provider) ||
-            shouldRefreshCanonical(candidate)) &&
-          !automatedSourceStates.has(candidate.sourceState)
-        ) {
-          conflict = null;
-          preserveCanonical = false;
-        }
-      }
+      // A changed date or place only rewrites the stored event when a ticket seller, an official
+      // calendar or a fully evidenced AI reading reports it. Anything weaker keeps what is stored.
+      if (
+        existingSource &&
+        sourceChanged({ extractedStartAt: existingSource.extracted_start_at, extractedLocation: existingSource.extracted_location }, candidate) &&
+        !structuredUpdateProviders.has(candidate.provider) &&
+        !shouldRefreshCanonical(candidate)
+      ) preserveCanonical = true;
 
       if (!existingSource && candidate.providerDuplicateOfId) {
         const { data: duplicateTarget, error: duplicateTargetError } = await supabase
@@ -700,8 +641,7 @@ export function createCollectionRepository(): CollectionRepository {
         }
         if (!existingSource && match.kind === "uncertain") {
           duplicate = true;
-          conflict = "duplicate_uncertain";
-          reviewTargetEventId = match.eventId;
+          uncertainDuplicate = true;
         }
       }
 
@@ -786,18 +726,15 @@ export function createCollectionRepository(): CollectionRepository {
         { ...candidate, primarySourceConfirmed },
         // A trial's run never saves past its 90 days, so the year-ahead window is safe for it.
         validationWindow(candidate.provider, context.window, longRangeWindow(context.window).end),
-        conflict as Parameters<typeof validateCandidate>[2],
+        uncertainDuplicate,
       );
       const { data: existingDecision, error: decisionReadError } = await supabase
         .from("account_events")
-        .select("state, resolved_review_fingerprint, automation_reason")
+        .select("state, automation_reason")
         .eq("account_id", context.area.accountId)
         .eq("event_id", eventId)
         .maybeSingle();
       if (decisionReadError) throw decisionReadError;
-      const fingerprint = validation.state === "needs_review" && validation.reason
-        ? reviewFingerprint(candidate, validation.reason, reviewTargetEventId)
-        : null;
       let validationState = validation.state;
       let validationReason = validation.reason;
       if (validation.state === "excluded" && validation.reason && providerStatusReasons.has(validation.reason)) {
@@ -815,26 +752,15 @@ export function createCollectionRepository(): CollectionRepository {
           validationReason = null;
         }
       }
-      const state = resolvedReviewState({
-        validationState,
-        existingState: existingDecision?.state,
-        existingFingerprint: existingDecision?.resolved_review_fingerprint,
-        fingerprint,
-        conflict: Boolean(conflict),
-        automatedExclusion: Boolean(existingDecision?.automation_reason),
-      });
+      // An exclusion without a recorded reason is a person's decision; no source reverses it.
       const existingManualExclusion = existingDecision?.state === "excluded" && !existingDecision.automation_reason;
+      const state = existingManualExclusion ? "excluded" : validationState;
       const automationReason = automatedExclusionReason(state, validationReason, existingManualExclusion);
       const decision = {
         account_id: context.area.accountId,
         event_id: eventId,
         state,
-        review_reason: state === "needs_review" ? validationReason : null,
-        review_target_event_id: state === "needs_review" ? reviewTargetEventId : null,
-        review_source_id: state === "needs_review" ? evidence.id : null,
-        review_fingerprint: fingerprint,
         automation_reason: automationReason,
-        ...(!fingerprint ? { resolved_review_fingerprint: null } : {}),
       };
       const { error: decisionError } = await supabase.from("account_events").upsert(decision);
       if (decisionError) throw decisionError;

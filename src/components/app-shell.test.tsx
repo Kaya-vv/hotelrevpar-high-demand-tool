@@ -10,7 +10,6 @@ vi.mock("next/navigation", () => ({
 const workspace = {
   hotels: [{ id: "hotel-1", name: "Hotel", accountId: "own", accountName: "Robert" }],
   selectedHotelId: "hotel-1",
-  reviewCount: 2,
   batch: null,
 };
 
@@ -29,9 +28,6 @@ describe("AppShell", () => {
     expect(screen.getByRole("navigation")).not.toHaveTextContent(
       "Te beoordelen"
     );
-    expect(screen.getByRole("navigation")).not.toHaveTextContent(
-      "Datakwaliteit"
-    );
     expect(
       screen.queryByRole("button", { name: "Nu verversen" })
     ).not.toBeInTheDocument();
@@ -49,10 +45,6 @@ describe("AppShell", () => {
       "href",
       "/admin/accounts"
     );
-    expect(screen.getByRole("link", { name: /Datakwaliteit/ })).toHaveAttribute(
-      "href",
-      "/review"
-    );
   });
 
   it("labels subscriber hotels with their account while the administrator looks along", () => {
@@ -66,7 +58,6 @@ describe("AppShell", () => {
           { id: "hotel-2", name: "Resort Bad Boekelo", accountId: "sandton", accountName: "Sandton Eindhoven" },
         ]}
         selectedHotelId="hotel-2"
-        reviewCount={0}
         batch={null}
       >
         <p>Inhoud</p>

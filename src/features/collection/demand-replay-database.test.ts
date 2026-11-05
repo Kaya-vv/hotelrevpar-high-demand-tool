@@ -45,7 +45,7 @@ it.skipIf(!process.env.RESEARCH_LOCAL_KEY)("tests policy and persistence using m
         }
         checked(await db.from("events").insert(market.rows.map(row => ({ ...row.event, id: rowIds.get(row.event.id)!, normalized_identity: `${accountId}:${row.event.id}` })) as Database["public"]["Tables"]["events"]["Insert"][]));
         checked(await db.from("event_sources").insert(market.rows.flatMap(row => row.sources.map(source => ({ ...source, event_id: rowIds.get(row.event.id)!, provider_event_id: `${accountId}:${source.provider_event_id}` }))) as Database["public"]["Tables"]["event_sources"]["Insert"][]));
-        checked(await db.from("account_events").insert(market.rows.map(row => ({ account_id: accountId, event_id: rowIds.get(row.event.id)!, state: row.decision.state ?? "needs_review", review_reason: row.decision.review_reason })) as Database["public"]["Tables"]["account_events"]["Insert"][]));
+        checked(await db.from("account_events").insert(market.rows.map(row => ({ account_id: accountId, event_id: rowIds.get(row.event.id)!, state: row.decision.state ?? "needs_review" })) as Database["public"]["Tables"]["account_events"]["Insert"][]));
         checked(await db.from("account_event_areas").insert(eventIds.map(event_id => ({ account_id: accountId, collection_area_id: area.id, event_id }))));
         const { createServerClient } = await import("@/lib/supabase/server");
         const { getHotelScope } = await import("../workspace/hotel-context");

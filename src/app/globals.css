@@ -130,20 +130,6 @@ a {
   text-transform: uppercase;
 }
 
-.nav-badge,
-.review-count {
-  display: inline-grid;
-  min-width: 24px;
-  min-height: 24px;
-  place-items: center;
-  padding: 2px 7px;
-  border-radius: 999px;
-  color: var(--white);
-  background: var(--orange-action);
-  font-size: 0.72rem;
-  font-weight: 700;
-}
-
 .workspace {
   min-width: 0;
 }
@@ -722,8 +708,7 @@ a {
 
 .month-panel,
 .event-card,
-.source-health,
-.review-card {
+.source-health {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--white);
@@ -1061,28 +1046,24 @@ a {
   gap: 10px;
 }
 
-.event-list,
-.review-list {
+.event-list {
   display: grid;
   gap: 14px;
 }
 
 .event-card,
-.review-card,
 .source-health {
   padding: 18px;
 }
 
 .event-card > header,
-.review-card > header,
 .hotel-scores section > div:first-child {
   display: flex;
   justify-content: space-between;
   gap: 12px;
 }
 
-.event-card h2,
-.review-card h2 {
+.event-card h2 {
   margin: 3px 0 0;
   font-size: 1.15rem;
 }
@@ -1103,11 +1084,6 @@ a {
 
 .trial-banner {
   margin: 0 0 16px;
-}
-
-.status.review {
-  color: #8c2915;
-  background: #ffede8;
 }
 
 .importance.high {
@@ -1212,35 +1188,6 @@ a {
   border-radius: 8px;
   color: var(--muted);
   background: var(--white);
-}
-
-.review-card {
-  display: grid;
-  gap: 14px;
-}
-
-.review-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 9px;
-  align-items: start;
-}
-
-.review-actions > form {
-  display: flex;
-  gap: 7px;
-}
-
-.review-actions details {
-  width: 100%;
-}
-
-.review-actions summary {
-  cursor: pointer;
-}
-
-.form-grid.compact {
-  margin-top: 12px;
 }
 
 .health-list {
@@ -1738,8 +1685,7 @@ td {
   border-top: 1px solid var(--line);
 }
 
-.score-explanation summary,
-.review-more summary {
+.score-explanation summary {
   cursor: pointer;
   font-weight: 600;
 }
@@ -1808,30 +1754,6 @@ td {
 .hidden-events > summary {
   cursor: pointer;
   font-weight: 600;
-}
-
-.review-comparison {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.review-version {
-  display: grid;
-  gap: 5px;
-  padding: 14px;
-  border-radius: 8px;
-  background: var(--surface);
-}
-
-.review-version span:not(.eyebrow) {
-  color: var(--muted);
-  font-size: 0.86rem;
-}
-
-.review-more {
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
 }
 
 .portfolio-list,
@@ -2316,8 +2238,7 @@ td {
   .form-grid,
   .calendar-layout,
   .filter-bar,
-  .hotel-cards,
-  .review-comparison {
+  .hotel-cards {
     grid-template-columns: 1fr;
   }
 

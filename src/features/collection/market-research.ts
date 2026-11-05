@@ -27,9 +27,8 @@ export function storedLongRangeResult(state: LongRangeState | null, now = new Da
   const leads = state?.leads ?? [];
   return {
     source: "claude", requests: 0, usage: { invalidDateEditions: leads.flatMap((lead) => lead.editions).filter((event) => !validEventRange(event)).length },
-    candidates: uniqueEvidenceEditions(leads.filter((lead) => lead.outcome !== "conflict").flatMap((lead) => lead.editions)
+    candidates: uniqueEvidenceEditions(leads.flatMap((lead) => lead.editions)
       .filter((event) => validEventRange(event) && eventLocalDate(event.endAt) >= now.toISOString().slice(0, 10) && eventLocalDate(event.startAt) <= horizon.end)),
-    quarantinedProviderEventIds: leads.flatMap((lead) => lead.editions.filter((event) => lead.outcome === "conflict" || !validEventRange(event)).map((event) => event.providerEventId)),
   };
 }
 

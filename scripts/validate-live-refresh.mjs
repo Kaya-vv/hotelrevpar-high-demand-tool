@@ -97,7 +97,7 @@ try {
     const ids = new Map(market.rows.map(row => [row.event.id, randomUUID()]));
     checked(await db.from("events").insert(market.rows.map(row => ({ ...row.event, id: ids.get(row.event.id) }))));
     checked(await db.from("event_sources").insert(market.rows.flatMap(row => row.sources.map(source => ({ ...source, event_id: ids.get(row.event.id) })))));
-    checked(await db.from("account_events").insert(market.rows.map(row => ({ account_id: accountId, event_id: ids.get(row.event.id), state: row.decision.state ?? "needs_review", review_reason: row.decision.review_reason }))));
+    checked(await db.from("account_events").insert(market.rows.map(row => ({ account_id: accountId, event_id: ids.get(row.event.id), state: row.decision.state ?? "needs_review" }))));
     checked(await db.from("account_event_areas").insert([...ids.values()].map(event_id => ({ account_id: accountId, collection_area_id: area.id, event_id }))));
     setup = { accountId, hotel, area, capturedAt: recordings.startedAt, source: "Original September 7 production rows; no researched additions" };
     save("setup.json", setup);

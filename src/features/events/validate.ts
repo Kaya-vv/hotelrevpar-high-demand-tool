@@ -6,10 +6,6 @@ import type {
 } from "./types";
 
 type Window = { start: string; end: string };
-type Conflict = Extract<
-  ValidationReason,
-  "duplicate_uncertain" | "date_conflict" | "changed_date" | "changed_venue"
-> | null;
 
 const yearAheadProviders: Partial<Record<EventCandidate["provider"], true>> = {
   claude: true, openholidays: true, rijksoverheid: true, ticketmaster: true, footballdata: true,
@@ -25,7 +21,8 @@ export function validationWindow(provider: EventCandidate["provider"], nearTerm:
 export function validateCandidate(
   candidate: EventCandidate,
   window: Window,
-  conflict: Conflict
+  /** Matches an existing event too closely to publish beside it, too loosely to merge into it. */
+  uncertainDuplicate = false,
 ): ValidationOutcome {
   const certainty =
     candidate.sourceState === "predicted" ? "provisional" : candidate.certainty;
@@ -62,7 +59,7 @@ export function validateCandidate(
   ) {
     return result("excluded", "out_of_window");
   }
-  if (conflict) return result("needs_review", conflict);
+  if (uncertainDuplicate) return result("excluded", "duplicate_uncertain");
   if (
     (candidate.provider === "claude" || candidate.provider === "predicthq") &&
     candidate.certainty === "confirmed" &&

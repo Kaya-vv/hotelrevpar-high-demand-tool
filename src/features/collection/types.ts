@@ -21,6 +21,5 @@ export type SourceResult = {
   refreshedUrls?: string[];
   funnel?: DiscoveryFunnel;
   error?: string;
-  quarantinedProviderEventIds?: string[];
 };
 

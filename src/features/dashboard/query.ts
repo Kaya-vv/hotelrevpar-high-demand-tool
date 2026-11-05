@@ -1,14 +1,13 @@
 import { createServerClient } from "@/lib/supabase/server";
 import { fetchAllRows, fetchInBatches, fetchPagedInBatches } from "@/lib/supabase/fetch-in-batches";
 import { trialHorizonEnd } from "@/features/accounts/trial";
-import { gradedDemand, isPublishableDemand, publishableReviewEventIds } from "@/features/events/importance";
+import { gradedDemand, isPublishableDemand } from "@/features/events/importance";
 import { eventLocalDate } from "@/features/events/normalize";
 
 export type DashboardHotel = {
   id: string;
   name: string;
   nextDemand: { id: string; title: string; startAt: string; importance: "High" | "Peak" } | null;
-  reviewCount: number;
   updatedAt: string | null;
   status: "idle" | "running" | "attention";
 };
@@ -41,13 +40,13 @@ export async function getDashboardData(accountId: string): Promise<DashboardHote
   const eventIds = [...new Set(links.map(link => link.event_id))];
   const [decisions, scores] = await Promise.all([
     fetchInBatches(eventIds, ids => supabase.from("account_events").select("event_id, state, override_title, override_start_at, override_end_at")
-      .eq("account_id", accountId).in("event_id", ids).in("state", ["active", "needs_review"])),
+      .eq("account_id", accountId).in("event_id", ids).eq("state", "active")),
     fetchPagedInBatches(eventIds, (ids, from, to) => supabase.from("hotel_event_scores").select("hotel_id, event_id, suggested_importance, importance_override, impact_basis")
       .in("hotel_id", hotelIds).in("event_id", ids).order("hotel_id").order("event_id").range(from, to)),
   ]);
   const runs = areas.flatMap(area => area.collection_runs.map(run => ({ ...run, collection_area_id: area.id })));
   const activeJobs = areas.flatMap(area => area.collection_jobs.map(job => ({ ...job, collection_area_id: area.id })));
-  const activeEventIds = decisions.filter((decision) => decision.state === "active").map((decision) => decision.event_id);
+  const activeEventIds = decisions.map((decision) => decision.event_id);
   const events = activeEventIds.length
     ? await fetchInBatches(activeEventIds, (ids) => supabase
         .from("events")
@@ -68,7 +67,6 @@ export async function getDashboardData(accountId: string): Promise<DashboardHote
       start_at: startAt,
     }] as const];
   }));
-  const reviewIds = new Set(decisions.filter((decision) => decision.state === "needs_review").map((decision) => decision.event_id));
   const areaByHotel = new Map(areas.map((area) => [area.hotel_id!, area.id]));
   const linksByArea = new Map<string, Set<string>>();
   links.forEach((link) => {
@@ -81,7 +79,6 @@ export async function getDashboardData(accountId: string): Promise<DashboardHote
     const areaId = areaByHotel.get(hotel.id);
     const linkedIds = areaId ? linksByArea.get(areaId) ?? new Set<string>() : new Set<string>();
     const hotelScores = scores.filter((score) => score.hotel_id === hotel.id);
-    const reviewableIds = publishableReviewEventIds(decisions, hotelScores);
     const nextScore = hotelScores
       .filter((score) => linkedIds.has(score.event_id) && eventById.has(score.event_id))
       .map((score) => ({ ...score, ...gradedDemand(score) }))
@@ -99,7 +96,6 @@ export async function getDashboardData(accountId: string): Promise<DashboardHote
         startAt: nextEvent.start_at,
         importance: nextScore!.importance as "High" | "Peak",
       } : null,
-      reviewCount: [...linkedIds].filter((eventId) => reviewIds.has(eventId) && reviewableIds.has(eventId)).length,
       updatedAt: latestRun?.finished_at ?? null,
       status: latestJob?.status === "queued" || latestJob?.status === "running"
         ? "running"

@@ -12,7 +12,7 @@ import {
   demandLabels,
   publishableDemandLevels,
 } from "@/features/events/importance";
-import { overrideImportance } from "@/features/review/actions";
+import { overrideImportance } from "@/features/calendar/manual-level-actions";
 import { trialHorizonEnd } from "@/features/accounts/trial";
 import { requireViewedAccount } from "@/features/workspace/viewed-account";
 

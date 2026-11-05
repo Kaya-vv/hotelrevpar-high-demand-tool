@@ -68,15 +68,12 @@ describe("hotel refresh and shared research separation", () => {
     await expect(readAndEnqueueResearch(context, "retry-run")).rejects.toThrow("Queue unavailable");
   });
 
-  it("keeps conflicted editions quarantined while retaining confirmed editions after a fetch failure", () => {
+  it("publishes the editions of research stored as a date conflict", () => {
     const lead = structuredClone(fixture.lead);
-    const state = { version: 2003, discoveredAt: null, leads: [lead] } as Parameters<typeof storedLongRangeResult>[0];
-    lead.outcome = "failed";
-    expect(storedLongRangeResult(state).candidates).toHaveLength(1);
-    lead.outcome = "conflict";
-    const result = storedLongRangeResult(state);
-    expect(result.candidates).toEqual([]);
-    expect(result.quarantinedProviderEventIds).toEqual([lead.editions[0].providerEventId]);
+    // Before 2026-11 a conflict hid every edition the lead held until an operator released it.
+    (lead as { outcome: string }).outcome = "conflict";
+    const result = storedLongRangeResult({ version: 2003, discoveredAt: null, leads: [lead] } as Parameters<typeof storedLongRangeResult>[0]);
+    expect(result.candidates.map((event) => event.providerEventId)).toEqual([lead.editions[0].providerEventId]);
   });
 
   it("withholds a reversed date range without blocking valid siblings or deleting research", () => {
@@ -84,7 +81,6 @@ describe("hotel refresh and shared research separation", () => {
     lead.editions.push({ ...lead.editions[0], providerEventId: "invalid-range", startAt: "2027-04-11T22:00:00Z", endAt: "2027-04-11T21:59:59Z" });
     const result = storedLongRangeResult({ version: 2003, discoveredAt: null, leads: [lead] } as Parameters<typeof storedLongRangeResult>[0]);
     expect(result.candidates).toHaveLength(1);
-    expect(result.quarantinedProviderEventIds).toEqual(["invalid-range"]);
     expect(result.usage.invalidDateEditions).toBe(1);
     expect(lead.editions).toHaveLength(2);
   });

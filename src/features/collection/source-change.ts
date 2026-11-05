@@ -3,15 +3,10 @@ import type { EventCandidate } from "@/features/events/types";
 
 type ExistingSource = { extractedStartAt: string; extractedLocation: string | null };
 
-export function sourceChange(existing: ExistingSource, candidate: EventCandidate) {
-  if (new Date(existing.extractedStartAt).getTime() !== new Date(candidate.startAt).getTime()) {
-    return { conflict: "changed_date" as const, preserveCanonical: true as const };
-  }
-  const location = candidate.venue ?? candidate.regionScope;
-  if (normalizeText(existing.extractedLocation ?? "") !== normalizeText(location ?? "")) {
-    return { conflict: "changed_venue" as const, preserveCanonical: true as const };
-  }
-  return { conflict: null, preserveCanonical: false as const };
+/** The same source now reports another start time or place than it did last time. */
+export function sourceChanged(existing: ExistingSource, candidate: EventCandidate) {
+  return new Date(existing.extractedStartAt).getTime() !== new Date(candidate.startAt).getTime()
+    || normalizeText(existing.extractedLocation ?? "") !== normalizeText(candidate.venue ?? candidate.regionScope ?? "");
 }
 
 export function shouldRefreshCanonical(candidate: EventCandidate) {
@@ -22,4 +17,3 @@ export function shouldRefreshCanonical(candidate: EventCandidate) {
     candidate.primarySourceConfirmed
   );
 }
-

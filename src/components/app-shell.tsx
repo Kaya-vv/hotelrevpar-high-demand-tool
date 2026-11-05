@@ -17,7 +17,6 @@ type AppShellProps = {
   isPlatformAdmin?: boolean;
   hotels: SelectableHotel[];
   selectedHotelId: string | null;
-  reviewCount: number;
   batch: BatchProgress | null;
   collectionStatus?: CollectionStatus;
   /** The platform administrator is looking at a subscriber's hotel: reading only. */
@@ -34,7 +33,6 @@ export function AppShell({
   isPlatformAdmin = false,
   hotels,
   selectedHotelId,
-  reviewCount,
   batch,
   collectionStatus,
   viewingOtherAccount = false,
@@ -59,7 +57,6 @@ export function AppShell({
         </Link>
         <AppNavigation
           isPlatformAdmin={isPlatformAdmin}
-          reviewCount={reviewCount}
         />
       </aside>
       <main className="workspace">

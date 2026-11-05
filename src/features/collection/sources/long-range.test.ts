@@ -3,6 +3,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { collectLongRange, isAggregatorUrl, nextCheckAt, repairObservedUrl, selectDueLeads, selectResolveLeads } from "./long-range";
 import { collectClaudeCalendar } from "./claude";
 import { LongRangeLeaseError, longRangeMarketKey, type Lead, type LongRangeState, type LongRangeStore } from "../long-range-store";
+import { eventLocalDate } from "../../events/normalize";
 
 const now = new Date("2026-09-05T12:00:00Z");
 const input = { pageFetcher: false as const, start: "2026-12-05", end: "2027-12-31", location: "Eindhoven", radiusKm: 25, now, model: "claude-sonnet-5" };
@@ -222,20 +223,20 @@ describe("long-range source leads", () => {
     memory.state().announcementSearchAt = at;
       const result = await run(new Date(at));
       expect(result.candidates).toHaveLength(2);
-      expect(result.quarantinedProviderEventIds).toEqual([]);
       expect(memory.state().leads[0].outcome).toBe("confirmed");
     }
   });
 
-  it("preserves both pieces of evidence for an end-date-only conflict", async () => {
+  it("follows an end-date-only change and keeps both readings in the research", async () => {
     const create = vi.fn().mockResolvedValueOnce(response([event()])).mockResolvedValue(response([event({ endAt: "2027-05-24" })]));
     const memory = memoryStore(warmState());
     await collectLongRange({ ...input, store: memory.store, client: client(create) });
     memory.state().discoveredAt = "2026-12-05T12:00:00Z";
     memory.state().announcementSearchAt = "2026-12-05T12:00:00Z";
     const result = await collectLongRange({ ...input, now: new Date("2026-12-05T12:00:00Z"), store: memory.store, client: client(create) });
-    expect(result.candidates).toEqual([]);
-    expect(memory.state().leads[0].editions.map((item) => item.endAt.slice(0, 10))).toEqual(["2027-05-23", "2027-05-24"]);
+    // Same edition identity, so publishing the new end updates the one stored event.
+    expect(result.candidates.map((item) => [eventLocalDate(item.endAt), item.sourceState])).toEqual([["2027-05-24", "active"]]);
+    expect(memory.state().leads[0].editions.map((item) => [eventLocalDate(item.endAt), item.sourceState])).toEqual([["2027-05-23", "removed"], ["2027-05-24", "active"]]);
   });
 
   it("allows only one market sweep at a time and reuses its result after release", async () => {
@@ -364,17 +365,18 @@ describe("long-range source leads", () => {
     const memory = memoryStore(warmState([lead({ title: "Ahoy agenda", kind: "calendar", origin: "venue_list" })]));
     const result = await collectLongRange({ ...input, store: memory.store, client: client(create) });
     expect(result.candidates.map((item) => item.title).sort()).toEqual(["Ashton Brothers Kerstcircus", "Rotterdam Trade Expo"]);
-    expect(result.quarantinedProviderEventIds).toEqual([]);
     expect(memory.state().leads[0]).toMatchObject({ outcome: "confirmed" });
     expect(memory.state().leads[0].editions).toHaveLength(3);
   });
 
-  it("re-reads and republishes a listed calendar stored with the old sticky conflict", async () => {
+  it("republishes every edition an event lead stored under the old sticky conflict", async () => {
+    // Production: a Freek Vonk lead had read the AFAS Live agenda; its own two dates disagreed and
+    // Take That, Eurovision in Concert and the rest of that agenda stayed hidden for weeks.
     const create = vi.fn().mockResolvedValue(response([event()]));
-    const memory = memoryStore(warmState([lead({ title: "Ahoy agenda", kind: "calendar", origin: "venue_list" })]));
+    const memory = memoryStore(warmState());
     await collectLongRange({ ...input, store: memory.store, client: client(create) });
-    const stuck = memory.state().leads.find((item) => item.kind === "calendar")!;
-    stuck.outcome = "conflict";
+    const stuck = memory.state().leads[0];
+    (stuck as { outcome: string }).outcome = "conflict";
     stuck.pendingStage = "conflict";
     stuck.notes = ["Conflicting dates retained for review; editions withheld."];
     stuck.checkedAt = now.toISOString();
@@ -383,12 +385,11 @@ describe("long-range source leads", () => {
     memory.state().announcementSearchAt = "2026-09-12T12:00:00.000Z";
 
     const recovered = await collectLongRange({ ...input, now: new Date("2026-09-12T12:00:00Z"), store: memory.store, client: client(create) });
-    const calendar = memory.state().leads.find((item) => item.key === stuck.key)!;
+    const released = memory.state().leads.find((item) => item.key === stuck.key)!;
     expect(recovered.candidates).toContainEqual(expect.objectContaining({ title: "Annual Arts Week" }));
-    expect(recovered.quarantinedProviderEventIds).toEqual([]);
-    expect(calendar).toMatchObject({ outcome: "confirmed", checkedAt: "2026-09-12T12:00:00.000Z" });
-    expect(calendar.pendingStage).not.toBe("conflict");
-    expect(calendar.notes).not.toContain("Conflicting dates retained for review; editions withheld.");
+    expect(released).toMatchObject({ outcome: "confirmed", checkedAt: "2026-09-12T12:00:00.000Z" });
+    expect(released.pendingStage).not.toBe("conflict");
+    expect(released.notes).not.toContain("Conflicting dates retained for review; editions withheld.");
   });
 
   it("caches the shared instruction prefix and keeps the lead-specific text last", async () => {
@@ -448,7 +449,7 @@ describe("long-range source leads", () => {
     expect(result.candidates.map((item) => item.title)).toEqual(["First tournament", "Second tournament"]);
   });
 
-  it("preserves conflicting announced dates and withholds the editions", async () => {
+  it("follows an event's own page to its new date and withdraws the old one", async () => {
     const create = vi.fn().mockResolvedValueOnce(response([event()])).mockResolvedValueOnce(response([event({ startAt: "2027-05-22" })]));
     const memory = memoryStore(warmState());
     await collectLongRange({ ...input, store: memory.store, client: client(create) });
@@ -457,12 +458,12 @@ describe("long-range source leads", () => {
     memory.state().discoveredAt = "2026-12-10T12:00:00Z";
     memory.state().announcementSearchAt = "2026-12-10T12:00:00Z";
     const changed = await collectLongRange({ ...input, now: new Date("2026-12-10T12:00:00Z"), store: memory.store, client: client(create) });
-    expect(memory.state().leads[0].outcome).toBe("conflict");
-    expect(memory.state().leads[0].editions).toHaveLength(2);
-    expect(changed.candidates).toEqual([]);
-    expect(changed.error).toContain("Conflicting dates");
-    expect(memory.state().leads[0].pendingStage).toBe("conflict");
-    expect(changed.quarantinedProviderEventIds).toHaveLength(2);
+    expect(memory.state().leads[0].outcome).toBe("confirmed");
+    expect(changed.error).toBeUndefined();
+    expect(changed.candidates.map((item) => [eventLocalDate(item.startAt), item.sourceState]).sort()).toEqual([
+      ["2027-05-21", "removed"],
+      ["2027-05-22", "active"],
+    ]);
   });
 
   it("re-reads listed venue agendas weekly, settled confirmed leads quarterly and unfinished work monthly", () => {

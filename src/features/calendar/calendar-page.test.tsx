@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import CalendarPage from "@/app/(protected)/calendar/page";
 import type { CalendarEvent } from "./calendar-view";
-import { overrideImportance } from "@/features/review/actions";
+import { overrideImportance } from "@/features/calendar/manual-level-actions";
 
 const { getCalendarData, viewedAccount } = vi.hoisted(() => ({
   getCalendarData: vi.fn(async () => ({
@@ -15,7 +15,7 @@ const { getCalendarData, viewedAccount } = vi.hoisted(() => ({
 }));
 vi.mock("./query", () => ({ getCalendarData }));
 vi.mock("@/features/workspace/viewed-account", () => ({ requireViewedAccount: async () => viewedAccount }));
-vi.mock("@/features/review/actions", () => ({ overrideImportance: vi.fn() }));
+vi.mock("@/features/calendar/manual-level-actions", () => ({ overrideImportance: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 function withMediumEvent() {

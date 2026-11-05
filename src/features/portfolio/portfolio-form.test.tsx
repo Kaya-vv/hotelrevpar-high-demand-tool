@@ -22,7 +22,6 @@ describe("PortfolioForm", () => {
   it("shows the hotel list before its settings and hides source controls from operators", () => {
     render(<PortfolioForm hotels={[hotel]} isPlatformAdmin={false} />);
     expect(screen.getByRole("heading", { name: "MATCH" })).toBeInTheDocument();
-    expect(screen.queryByText("Datakwaliteit")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Bewerken" }));
     expect(
       screen.getByDisplayValue("Vestdijk 47, 5611CA Eindhoven")
@@ -51,7 +50,6 @@ describe("PortfolioForm", () => {
               startAt: "2027-10-16T10:00:00+02:00",
               importance: "High",
             },
-            reviewCount: 2,
             updatedAt: "2027-09-01T10:00:00Z",
             status: "idle",
           },

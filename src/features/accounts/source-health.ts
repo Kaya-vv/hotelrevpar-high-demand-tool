@@ -45,7 +45,6 @@ export type SourceHealth = {
   discoveryMode: "fresh" | "reused" | "deferred" | null;
   unresolvedLocations: number;
   drops: DiscoveryDrop[];
-  reviews: number;
   requests: number;
   inputTokens: number;
   outputTokens: number;
@@ -75,7 +74,6 @@ type RawSource = {
   found?: number;
   unique?: number;
   duplicates?: number;
-  reviews?: number;
   requests?: number;
   usage?: Record<string, number>;
   funnel?: DiscoveryFunnel;
@@ -177,7 +175,6 @@ export async function getSourceHealthRuns(page = 0, runId?: string): Promise<Sou
           discoveryMode: source?.discoveryMode ?? null,
           unresolvedLocations: source?.missingLocation ?? 0,
           drops: source?.funnel?.drops ?? [],
-          reviews: source?.reviews ?? 0,
           requests: source?.requests ?? 0,
           inputTokens: recordedUsage?.inputTokens ?? source?.usage?.inputTokens ?? 0,
           outputTokens: recordedUsage?.outputTokens ?? source?.usage?.outputTokens ?? 0,

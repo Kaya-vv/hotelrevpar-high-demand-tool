@@ -134,7 +134,7 @@ try {
   if (start.rows.length) {
     checked(await db.from('events').insert(start.rows.map(row => ({ ...row.event, id: ids.get(row.event.id) }))));
     checked(await db.from('event_sources').insert(start.rows.flatMap(row => row.sources.map(source => ({ ...source, event_id: ids.get(row.event.id) })))));
-    checked(await db.from('account_events').insert(start.rows.map(row => ({ account_id: accountId, event_id: ids.get(row.event.id), state: row.decision.state ?? 'needs_review', review_reason: row.decision.review_reason }))));
+    checked(await db.from('account_events').insert(start.rows.map(row => ({ account_id: accountId, event_id: ids.get(row.event.id), state: row.decision.state ?? 'needs_review' }))));
     checked(await db.from('account_event_areas').insert([...ids.values()].map(event_id => ({ account_id: accountId, collection_area_id: area.id, event_id }))));
   }
   save('setup.json', { accountId, hotel, area, startingRows: start.rows.length, startingCapturedAt: start.capturedAt ?? null });
@@ -177,7 +177,7 @@ try {
     const stage = decision?.state !== 'active' ? 'validation' : event.latitude === null || event.longitude === null ? 'location'
       : !eventSources.some(row => row.primary_source_confirmed && row.source_state === 'active') ? 'verification'
         : !assessment ? 'not_recalculated' : ['supported', 'probable'].includes(assessment.relevance) ? 'calendar_filter' : 'demand';
-    traces.push({ title: event.title, start: event.start_at, end: event.end_at, stage, reason: decision?.review_reason ?? assessment?.reasons.join('; ') });
+    traces.push({ title: event.title, start: event.start_at, end: event.end_at, stage, reason: decision?.automation_reason ?? assessment?.reasons.join('; ') });
   }
   save('events-snapshot.json', { events, decisions, sources, scores, traces });
   // The answer key is read only after the whole pipeline has returned.

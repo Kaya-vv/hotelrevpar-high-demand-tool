@@ -15,7 +15,7 @@ export function needsDemandResearch(event: EventCandidate) {
 
 /** Compatibility repair is independent from normal weekly monitoring. */
 export function scheduleEvidenceRepair(lead: Lead, now: string, end: string) {
-  if (lead.outcome === "conflict" || lead.repair?.version === REPAIR_VERSION) return;
+  if (lead.repair?.version === REPAIR_VERSION) return;
   const incomplete = lead.editions.some((event) => eventLocalDate(event.endAt) >= now.slice(0, 10)
     && eventLocalDate(event.startAt) <= end
     && event.sourceState === "active"

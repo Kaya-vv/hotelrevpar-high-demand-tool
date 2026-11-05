@@ -354,23 +354,23 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
   const version = LONG_RANGE_VERSION * 1000 + CLAUDE_ASSESSMENT_VERSION;
   const stored = await store.load(key);
   const state = stored ?? { version, discoveredAt: null, leads: [] };
-  // Ahoy listed the same show as both one performance and its full run. A calendar is a hub for
-  // independent entries, so the old page-level conflict must not keep its entire agenda withheld.
-  let recoveredCalendarConflict = false;
-  for (const lead of state.leads) if (lead.kind === "calendar" && lead.outcome === "conflict") {
+  // Research used to withhold every edition a lead's page listed once two of its dates disagreed,
+  // waiting for an operator nobody assigned: Take That and Eurovision in Concert sat hidden behind
+  // a Freek Vonk lead that had read the AFAS Live agenda. Publish what stored conflicts withheld.
+  let recoveredConflict = false;
+  for (const lead of state.leads) if ((lead.outcome as string) === "conflict") {
     lead.outcome = lead.editions.length ? "confirmed" : "pending";
-    if (lead.pendingStage === "conflict") delete lead.pendingStage;
+    if (lead.pendingStage === "conflict" && lead.editions.every(validEventRange)) delete lead.pendingStage;
     lead.notes = lead.notes.filter((note) => note !== "Conflicting dates retained for review; editions withheld.");
-    recoveredCalendarConflict = true;
+    recoveredConflict = true;
   }
   // Multiple hotels share this market. A later hotel or a redelivery must not
   // reopen finished research and buy the same work again between checks.
   if (state.research?.completedAt && !state.cycle?.pending && state.version === version
     && !searchDue(state.research.requestedAt, now, ANNOUNCEMENT_SEARCH_DAYS)) {
-    if (recoveredCalendarConflict) await store.save(key, state);
+    if (recoveredConflict) await store.save(key, state);
     return { source: "claude", requests: 0, usage: { researchReused: 1 },
-      candidates: uniqueEvidenceEditions(state.leads.filter((lead) => lead.outcome !== "conflict")
-        .flatMap((lead) => lead.editions).filter((event) => validEventRange(event)
+      candidates: uniqueEvidenceEditions(state.leads.flatMap((lead) => lead.editions).filter((event) => validEventRange(event)
           && eventLocalDate(event.endAt) >= now.toISOString().slice(0, 10)
           && eventLocalDate(event.startAt) <= input.end)) };
   }
@@ -561,8 +561,8 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
   if (input.calendars) for (const lead of state.leads) if (lead.origin === "venue_list" && !listed.has(lead.key)) delete lead.origin;
 
   for (const lead of state.leads) {
-    if (lead.kind === "event" && lead.outcome !== "conflict") for (const edition of lead.editions) {
-      if (labelKey(edition.title) === labelKey(lead.title)) rememberEdition(lead, { start: eventLocalDate(edition.startAt), end: eventLocalDate(edition.endAt), sourceUrl: edition.sourceUrl! });
+    if (lead.kind === "event") for (const edition of lead.editions) {
+      if (edition.sourceState === "active" && labelKey(edition.title) === labelKey(lead.title)) rememberEdition(lead, { start: eventLocalDate(edition.startAt), end: eventLocalDate(edition.endAt), sourceUrl: edition.sourceUrl! });
     }
     lead.projections = projectEditions(lead, input.start, input.end);
   }
@@ -900,23 +900,30 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
       lead.pendingStage = editions.some((event) => !event.evidence?.dateText) ? "extraction" : editions.some((event) => !event.evidence?.locationText || (event.evidence.locationScope === "venue" && !event.evidence.venueAddress && !event.evidence.previousEditionLocation)) ? "location" : demandStage(lead, editions);
       const ownEdition = editions.find((edition) => labelKey(edition.title) === labelKey(lead.title));
       const sameEditionDates = (a: EventCandidate, b: EventCandidate) => labelKey(a.title) === labelKey(b.title) && eventLocalDate(a.startAt) === eventLocalDate(b.startAt) && eventLocalDate(a.endAt) === eventLocalDate(b.endAt);
-      // A single event's owner page changing its dates is ambiguous. A venue or organiser agenda
-      // can legitimately list one performance and the full run, so it must never conflict as a unit.
-      // Exact repeats and an additional edition alongside the stored one are not date changes.
-      const conflicts = lead.kind === "event" ? editions.filter((event) => !/concert|performance|theatre|musical/i.test(event.category) && !lead.editions.some((old) => sameEditionDates(old, event))
-        && lead.editions.some((old) => labelKey(old.title) === labelKey(event.title)
-          && eventLocalDate(old.startAt).slice(0, 4) === eventLocalDate(event.startAt).slice(0, 4)
-          && !editions.some((current) => sameEditionDates(old, current)))) : [];
-      lead.outcome = conflicts.length || lead.outcome === "conflict" ? "conflict" : "confirmed";
-      if (lead.outcome !== "conflict" && lead.kind === "event" && ownEdition) {
+      // The event's own page now gives one different date this year: the event moved, and the
+      // newest reading wins. The old date is withdrawn so a calendar never shows both. Nothing else
+      // counts as a move: an agenda's other titles, a concert or theatre run, or several own dates
+      // listed at once can all be partial lists, and withholding them hid events nobody released.
+      const ownEditions = editions.filter((edition) => labelKey(edition.title) === labelKey(lead.title));
+      const moved = lead.kind === "event" && ownEditions.length === 1 && !/concert|performance|theatre|musical/i.test(ownEditions[0].category)
+        ? lead.editions.filter((old) => old.sourceState === "active" && labelKey(old.title) === labelKey(lead.title)
+          && eventLocalDate(old.startAt).slice(0, 4) === eventLocalDate(ownEditions[0].startAt).slice(0, 4)
+          && !sameEditionDates(old, ownEditions[0]))
+        : [];
+      lead.outcome = "confirmed";
+      if (lead.kind === "event" && ownEdition) {
         rememberEdition(lead, { start: eventLocalDate(ownEdition.startAt), end: eventLocalDate(ownEdition.endAt), sourceUrl: ownEdition.sourceUrl! });
         lead.officialPage = ownEdition.sourceUrl!;
         lead.url = lead.officialPage;
         lead.officialPages = [...new Set([lead.officialPage, ...(lead.officialPages ?? [])])].slice(0, 4);
       }
-      // Provider IDs omit end dates; preserve both pieces of evidence for an end-only conflict.
-      lead.editions = [...new Map([...lead.editions, ...editions].map((event) => [`${event.providerEventId}|${eventLocalDate(event.endAt)}`, event])).values()];
-      if (conflicts.length) lead.notes.push("Conflicting dates retained for review; editions withheld.");
+      // Dated now, so this withdrawal outranks an older copy of the same edition on another lead.
+      const withdrawn = lead.editions.map((old) => moved.includes(old)
+        ? { ...old, sourceState: "removed" as const, ...(old.evidence ? { evidence: { ...old.evidence, checkedAt } } : {}) }
+        : old);
+      // Provider IDs omit end dates; preserve both pieces of evidence for an end-only change.
+      lead.editions = [...new Map([...withdrawn, ...editions].map((event) => [`${event.providerEventId}|${eventLocalDate(event.endAt)}`, event])).values()];
+      if (moved.length) lead.notes.push(`Own page moved the event to ${eventLocalDate(ownEditions[0].startAt)}; withdrew ${moved.map((old) => eventLocalDate(old.startAt)).join(", ")}.`);
       // The next announcement window is measured from the latest edition we now know about.
       const latest = lead.editions.map((event) => eventLocalDate(event.endAt)).sort().at(-1);
       if (latest && (!lead.anchor || lead.anchor < latest)) lead.anchor = latest;
@@ -932,11 +939,11 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
     return editions.length > 0;
   };
   const finalize = (lead: Lead) => {
-    if ((lead.kind === "event" && lead.outcome === "conflict") || lead.editions.some((event) => !validEventRange(event))) lead.pendingStage = "conflict";
+    if (lead.editions.some((event) => !validEventRange(event))) lead.pendingStage = "conflict";
     if (lead.repair) lead.repair.attemptedAt = now.toISOString();
     lead.checkedAt = now.toISOString();
     lead.nextCheck = nextCheckAt(lead, now);
-    if (lead.outcome === "failed" || lead.outcome === "conflict") failures.push(`${lead.title}: ${lead.notes.join(" ")}`);
+    if (lead.outcome === "failed") failures.push(`${lead.title}: ${lead.notes.join(" ")}`);
     if (!lead.editions.length) drops.push({ title: lead.title, stage: "verification", reason: `Langetermijnonderzoek ${input.start} t/m ${input.end}: ${lead.notes.join(" ")}` });
   };
 
@@ -1103,7 +1110,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
     if (input.onProgress) {
       state.locations ??= {};
       const resolve = createLocationResolver({ venue: input.geocode ?? geocodeEventVenue, city: input.geocodeCity, cache: state.locations });
-      const editions = state.leads.filter(lead => lead.outcome !== "conflict").flatMap(lead => lead.editions);
+      const editions = state.leads.flatMap(lead => lead.editions);
       for (const event of editions.filter(event => event.primarySourceConfirmed && validEventRange(event))) await resolve(event);
       state.publicationPending = true;
       await store.save(key, state);
@@ -1115,7 +1122,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
     pending = [...next, ...deepCandidates.splice(0)];
   }
   if (repairFirst && !workCycle.pending) await discover();
-  const candidates = uniqueEvidenceEditions(state.leads.filter((lead) => lead.outcome !== "conflict").flatMap((lead) => lead.editions)
+  const candidates = uniqueEvidenceEditions(state.leads.flatMap((lead) => lead.editions)
     .filter((event) => eventLocalDate(event.startAt) <= input.end && eventLocalDate(event.endAt) >= now.toISOString().slice(0, 10)));
   const unresolved = state.leads.filter((lead) => lead.outcome !== "confirmed").length;
   state.locations ??= {};
@@ -1142,17 +1149,17 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
         nextCheck: needsDemandResearch(candidate) ? now.toISOString() : later(now, LEAD_RECHECK_DAYS) };
       state.leads.push(series);
     }
-    if (series && candidate.sourceUrl && series.outcome !== "conflict") {
+    if (series && candidate.sourceUrl) {
       // An edition another lead's page supplied is due its own audience search next cycle, not
       // at the series' monthly recheck: Revolution Calling's lead would have waited until 29 Oct.
       if (!series.editions.some((edition) => edition.providerEventId === candidate.providerEventId) && series.nextCheck > now.toISOString()) series.nextCheck = now.toISOString();
       series.editions = [...new Map([...series.editions, candidate].map((event) => [`${event.providerEventId}|${eventLocalDate(event.endAt)}`, event])).values()];
-      rememberEdition(series, { start: eventLocalDate(candidate.startAt), end: eventLocalDate(candidate.endAt), sourceUrl: candidate.sourceUrl });
+      if (candidate.sourceState === "active") rememberEdition(series, { start: eventLocalDate(candidate.startAt), end: eventLocalDate(candidate.endAt), sourceUrl: candidate.sourceUrl });
       series.projections = projectEditions(series, input.start, input.end);
     }
   }
   for (const lead of state.leads) {
-    if ((lead.kind === "event" && lead.outcome === "conflict") || lead.editions.some((event) => !validEventRange(event))) lead.pendingStage = "conflict";
+    if (lead.editions.some((event) => !validEventRange(event))) lead.pendingStage = "conflict";
     else if (lead.editions.some((event) => !event.evidence?.dateText)) lead.pendingStage = "extraction";
     else if (lead.editions.some((event) => event.latitude === null || event.longitude === null)) lead.pendingStage = "location";
     else if (demandStage(lead, lead.editions) === "demand") lead.pendingStage = "demand";
@@ -1197,7 +1204,6 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
     await store.save(key, state);
   }
   return { source: "claude", candidates: candidates.filter(validEventRange), requests, usage,
-    quarantinedProviderEventIds: state.leads.flatMap((lead) => lead.editions.filter((event) => (lead.kind === "event" && lead.outcome === "conflict") || !validEventRange(event)).map((event) => event.providerEventId)),
     ...(failures.length ? { error: [...new Set(failures)].join("; ") } : {}),
     funnel: { namesDiscovered: discovered, urlsResolved: [...due, ...toResolve].filter((lead) => lead.url).length, pagesVerified: verifiedPages, demandAccepted: usage.demandAccepted, drops },
   };

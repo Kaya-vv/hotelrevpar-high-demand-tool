@@ -84,7 +84,6 @@ export function SourceHealthDetails({ run }: { run: SourceHealthRun }) {
               <th>Geverifieerd</th>
               <th>Vraag beoordeeld</th>
               <th>Zonder locatie</th>
-              <th>Review</th>
               <th>Requests</th>
               <th>AI-calls</th>
               <th>Input</th>
@@ -113,7 +112,6 @@ export function SourceHealthDetails({ run }: { run: SourceHealthRun }) {
                 <td>{source.pagesVerified}</td>
                 <td>{source.demandAccepted}</td>
                 <td>{source.unresolvedLocations}</td>
-                <td>{source.reviews}</td>
                 <td>{source.requests}</td>
                 <td>{source.usageCalls}</td>
                 <td>{source.inputTokens}</td>

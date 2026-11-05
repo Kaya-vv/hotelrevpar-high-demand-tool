@@ -177,30 +177,3 @@ export function hotelCalendarVisibility(input: {
     shownLevel: low ? "Low" as const : null,
   };
 }
-
-export function publishableReviewEventIds(
-  decisions: { event_id: string; state: string }[],
-  scores: {
-    event_id: string;
-    suggested_importance: string;
-    importance_override: string | null;
-    impact_basis: string;
-    demand_assessment?: unknown;
-  }[],
-) {
-  const reviewIds = new Set(
-    decisions
-      .filter((decision) => decision.state === "needs_review")
-      .map((decision) => decision.event_id),
-  );
-  return new Set(
-    scores
-      .filter((score) => {
-        if (!reviewIds.has(score.event_id)) return false;
-        if (hasHotelDemand(readDemandAssessment(score.demand_assessment))) return true;
-        const graded = gradedDemand(score);
-        return isPublishableDemand(graded.importance, graded.impactBasis);
-      })
-      .map((score) => score.event_id),
-  );
-}

@@ -12,8 +12,8 @@ While the administrator looks at someone else's hotel:
   **Terug naar mijn eigen hotels**.
 - The calendar shows a yellow line: nothing can be changed here.
 - The hand-set demand level ("Inschatting aanpassen") is not offered.
-- Hotels, Exporteren and Datakwaliteit show a short explanation instead of data, because those
-  pages save things and only work with the administrator's own hotels.
+- Hotels and Exporteren show a short explanation instead of data, because those pages save
+  things and only work with the administrator's own hotels.
 
 Subscribers see no change at all: they still only see their own account and hotels.
 

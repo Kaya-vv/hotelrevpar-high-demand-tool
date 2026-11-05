@@ -17,7 +17,6 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
       isPlatformAdmin={account.role === "platform_admin"}
       hotels={hotels}
       selectedHotelId={workspace.selectedHotelId}
-      reviewCount={account.viewingOtherAccount ? 0 : workspace.reviewCount}
       batch={workspace.batch}
       collectionStatus={workspace.collectionStatus}
       viewingOtherAccount={account.viewingOtherAccount}
