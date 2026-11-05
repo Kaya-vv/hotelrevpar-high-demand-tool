@@ -59,6 +59,24 @@ describe("venue capacity", () => {
     expect(isArenaShow("music", "TOTO", "Summerstage, Stadspark Groningen")).toBe(true);
     expect(isArenaShow("concert", "Noah Kahan", "Stadspark")).toBe(false);
   });
+
+  it("judges Malieveld and Zuiderpark concerts by name, never their circus or theatre", () => {
+    // Muse drew 67,000 on the Malieveld; 2027 dates are reserved but no names are out yet.
+    expect(isArenaShow("concert", "Muse", "Malieveld")).toBe(true);
+    expect(isArenaShow("Festival", "Bevrijdingsfestival Den Haag", "Malieveld Den Haag")).toBe(true);
+    expect(isArenaShow("circus", "Groot Kerstcircus Den Haag", "Malieveld")).toBe(false);
+    // Alanis Morissette drew 20,000 in the Zuiderpark in July 2026.
+    expect(isArenaShow("concert", "Alanis Morissette", "Zuiderpark Den Haag")).toBe(true);
+    for (const venue of ["Zuiderparktheater", "Sportcampus Zuiderpark", "Zuiderpark, Rotterdam", "Zuiderpark"])
+      expect(knownVenueCapacity(venue)).toBeNull();
+  });
+
+  it("gives RTM Stage shows the hall's size, not the Ahoy arena's next door", () => {
+    // Production spellings. Papa Roach and 28 other RTM Stage shows read as an unknown venue.
+    for (const venue of ["RTM Stage", "RTM Stage - Rotterdam Ahoy", "Rotterdam Ahoy — RTM Stage", "Rotterdam Ahoy, RTM Stage", "RTM Stage, Rotterdam Ahoy"])
+      expect(knownVenueCapacity(venue)).toBe(7_842);
+    expect(isArenaShow("concert", "Papa Roach", "Rotterdam Ahoy, RTM Stage")).toBe(false);
+  });
 });
 
 describe("impact basis", () => {

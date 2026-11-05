@@ -46,6 +46,19 @@ const venueCapacities: Record<string, number> = {
   // municipality's 2026 permit planning (CVDR739336) lists its Summerstage nights at 25,000 to
   // 35,000 visitors, so the lowest is recorded. A bare "Stadspark" is left out: many cities have one.
   "stadspark groningen": 25_000,
+  // Open-air field where Muse drew about 67,000 in 2023 (Den Haag FM, 9 July 2026), with concert
+  // dates reserved for July to September 2027. It also holds the free Bevrijdingsfestival, the
+  // kermis and circus tents, so it is recorded below the stadium line: every show is judged by
+  // name, as at Summerstage, instead of every festival on the grass becoming High.
+  malieveld: 25_000,
+  // The concert field of Zomer in het Zuiderpark: Alanis Morissette drew 20,000 on 7 July 2026
+  // (Omroep West). Only the city-qualified name: Rotterdam has a Zuiderpark too, and the same
+  // park holds the small Zuiderparktheater and the Sportcampus.
+  "zuiderpark den haag": 20_000,
+  // Ahoy's second concert hall, up to 7,842 visitors (ahoy.nl). Feeds write it three ways.
+  "rtm stage": 7_842,
+  "rtm stage - rotterdam ahoy": 7_842,
+  "rotterdam ahoy — rtm stage": 7_842,
 };
 
 /**
@@ -76,19 +89,24 @@ const normalize = (value: string) =>
 const trailingQualifier =
   /\s+(stadium|stadion|amsterdam|rotterdam|utrecht|eindhoven|arnhem|groningen|nijmegen|tilburg|den haag)$/;
 
+/** A listing naming both a complex and the hall inside it ("Rotterdam Ahoy, RTM Stage") gets the hall. */
 export function knownVenueCapacity(venue: string | null): number | null {
   if (!venue) return null;
+  let smallest: number | null = null;
   for (const segment of normalize(venue).split(",")) {
     let name = segment.trim();
     while (name) {
       const capacity = venueCapacities[name];
-      if (capacity) return capacity;
+      if (capacity) {
+        smallest = Math.min(smallest ?? capacity, capacity);
+        break;
+      }
       const stripped = name.replace(trailingQualifier, "");
       if (stripped === name) break;
       name = stripped;
     }
   }
-  return null;
+  return smallest;
 }
 
 /** A stadium concert fills hotels on its own; a few a year, mostly acts that draw fans nationwide. */
