@@ -40,4 +40,13 @@ describe("public API events handler", () => {
     }
     expect(client.from).not.toHaveBeenCalled();
   });
+
+  it("reads the key whatever the letter case of the Bearer scheme", async () => {
+    const client = failingClient();
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+    const response = await createEventsHandler({ client: () => client })(new Request(url, { headers: { authorization: `bearer ${validKey}` } }));
+    expect(response.status).toBe(500);
+    expect(client.from).toHaveBeenCalledWith("api_keys");
+    errorLog.mockRestore();
+  });
 });

@@ -27,7 +27,8 @@ const unauthorized = () => apiError(401, "unauthorized", "Missing, invalid or re
  * active-account and unexpired-trial checks it makes are repeated here.
  */
 export async function authenticateApiKey(authorization: string | null, client: AdminClient, now = new Date()): Promise<ApiAccount | ApiError> {
-  const token = /^Bearer (\S+)$/.exec(authorization ?? "")?.[1];
+  // HTTP auth schemes are case-insensitive (RFC 9110), so `bearer` must work as well as `Bearer`.
+  const token = /^Bearer +(\S+)$/i.exec(authorization ?? "")?.[1];
   if (!token || !API_KEY_PATTERN.test(token)) return unauthorized();
 
   const { data: key, error } = await client.from("api_keys")
