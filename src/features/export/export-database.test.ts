@@ -128,6 +128,13 @@ describe.skipIf(!enabled)("export transactions in isolated local Supabase", () =
     await expect(createExport(request, deps(id))).resolves.toBeTruthy();
     expect(await snapshotOf(id)).toMatchObject({ importance: "High", manual: false });
   });
+  it("exports a hand-set High level even when the size check found the event not relevant", async () => {
+    const id = await addEvent("Medium");
+    // Vesting Hotel Naarden, November 2026: set to High by hand, judged outside the radius.
+    check(await db.from("hotel_event_scores").update({ importance_override: "High", impact_basis: "ai_assessment", demand_assessment: { version: 1, relevance: "not_relevant", magnitude: null, confidence: "low", reasons: ["Buiten het ingestelde onderzoeksgebied."], sourceUrls: [] } }).eq("hotel_id", hotelId).eq("event_id", id));
+    await expect(createExport(input(id), deps(id))).resolves.toBeTruthy();
+    expect(await snapshotOf(id)).toMatchObject({ importance: "High", manual: false });
+  });
   it("denies foreign accounts and direct client commits", async () => {
     const id = await addEvent(); const request = input(id);
     const args = { p_account: accountId, p_user: otherUserId, p_key: request.requestKey, p_hash: "x", p_selection: request as Json, p_workbook: "eA==", p_items: [] };
