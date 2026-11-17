@@ -5,8 +5,10 @@ import { loginDestination } from "@/lib/auth/login-destination";
 export function isPublicPath(pathname: string) {
   // These routes carry their own secret or signature instead of a login session; /api/v1/ carries
   // the account's own API key and must answer with JSON, never a redirect to the login page.
+  // /api/health reveals only up/down, for the outside uptime monitor.
   return pathname === "/login" || pathname === "/api/cron/collect" || pathname === "/api/queues/collect-hotel"
-    || pathname === "/api/webhooks/plugandpay" || pathname === "/api/cron/trials" || pathname.startsWith("/api/v1/");
+    || pathname === "/api/webhooks/plugandpay" || pathname === "/api/cron/trials" || pathname === "/api/health"
+    || pathname.startsWith("/api/v1/");
 }
 
 // The address users knew before app.demandradar.nl. Pages move to the current address, but /api

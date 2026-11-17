@@ -11,6 +11,7 @@ describe("isPublicPath", () => {
     expect(isPublicPath("/api/webhooks/plugandpay")).toBe(true);
     expect(isPublicPath("/api/v1/events")).toBe(true);
     expect(isPublicPath("/api/v1/hotels")).toBe(true);
+    expect(isPublicPath("/api/health")).toBe(true);
     expect(isPublicPath("/api/export")).toBe(false);
   });
 });
