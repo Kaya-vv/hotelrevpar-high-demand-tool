@@ -2,15 +2,25 @@ import { distanceKm } from "@/features/events/distance";
 import type { EventCandidate } from "@/features/events/types";
 import { normalizeText } from "@/features/events/normalize";
 
-/** Only an unambiguous BAG town match may represent an evidenced host city. */
+/**
+ * Only an unambiguous BAG town match may represent an evidenced host city. A hotel in a town whose
+ * name repeats searches as "Den Hoorn (Texel)": the part in brackets picks the municipality or
+ * province. The register's own names such as "Bergen (NH)" still match as they are.
+ */
 export async function geocodeCity(city: string, fetcher: typeof fetch = fetch) {
   try {
+    const qualified = /^(.*\S)\s*\(([^)]+)\)$/.exec(city);
     const url = new URL("https://api.pdok.nl/bzk/locatieserver/search/v3_1/free");
-    url.search = new URLSearchParams({ q: city, fq: "type:woonplaats", rows: "10", fl: "woonplaatsnaam,centroide_ll" }).toString();
+    url.search = new URLSearchParams({ q: qualified?.[1] ?? city, fq: "type:woonplaats", rows: "10", fl: "woonplaatsnaam,gemeentenaam,provincienaam,centroide_ll" }).toString();
     const response = await fetcher(url, { signal: AbortSignal.timeout(10_000) });
     if (!response.ok) return null;
-    const data = await response.json() as { response: { docs: { woonplaatsnaam: string; centroide_ll: string }[] } };
-    const matches = data.response.docs.filter((item) => normalizeText(item.woonplaatsnaam) === normalizeText(city));
+    const data = await response.json() as { response: { docs: { woonplaatsnaam: string; gemeentenaam?: string; provincienaam?: string; centroide_ll: string }[] } };
+    let matches = data.response.docs.filter((item) => normalizeText(item.woonplaatsnaam) === normalizeText(city));
+    if (!matches.length && qualified) {
+      const [, name, qualifier] = qualified;
+      matches = data.response.docs.filter((item) => normalizeText(item.woonplaatsnaam) === normalizeText(name)
+        && [item.gemeentenaam, item.provincienaam].some((value) => value && normalizeText(value) === normalizeText(qualifier)));
+    }
     if (matches.length !== 1) return null;
     const point = /^POINT\(([-\d.]+) ([-\d.]+)\)$/.exec(matches[0].centroide_ll);
     if (!point) return null;

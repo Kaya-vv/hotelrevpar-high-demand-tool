@@ -15,6 +15,8 @@ const addressResult = z.object({
     toevoeging: z.string().nullable(),
     postcode: z.string().min(1).nullable(),
     woonplaats_naam: z.string().min(1),
+    bronhouder_naam: z.string().min(1).optional(),
+    provincie_naam: z.string().min(1).optional(),
   }),
   geometry: z.object({
     type: z.literal("Point"),
@@ -51,6 +53,30 @@ export async function searchAddresses(query: string, fetcher: typeof fetch = fet
   }
 }
 
+/**
+ * The town name the searches use. Dutch town names repeat: "Den Hoorn" is a village on Texel and
+ * one near Delft. A Texel hotel added in November 2026 had its year-ahead search run around
+ * Delft, Rotterdam and The Hague, and received almost no events. A repeated name carries its
+ * municipality, "Den Hoorn (Texel)", or its province where the municipality has the same name.
+ * The register already names some itself ("Bergen (NH)"); those stay as they are.
+ */
+async function searchLocality(town: string, municipality: string | undefined, province: string | undefined, fetcher: typeof fetch) {
+  const qualifier = municipality && municipality.toLowerCase() !== town.toLowerCase() ? municipality : province;
+  if (!qualifier) return town;
+  try {
+    const url = new URL("https://api.pdok.nl/bzk/locatieserver/search/v3_1/free");
+    url.search = new URLSearchParams({ q: `woonplaatsnaam:"${town}"`, fq: "type:woonplaats", rows: "20", fl: "woonplaatsnaam" }).toString();
+    const response = await fetcher(url, { signal: AbortSignal.timeout(10_000) });
+    if (!response.ok) return town;
+    const data = await response.json() as { response: { docs: { woonplaatsnaam: string }[] } };
+    const namesakes = data.response.docs.filter((doc) => doc.woonplaatsnaam.toLowerCase() === town.toLowerCase()).length;
+    return namesakes > 1 ? `${town} (${qualifier})` : town;
+  } catch {
+    // The address itself is verified; a failed namesake check must not block saving the hotel.
+    return town;
+  }
+}
+
 export async function getAddressById(id: string, fetcher: typeof fetch = fetch) {
   try {
     const itemUrl = `https://api.pdok.nl/kadaster/bag/ogc/v2/collections/adres/items/${encodeURIComponent(id)}?f=json`;
@@ -63,7 +89,7 @@ export async function getAddressById(id: string, fetcher: typeof fetch = fetch) 
 
     return {
       address: `${properties.openbare_ruimte_naam} ${properties.huisnummer}${suffix}, ${[properties.postcode, properties.woonplaats_naam].filter(Boolean).join(" ")}`,
-      locality: properties.woonplaats_naam,
+      locality: await searchLocality(properties.woonplaats_naam, properties.bronhouder_naam, properties.provincie_naam, fetcher),
       latitude: geometry.coordinates[1],
       longitude: geometry.coordinates[0],
     };

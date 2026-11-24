@@ -77,6 +77,22 @@ describe("PDOK addresses", () => {
     });
   });
 
+  // Production 2026-11-24: a Texel hotel in Den Hoorn searched the Den Hoorn near Delft.
+  it("names the municipality when the town's name repeats elsewhere", async () => {
+    const address = (town: string, municipality: string) => response({
+      properties: { openbare_ruimte_naam: "Hoge Achterom", huisnummer: "5", huisletter: null, toevoeging: null, postcode: "1797AZ",
+        woonplaats_naam: town, bronhouder_naam: municipality, provincie_naam: "Noord-Holland" },
+      geometry: { type: "Point", coordinates: [4.75, 53.03] },
+    });
+    const namesakes = (...towns: string[]) => response({ response: { docs: towns.map((woonplaatsnaam) => ({ woonplaatsnaam })) } });
+
+    const texel = vi.fn().mockResolvedValueOnce(address("Den Hoorn", "Texel")).mockResolvedValueOnce(namesakes("Den Hoorn", "Den Hoorn", "Wehe-den Hoorn"));
+    expect((await getAddressById("texel", texel)).locality).toBe("Den Hoorn (Texel)");
+
+    const zaandam = vi.fn().mockResolvedValueOnce(address("Zaandam", "Zaanstad")).mockResolvedValueOnce(namesakes("Zaandam"));
+    expect((await getAddressById("zaandam", zaandam)).locality).toBe("Zaandam");
+  });
+
   it("rejects an invalid selected address", async () => {
     const fetcher = vi.fn().mockResolvedValue(new Response("Not found", { status: 404 }));
 

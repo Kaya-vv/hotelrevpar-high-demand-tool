@@ -762,6 +762,16 @@ describe("coordinated long-range research", () => {
     expect(await geocodeCity("Bergen", fetcher)).toBeNull();
   });
 
+  it("places a repeated town name by the municipality in brackets", async () => {
+    const docs = [
+      { woonplaatsnaam: "Den Hoorn", gemeentenaam: "Midden-Delfland", provincienaam: "Zuid-Holland", centroide_ll: "POINT(4.35 52.0)" },
+      { woonplaatsnaam: "Den Hoorn", gemeentenaam: "Texel", provincienaam: "Noord-Holland", centroide_ll: "POINT(4.75 53.03)" },
+    ];
+    const fetcher = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ response: { docs } }) });
+    expect(await geocodeCity("Den Hoorn (Texel)", fetcher)).toEqual({ latitude: 53.03, longitude: 4.75 });
+    expect(await geocodeCity("Den Hoorn", fetcher)).toBeNull();
+  });
+
   it("places a hall where its ticketed shows agree, in the named town only", async () => {
     const amsterdam = async () => ({ latitude: 52.373, longitude: 4.904 });
     const listing = (venue: string, latitude: number, longitude: number, count = 1) => Array.from({ length: count }, () => ({ venue, latitude, longitude }));

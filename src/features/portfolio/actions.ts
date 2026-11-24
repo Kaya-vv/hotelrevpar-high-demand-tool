@@ -57,7 +57,7 @@ export async function saveHotel(
     ? await supabase
         .from("hotels")
         .select(
-          "id, pdok_address_id, demand_radius_km, holiday_region, enabled_sources"
+          "id, pdok_address_id, demand_radius_km, holiday_region, enabled_sources, search_location"
         )
         .eq("id", requestedId).is("archived_at", null)
         .eq("account_id", account.accountId)
@@ -151,6 +151,8 @@ export async function saveHotel(
   const requiresCollection =
     !existing ||
     existing.pdok_address_id !== hotel.addressId ||
+    // Same address, new search name: a repeated town name now carries its municipality.
+    existing.search_location !== row.search_location ||
     existing.demand_radius_km !== hotel.demandRadiusKm ||
     existing.holiday_region !== hotel.holidayRegion ||
     existing.enabled_sources.join("|") !== hotel.enabledSources.join("|");
