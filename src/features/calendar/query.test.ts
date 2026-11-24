@@ -39,7 +39,7 @@ function addHoliday(
   category: "public_holiday" | "school_holiday",
   start: string,
   end = start,
-  regionScope: "north" | "middle" | "south" | null = null,
+  regionScope: "north" | "middle" | "south" | "national" | null = null,
 ) {
   addEvent(id, start, end);
   Object.assign(tables.events.at(-1)!, { category, region_scope: regionScope });
@@ -131,6 +131,7 @@ describe("calendar query periods", () => {
     addHoliday("koningsdag", "public_holiday", "2027-04-27");
     addHoliday("meivakantie-midden", "school_holiday", "2027-04-24", "2027-05-02", "middle");
     addHoliday("meivakantie-zuid", "school_holiday", "2027-04-24", "2027-05-02", "south");
+    addHoliday("meivakantie", "school_holiday", "2027-04-24", "2027-05-02", "national");
 
     const result = await getCalendarData("account", {
       month: "2027-04",
@@ -141,6 +142,7 @@ describe("calendar query periods", () => {
 
     expect(result.events.map((event) => event.id)).toEqual(["concert"]);
     expect(result.contextMarkers).toEqual([
+      expect.objectContaining({ id: "meivakantie", category: "school_holiday" }),
       expect.objectContaining({ id: "meivakantie-midden", category: "school_holiday" }),
       expect.objectContaining({ id: "koningsdag", category: "public_holiday" }),
     ]);

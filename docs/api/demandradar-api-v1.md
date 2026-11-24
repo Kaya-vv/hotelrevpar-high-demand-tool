@@ -179,7 +179,7 @@ Voorbeeldantwoord met drie events, opgehaald op 3 november 2026.
 | `title` | string | Titel, inclusief eventuele aanpassing door de klant. |
 | `start_date` | string `JJJJ-MM-DD` | Eerste dag, Nederlandse lokale datum. |
 | `end_date` | string `JJJJ-MM-DD` | Laatste dag (inbegrepen), Nederlandse lokale datum. Bij een eendaags event gelijk aan `start_date`. |
-| `category` | string | Soort event, vrije tekst (bijvoorbeeld `festival`, `sports`, `Design fair`). Geen vaste lijst. |
+| `category` | string | Soort event, vrije tekst (bijvoorbeeld `festival`, `sports`, `Design fair`). Geen vaste lijst. Feestdagen hebben altijd `public_holiday`, schoolvakanties altijd `school_holiday`. |
 | `venue` | string of `null` | Locatie, inclusief eventuele aanpassing door de klant. |
 | `city` | string of `null` | Plaats van het event, als die bekend is. |
 | `latitude`, `longitude` | number of `null` | Coördinaten van de locatie. Is de precieze locatie niet bekend, dan is dit het centrum van de plaats. |
@@ -205,6 +205,8 @@ Elk event heeft per hotel één niveau: het niveau dat de klant in de DemandRada
 - **High en Peak**: events met aangetoonde grote hotelvraag. Ook als de klant het niveau zelf op High of Peak heeft gezet.
 - **Medium**: events die waarschijnlijk extra hotelgasten trekken, maar waarvan de omvang nog niet bekend is.
 - **Low**: de rest van de bevestigde events in de omgeving, zoals voorstellingen en exposities. Deze events worden standaard niet meegestuurd. De klant kan ervoor kiezen ze wel op te nemen.
+
+Feestdagen en schoolvakanties staan er alleen in als de klant dat onder *Exporteren* heeft aangezet. Dat zijn twee aparte keuzes, standaard allebei uit, omdat RevControl zelf ook feestdagen kent. Staat het aan, dan komen ze mee met niveau `High`, ongeacht de niveaukeuze hierboven. Een schoolvakantie komt alleen mee voor hotels in de regio van die vakantie (noord, midden of zuid). Kerst- en meivakantie gelden voor heel Nederland.
 
 ## 7. Afspraken over de lijst
 

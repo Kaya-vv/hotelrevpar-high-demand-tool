@@ -372,6 +372,8 @@ export type Database = {
           active: boolean;
           created_at: string;
           export_min_level: "Low" | "Medium" | "High";
+          export_public_holidays: boolean;
+          export_school_holidays: boolean;
           hotel_limit: number | null;
           id: string;
           name: string;
@@ -383,6 +385,8 @@ export type Database = {
           active?: boolean;
           created_at?: string;
           export_min_level?: "Low" | "Medium" | "High";
+          export_public_holidays?: boolean;
+          export_school_holidays?: boolean;
           hotel_limit?: number | null;
           id?: string;
           name: string;
@@ -394,6 +398,8 @@ export type Database = {
           active?: boolean;
           created_at?: string;
           export_min_level?: "Low" | "Medium" | "High";
+          export_public_holidays?: boolean;
+          export_school_holidays?: boolean;
           hotel_limit?: number | null;
           id?: string;
           name?: string;

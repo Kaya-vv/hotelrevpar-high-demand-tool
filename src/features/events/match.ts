@@ -1,6 +1,7 @@
 import { meaningfulTokens, normalizeText, performanceTime, perPerformanceCategory } from "./normalize";
 import type { NormalizedCandidate } from "./types";
 import { distanceKm } from "./distance";
+import { holidaysConflict } from "./holidays";
 
 type ExistingEvent = NormalizedCandidate & { id: string };
 export type Match =
@@ -126,15 +127,16 @@ function placesConflict(left: NormalizedCandidate, right: NormalizedCandidate) {
 
 export function classifyMatch(
   candidate: NormalizedCandidate,
-  existing: ExistingEvent[]
+  allExisting: ExistingEvent[]
 ): Match {
-  const providerMatch = existing.find(
+  const providerMatch = allExisting.find(
     (event) =>
       event.provider === candidate.provider &&
       event.providerEventId === candidate.providerEventId
   );
   if (providerMatch) return { kind: "exact", eventId: providerMatch.id };
 
+  const existing = allExisting.filter((event) => !holidaysConflict(event, candidate));
   const identityMatch = existing.find(
     (event) => event.normalizedIdentity === candidate.normalizedIdentity
   );

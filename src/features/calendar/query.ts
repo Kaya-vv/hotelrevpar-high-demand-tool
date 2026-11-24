@@ -3,6 +3,7 @@ import { calendarBounds, type OverviewPeriod } from "./navigation";
 import { calendarExportDates } from "@/features/export/history";
 import { readEventEvidence } from "@/features/events/evidence";
 import { eventLocalDate } from "@/features/events/normalize";
+import { holidayApplies, isHoliday } from "@/features/events/holidays";
 import { createServerClient } from "@/lib/supabase/server";
 import {
   gradedDemand,
@@ -99,11 +100,8 @@ export async function getCalendarData(
   );
   const selectedHotel = hotels.find((hotel) => hotel.id === selectedHotelId);
   const contextMarkers: CalendarContextMarker[] = scopedEvents
-    .filter((event) =>
-      event.category === "public_holiday"
-      || (event.category === "school_holiday"
-        && Boolean(selectedHotel?.holiday_region)
-        && event.region_scope === selectedHotel?.holiday_region))
+    .filter((event) => isHoliday(event.category)
+      && holidayApplies({ category: event.category, regionScope: event.region_scope }, selectedHotel?.holiday_region ?? null))
     .filter((event) => event.certainty === "confirmed" && !decisionsByEvent.get(event.id)?.merged_into_event_id)
     .map((event) => {
       const decision = decisionsByEvent.get(event.id);
@@ -115,9 +113,7 @@ export async function getCalendarData(
         endAt: decision?.override_end_at ?? event.end_at,
       };
     });
-  const demandEvents = scopedEvents.filter(
-    (event) => event.category !== "public_holiday" && event.category !== "school_holiday",
-  );
+  const demandEvents = scopedEvents.filter((event) => !isHoliday(event.category));
   const eventIds = demandEvents.map((event) => event.id);
   const scores =
     eventIds.length && selectedHotelId

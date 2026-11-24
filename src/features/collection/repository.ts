@@ -1,6 +1,7 @@
 import { readEventEvidence } from "@/features/events/evidence";
 import { distanceKm } from "@/features/events/distance";
 import { normalizeCandidate, eventLocalDate } from "@/features/events/normalize";
+import { holidaysConflict } from "@/features/events/holidays";
 import { fetchAllRows, fetchInBatches, fetchPagedInBatches } from "@/lib/supabase/fetch-in-batches";
 import { classifyMatch } from "@/features/events/match";
 import { gradedDemand, isPublishableDemand } from "@/features/events/importance";
@@ -524,7 +525,11 @@ export function createCollectionRepository(): CollectionRepository {
       }
       const normalized = normalizeCandidate(candidate);
 
-      let eventId: string | null = existingSource?.event_id ?? null;
+      // A school holiday saved onto another region's row (same name and dates, see
+      // `holidaysConflict`) gets a row of its own; the other region keeps its row.
+      const misattached = Boolean(existingSource && holidaysConflict(
+        { category: existingSource.events.category, regionScope: existingSource.events.region_scope }, candidate));
+      let eventId: string | null = misattached ? null : existingSource?.event_id ?? null;
       let uncertainDuplicate = false;
       let preserveCanonical = automatedSourceStates.has(candidate.sourceState);
       let duplicate = false;
@@ -574,7 +579,7 @@ export function createCollectionRepository(): CollectionRepository {
         const orderedNearby = nearbyRows.toSorted((left, right) =>
           left.created_at.localeCompare(right.created_at) || left.id.localeCompare(right.id)
         );
-        const currentEvent = orderedNearby.find((event) => event.id === existingSource?.event_id);
+        const currentEvent = misattached ? undefined : orderedNearby.find((event) => event.id === existingSource?.event_id);
         const nearby = orderedNearby.filter((event) => event.id !== existingSource?.event_id);
         const confirmedIds = new Set(
           (nearby.length

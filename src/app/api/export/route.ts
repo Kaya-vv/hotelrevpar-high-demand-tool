@@ -4,7 +4,7 @@ import { createServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Json } from "@/lib/supabase/database.types";
 import { createExport, ExportConflict, exportRequestSchema } from "@/features/export/create";
-import { loadExportMinLevel } from "@/features/export/min-level";
+import { loadExportSettings } from "@/features/export/min-level";
 import { exportRange, loadExportEvents } from "@/features/export/query";
 
 export const runtime = "nodejs";
@@ -16,7 +16,7 @@ export async function POST(request: Request) {
   const supabase = await createServerClient();
   try {
     const id = await createExport(parsed.data, {
-      minLevel: await loadExportMinLevel(supabase, accountId),
+      minLevel: (await loadExportSettings(supabase, accountId)).minLevel,
       find: async (key) => {
         const { data, error } = await supabase.from("export_batches").select("id, request_hash").eq("account_id", accountId).eq("request_key", key).maybeSingle();
         if (error) throw error;

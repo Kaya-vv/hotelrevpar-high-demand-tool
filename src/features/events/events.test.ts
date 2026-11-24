@@ -49,6 +49,16 @@ describe("event domain", () => {
     expect(classifyMatch(night("5", "music", "tm-sat-again"), [saturday]).kind).toBe("exact");
   });
 
+  // Production 2026-11-24: the north and the middle share the 2027 spring holiday dates. Matching
+  // on name and date merged them, so northern hotels had no spring holiday at all.
+  it("keeps one region's school holiday apart from another region's on the same dates", () => {
+    const holiday = (region: string) => normalizeCandidate({ ...candidate, provider: "rijksoverheid", providerEventId: `voorjaar:${region}`,
+      title: "Voorjaarsvakantie", category: "school_holiday", venue: null, latitude: null, longitude: null, regionScope: region,
+      startAt: "2027-02-20T00:00:00.000Z", endAt: "2027-02-28T00:00:00.000Z" });
+    expect(classifyMatch(holiday("north"), [{ ...holiday("middle"), providerEventId: "", id: "middle" }]).kind).toBe("new");
+    expect(classifyMatch(holiday("north"), [{ ...holiday("north"), providerEventId: "", id: "north" }]).kind).toBe("exact");
+  });
+
   it("uses supported aliases only with the same date and host location", () => {
     const first = normalizeCandidate({ ...candidate, title: "Arts and Design Week" });
     const alias = normalizeCandidate({ ...candidate, providerEventId: "alias", title: "ADW", evidence: { dateText: "Official dated edition", locationText: "Official host location", hostCity: "Eindhoven", locationScope: "citywide", continuous: true, majorCompetition: false, demand: [], aliases: ["Arts and Design Week"], dateSourceUrl: candidate.sourceUrl!, checkedAt: "2026-09-07" } });

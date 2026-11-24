@@ -1,6 +1,7 @@
 import { hasDemandEvidence, evidencedAudienceScale } from "./evidence";
 import { assessHotelDemand, hasHotelDemand } from "./demand-assessment";
 import { distanceKm } from "./distance";
+import { holidayApplies, isHoliday } from "./holidays";
 import { localParts } from "./normalize";
 import { knownVenueCapacity, stadiumConcertCapacity, venueCrowdIsAudience } from "./venues";
 import type { DemandScore, EventCandidate } from "./types";
@@ -128,10 +129,8 @@ export function scoreHotelEvent({
   let measuredDistance: number | null = null;
   let distancePoints = 0;
 
-  if (candidate.category === "public_holiday") {
-    distancePoints = 25;
-  } else if (candidate.category === "school_holiday") {
-    distancePoints = candidate.regionScope === hotel.holidayRegion ? 25 : 0;
+  if (isHoliday(candidate.category)) {
+    distancePoints = holidayApplies(candidate, hotel.holidayRegion) ? 25 : 0;
   } else if (candidate.latitude !== null && candidate.longitude !== null) {
     measuredDistance = distanceKm(
       hotel.latitude,

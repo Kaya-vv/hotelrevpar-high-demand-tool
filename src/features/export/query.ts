@@ -1,4 +1,5 @@
 import { eventLocalDate } from "@/features/events/normalize";
+import { holidayApplies, isHoliday } from "@/features/events/holidays";
 import { readDemandAssessment } from "@/features/events/demand-assessment";
 import { readEventEvidence } from "@/features/events/evidence";
 import { gradedDemand, hotelCalendarVisibility } from "@/features/events/importance";
@@ -38,11 +39,14 @@ export async function loadExportEvents(accountId: string, range: ExportRange, se
   const supabase = client ?? await createServerClient();
   const { data: hotels, error: hotelError } = await supabase
     .from("hotels")
-    .select("id, name, revcontrol_code, demand_radius_km")
+    .select("id, name, revcontrol_code, demand_radius_km, holiday_region")
     .eq("account_id", accountId).is("archived_at", null)
     .in("id", selectedHotelIds);
   if (hotelError) throw hotelError;
   if (hotels.length !== selectedHotelIds.length) throw new Error("Een geselecteerd hotel hoort niet bij dit account.");
+  const { data: account, error: accountError } = await supabase
+    .from("accounts").select("export_public_holidays, export_school_holidays").eq("id", accountId).single();
+  if (accountError) throw accountError;
   const { data: areas, error: areaError } = await supabase
     .from("collection_areas")
     .select("id, hotel_id, enabled_sources")
@@ -62,7 +66,7 @@ export async function loadExportEvents(accountId: string, range: ExportRange, se
     .eq("account_id", accountId).in("event_id", ids));
   const datesById = new Map(decisions.map(decision => [decision.event_id, decision]));
   const candidates = await fetchInBatches(decisions.map(decision => decision.event_id), ids => supabase.from("events")
-    .select("id, title, start_at, end_at, certainty, source_state, category").in("id", ids));
+    .select("id, title, start_at, end_at, certainty, source_state, category, region_scope").in("id", ids));
   const exportEvents = candidates.filter(event => {
     const decision = datesById.get(event.id);
     return includeInactive || (eventLocalDate(decision?.override_start_at ?? event.start_at) <= range.end
@@ -102,6 +106,16 @@ export async function loadExportEvents(accountId: string, range: ExportRange, se
       status: active ? "active" : event.source_state !== "active" ? event.source_state : decision?.state ?? "unavailable",
       hotels: scores.filter((score) => score.event_id === event.id).map((score) => {
         const hotel = hotels.find((hotel) => hotel.id === score.hotel_id)!;
+        const claim = claims.find((claim) => claim.event_id === event.id && claim.hotel_id === hotel.id);
+        const exportedAt = batches.find((batch) => batch.id === claim?.latest_batch_id)?.created_at ?? null;
+        // A holiday leaves DemandRadar on the account's own choice, always as High. It never
+        // earns a level of its own: the calendar shows it as context, not as an event.
+        if (isHoliday(event.category)) {
+          const chosen = event.category === "public_holiday" ? account.export_public_holidays : account.export_school_holidays;
+          const applies = holidayApplies({ category: event.category, regionScope: event.region_scope }, hotel.holiday_region);
+          return { id: hotel.id, code: hotelCodes.get(hotel.id)!, importance: "High" as const, impactBasis: "holiday",
+            available: active && chosen && applies && supported(event.id, hotel.id), announced: false, laag: false, holiday: true, exportedAt };
+        }
         const { importance, impactBasis, manualLevel } = gradedDemand(score);
         const visibility = hotelCalendarVisibility({
           active,
@@ -122,12 +136,11 @@ export async function loadExportEvents(accountId: string, range: ExportRange, se
         // Laag is the tier behind the calendar's "Ook Laag-events tonen". It leaves DemandRadar only
         // for accounts that export Laag too, and never when a source argues against hotel demand.
         const laagTier = visibility.visible && visibility.shownLevel === "Low";
-        const claim = claims.find((claim) => claim.event_id === event.id && claim.hotel_id === hotel.id);
         return { id: hotel.id, code: hotelCodes.get(hotel.id)!,
           importance: visibility.shownLevel ?? importance, impactBasis,
           available: visibility.visible && !laagTier, announced: visibility.announced,
           laag: laagTier && readDemandAssessment(score.demand_assessment)?.relevance !== "not_relevant",
-          exportedAt: batches.find((batch) => batch.id === claim?.latest_batch_id)?.created_at ?? null,
+          exportedAt,
         };
       }),
     };

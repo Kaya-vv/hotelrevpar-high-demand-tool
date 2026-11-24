@@ -16,6 +16,8 @@ export type ExportEvent = {
     available?: boolean;
     /** In the hidden Laag tier; exported only when the account sends Laag too. */
     laag?: boolean;
+    /** A public or school holiday, sent as High when the account chose to send holidays. */
+    holiday?: boolean;
     exportedAt?: string | null;
   }>;
 };

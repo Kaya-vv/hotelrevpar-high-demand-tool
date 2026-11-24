@@ -32,7 +32,7 @@ export function exportSnapshots(events: ExportEvent[]): ExportSnapshot[] {
     const level = exportedLevel(hotel, "Low") ?? hotel.importance;
     return { eventId: event.id, hotelId: hotel.id, title: event.title, startDate: eventLocalDate(event.startAt), endDate: eventLocalDate(event.endAt), hotelCode: hotel.code,
       // `manual`: sent because of the account's choice rather than an earned High or Peak grade.
-      importance: level === "Peak" ? "High" : level, status: event.status ?? "active", manual: Boolean(hotel.announced || hotel.laag) };
+      importance: level === "Peak" ? "High" : level, status: event.status ?? "active", manual: Boolean(hotel.announced || hotel.laag || hotel.holiday) };
   }));
 }
 
