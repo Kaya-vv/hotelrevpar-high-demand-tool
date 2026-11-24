@@ -62,8 +62,8 @@ beforeEach(() => {
   };
   addHoliday("Koningsdag", "public_holiday", "national", "2027-04-27");
   addHoliday("Meivakantie", "school_holiday", "national", "2027-04-24", "2027-05-02");
-  addHoliday("Zomervakantie noord", "school_holiday", "north", "2027-07-10", "2027-08-22");
-  addHoliday("Zomervakantie midden", "school_holiday", "middle", "2027-07-17", "2027-08-29");
+  addHoliday("Zomervakantie Noord", "school_holiday", "north", "2027-07-10", "2027-08-22");
+  addHoliday("Zomervakantie Midden", "school_holiday", "middle", "2027-07-17", "2027-08-29");
 });
 
 it("sends no holidays until the account chooses to", async () => {
@@ -75,10 +75,8 @@ it("sends public holidays as High to every hotel, even when the account sends on
   expect(await sent("High")).toEqual({ north: ["Koningsdag:High"], middle: ["Koningsdag:High"] });
 });
 
-it("sends a school holiday only to the hotels of its region, and a nationwide one to all", async () => {
+it("sends every region's school holiday to every hotel", async () => {
   tables.accounts[0].export_school_holidays = true;
-  expect(await sent()).toEqual({
-    north: ["Meivakantie:High", "Zomervakantie noord:High"],
-    middle: ["Meivakantie:High", "Zomervakantie midden:High"],
-  });
+  const all = ["Meivakantie:High", "Zomervakantie Midden:High", "Zomervakantie Noord:High"];
+  expect(await sent()).toEqual({ north: all, middle: all });
 });

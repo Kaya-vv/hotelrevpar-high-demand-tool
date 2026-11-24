@@ -283,7 +283,7 @@ describe("source adapters", () => {
     const result = await collectRijksoverheid({ ...window, fetcher });
     expect(result.requests).toBe(1);
     expect(result.candidates).toMatchObject([
-      { category: "school_holiday", regionScope: "south" },
+      { title: "Zomervakantie Zuid", category: "school_holiday", regionScope: "south" },
     ]);
   });
 

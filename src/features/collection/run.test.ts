@@ -466,7 +466,7 @@ describe("runCollection", () => {
     expect(repo.persistCandidate).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ title: "Updated title" }));
   });
 
-  it("keeps only the hotel's school-holiday region and events inside its radius", async () => {
+  it("keeps every region's school holiday, but only events inside the radius", async () => {
     const matchingHoliday = {
       ...candidate,
       providerEventId: "holiday-south",
@@ -504,8 +504,9 @@ describe("runCollection", () => {
       },
     );
 
-    expect(repo.persistCandidate).toHaveBeenCalledTimes(1);
+    expect(repo.persistCandidate).toHaveBeenCalledTimes(2);
     expect(repo.persistCandidate).toHaveBeenCalledWith(expect.anything(), matchingHoliday);
+    expect(repo.persistCandidate).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ providerEventId: "holiday-north" }));
   });
 
   it("treats a changed start time as a change", () => {

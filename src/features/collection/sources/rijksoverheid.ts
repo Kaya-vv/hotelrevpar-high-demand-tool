@@ -27,6 +27,14 @@ function regionScope(region: string) {
   return ({ noord: "north", midden: "middle", zuid: "south", "heel nederland": "national" } as Record<string, string>)[value] ?? value;
 }
 
+// Every hotel receives all three regions' holidays, so the name says whose it is. A nationwide
+// holiday (Christmas, May) keeps its plain name.
+const regionNames: Record<string, string> = { north: "Noord", middle: "Midden", south: "Zuid" };
+function title(type: string, region: string) {
+  const name = regionNames[regionScope(region)];
+  return name ? `${type.trim()} ${name}` : type.trim();
+}
+
 export async function collectRijksoverheid(
   input: CollectionWindow & { fetcher?: Fetcher },
 ): Promise<SourceResult> {
@@ -44,7 +52,7 @@ export async function collectRijksoverheid(
             provider: "rijksoverheid" as const,
             providerEventId: [record.id, vacation.type.trim(), region.region, region.startdate].join(":"),
             sourceUrl: record.canonical,
-            title: vacation.type.trim(),
+            title: title(vacation.type, region.region),
             category: "school_holiday",
             venue: null,
             latitude: null,

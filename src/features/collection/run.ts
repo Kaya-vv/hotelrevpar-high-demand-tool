@@ -2,7 +2,7 @@ import { longRangeWindow } from "./sources/claude";
 import { isAggregatorUrl } from "./sources/long-range";
 import { eventLocalDate, repairEventRange } from "@/features/events/normalize";
 import { distanceKm } from "@/features/events/distance";
-import { holidayApplies, isHoliday } from "@/features/events/holidays";
+import { isHoliday } from "@/features/events/holidays";
 import {
   applyDemandTriage,
   applyEvidenceReview,
@@ -448,7 +448,9 @@ function defaultSizeChecker(
 }
 
 function relevantToHotel(candidate: EventCandidate, hotel: HotelContext) {
-  if (isHoliday(candidate.category)) return holidayApplies(candidate, hotel.holidayRegion);
+  // Every hotel keeps all regions' school holidays: an account can send them all to RevControl.
+  // Its calendar and its score still count only its own region (`holidayApplies`).
+  if (isHoliday(candidate.category)) return true;
   if (candidate.latitude === null || candidate.longitude === null) return false;
   return (
     distanceKm(

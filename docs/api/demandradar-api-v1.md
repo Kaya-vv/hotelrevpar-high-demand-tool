@@ -206,7 +206,7 @@ Elk event heeft per hotel één niveau: het niveau dat de klant in de DemandRada
 - **Medium**: events die waarschijnlijk extra hotelgasten trekken, maar waarvan de omvang nog niet bekend is.
 - **Low**: de rest van de bevestigde events in de omgeving, zoals voorstellingen en exposities. Deze events worden standaard niet meegestuurd. De klant kan ervoor kiezen ze wel op te nemen.
 
-Feestdagen en schoolvakanties staan er alleen in als de klant dat onder *Exporteren* heeft aangezet. Dat zijn twee aparte keuzes, standaard allebei uit, omdat RevControl zelf ook feestdagen kent. Staat het aan, dan komen ze mee met niveau `High`, ongeacht de niveaukeuze hierboven. Een schoolvakantie komt alleen mee voor hotels in de regio van die vakantie (noord, midden of zuid). Kerst- en meivakantie gelden voor heel Nederland.
+Feestdagen en schoolvakanties staan er alleen in als de klant dat onder *Exporteren* heeft aangezet. Dat zijn twee aparte keuzes, standaard allebei uit, omdat RevControl zelf ook feestdagen kent. Staat het aan, dan komen ze mee met niveau `High`, ongeacht de niveaukeuze hierboven. Schoolvakanties komen voor alle drie de regio's mee, elk als eigen event met de regio in de titel (bijvoorbeeld `Zomervakantie Noord`). Kerst- en meivakantie gelden voor heel Nederland en hebben geen regio in de titel.
 
 ## 7. Afspraken over de lijst
 

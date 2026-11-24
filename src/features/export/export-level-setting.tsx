@@ -23,7 +23,7 @@ export function ExportLevelSetting({ current }: { current: ExportSettings }) {
       </label>
       <label className="export-level-option">
         <input type="checkbox" name="schoolHolidays" defaultChecked={current.schoolHolidays} />
-        <span><strong>Schoolvakanties meesturen</strong><br /><span className="muted">Alleen de vakanties van de regio van het hotel.</span></span>
+        <span><strong>Schoolvakanties meesturen</strong><br /><span className="muted">Alle regio’s, per regio apart: bijvoorbeeld Zomervakantie Noord, Midden en Zuid.</span></span>
       </label>
     </fieldset>
     <SubmitButton>Opslaan</SubmitButton>

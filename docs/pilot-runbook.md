@@ -61,7 +61,7 @@ Order matters: apply migration `202609240001_venue_calendars.sql` to the product
 
 Apply migration `202610160001_venue_searches.sql` before deploying the hall searches. Without the table every near-term search stops with a database error. Adding a hall makes the next near-term search for that city a fresh one instead of reusing another hotel's result.
 
-Apply migration `202611240001_export_holidays.sql` before deploying the holiday export. The export page and the API read the two new account choices (send public holidays, send school holidays); without the columns both fail. Both choices start off. A holiday that is sent always goes out as High.
+Apply migrations `202611240001_export_holidays.sql` and `202611240002_export_all_school_holidays.sql` before deploying the holiday export. The export page and the API read the two new account choices (send public holidays, send school holidays); without the columns both fail. Both choices start off. A holiday that is sent always goes out as High; school holidays go out for all three regions, with the region in the title.
 
 ## Email notification rollout
 
