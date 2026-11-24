@@ -10,7 +10,7 @@ import type { EventCandidate } from "@/features/events/types";
 import { fetchedDocumentText, evidenceInstructions, verifyEventEvidence, localDateBoundary, uniqueEvidenceEditions } from "@/features/events/evidence";
 import { eventLocalDate, validEventRange } from "@/features/events/normalize";
 import { researchBudget, estimatedCostUsd } from "../research-budget";
-import { geocodeCity, createLocationResolver } from "../research-location";
+import { geocodeCity, createLocationResolver, researchArea } from "../research-location";
 import { pageChunks, pageHash } from "../official-pages";
 import { normalizeText } from "@/features/events/normalize";
 import { searchDue, ANNOUNCEMENT_SEARCH_DAYS, CONFIRMED_RECHECK_DAYS, LEAD_RECHECK_DAYS } from "../schedule";
@@ -1109,7 +1109,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
     await store.save(key, state);
     if (input.onProgress) {
       state.locations ??= {};
-      const resolve = createLocationResolver({ venue: input.geocode ?? geocodeEventVenue, city: input.geocodeCity, cache: state.locations });
+      const resolve = createLocationResolver({ venue: input.geocode ?? geocodeEventVenue, city: input.geocodeCity, cache: state.locations, near: researchArea(input.location, input.radiusKm, input.geocodeCity) });
       const editions = state.leads.flatMap(lead => lead.editions);
       for (const event of editions.filter(event => event.primarySourceConfirmed && validEventRange(event))) await resolve(event);
       state.publicationPending = true;
@@ -1126,7 +1126,7 @@ async function collectLockedLongRange(input: LongRangeInput & { store: LongRange
     .filter((event) => eventLocalDate(event.startAt) <= input.end && eventLocalDate(event.endAt) >= now.toISOString().slice(0, 10)));
   const unresolved = state.leads.filter((lead) => lead.outcome !== "confirmed").length;
   state.locations ??= {};
-  const resolveLocation = createLocationResolver({ venue: input.geocode ?? geocodeEventVenue, city: input.geocodeCity, cache: state.locations });
+  const resolveLocation = createLocationResolver({ venue: input.geocode ?? geocodeEventVenue, city: input.geocodeCity, cache: state.locations, near: researchArea(input.location, input.radiusKm, input.geocodeCity) });
   for (const event of candidates) await resolveLocation(event);
   if (due.length || toResolve.length) {
     state.lastPassAt = now.toISOString();

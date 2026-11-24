@@ -269,7 +269,7 @@ describe("coordinated long-range research", () => {
     const venue = vi.fn(async () => null);
     const city = vi.fn(async () => ({ latitude: 51.92, longitude: 4.48 }));
     await createLocationResolver({ venue, city })(candidate);
-    expect(city).toHaveBeenCalledWith("Rotterdam");
+    expect(city.mock.calls[0][0]).toBe("Rotterdam");
     expect(candidate.evidence.locationResolution).toMatchObject({ method: "city_centroid", query: "Rotterdam" });
     expect(candidate.evidence.locationScope).toBe("venue");
     city.mockResolvedValue(null as never);
@@ -571,7 +571,7 @@ describe("coordinated long-range research", () => {
     test.create.mockResolvedValue({ id: "moved", stop_reason: "end_turn", usage: { input_tokens: 100, output_tokens: 100 }, content: [{ type: "text", text: JSON.stringify({ events: [{ ...event, facts: { ...facts, hostCity: "Rotterdam", locationText: "Across the city of Rotterdam." } }], reason: "Official host city changed", more: false }) }] });
     const seeds = [{ title: "Arts Week", url, lastEditionStart: "2026-10-17", lastEditionEnd: "2026-10-25", previousLocation: { venue: null, text: "Across Eindhoven", sourceUrl: url, checkedAt: "2026-09-01T00:00:00Z" } }];
     const result = await collectLongRange({ ...test.input, seeds });
-    expect(test.city).toHaveBeenCalledWith("Rotterdam");
+    expect(test.city.mock.calls[0][0]).toBe("Rotterdam");
     expect(result.candidates[0].evidence?.hostCity).toBe("Rotterdam");
   });
 
@@ -770,6 +770,30 @@ describe("coordinated long-range research", () => {
     const fetcher = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ response: { docs } }) });
     expect(await geocodeCity("Den Hoorn (Texel)", fetcher)).toEqual({ latitude: 53.03, longitude: 4.75 });
     expect(await geocodeCity("Den Hoorn", fetcher)).toBeNull();
+    // Inside a Texel hotel's research area the bare name is the Texel village.
+    expect(await geocodeCity("Den Hoorn", fetcher, async () => ({ latitude: 53.02, longitude: 4.75, radiusKm: 25 }))).toEqual({ latitude: 53.03, longitude: 4.75 });
+  });
+
+  // November 2026: 75 confirmed events said "Den Haag" or "The Hague" and stayed off every map.
+  it("reads everyday names and municipalities the register does not list as towns", async () => {
+    const places: Record<string, unknown[]> = {
+      "woonplaats:'s-Gravenhage": [{ woonplaatsnaam: "'s-Gravenhage", centroide_ll: "POINT(4.3 52.07)" }],
+      "woonplaats:Texel": [{ woonplaatsnaam: "Den Burg", centroide_ll: "POINT(4.8 53.05)" }],
+      "gemeente:Texel": [{ gemeentenaam: "Texel", centroide_ll: "POINT(4.87 53.08)" }],
+    };
+    const fetcher = vi.fn(async (url: URL) => ({ ok: true, json: async () => ({ response: {
+      docs: places[`${url.searchParams.get("fq")!.slice(5)}:${url.searchParams.get("q")}`] ?? [] } }) }));
+    expect(await geocodeCity("The Hague", fetcher as unknown as typeof fetch)).toEqual({ latitude: 52.07, longitude: 4.3 });
+    expect(await geocodeCity("Texel", fetcher as unknown as typeof fetch)).toEqual({ latitude: 53.08, longitude: 4.87 });
+  });
+
+  it("places the Ronde om Texel by the town after its venue", async () => {
+    const city = vi.fn(async (name: string) => name === "Texel" ? { latitude: 53.08, longitude: 4.87 } : null);
+    const event = { venue: "Paal 17, Texel (start and finish; race around Texel)", latitude: null, longitude: null,
+      evidence: { ...facts, hostCity: null, hostCityText: null, venueAddress: null,
+        locationText: "De Ronde om Texel is een zeilrace rond het eiland Texel. Wat begint bij Paal 17 en daar ook eindigt." } };
+    await createLocationResolver({ venue: async () => null, city })(event as unknown as Parameters<ReturnType<typeof createLocationResolver>>[0]);
+    expect(event).toMatchObject({ latitude: 53.08, longitude: 4.87 });
   });
 
   it("places a hall where its ticketed shows agree, in the named town only", async () => {

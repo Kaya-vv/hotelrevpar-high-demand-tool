@@ -4,7 +4,7 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import type { MessageCreateParamsNonStreaming } from "@anthropic-ai/sdk/resources/messages/messages";
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { geocodeCity, geocodeKnownVenue, geocodeStreet, createLocationResolver } from "../research-location";
+import { geocodeCity, geocodeKnownVenue, geocodeStreet, createLocationResolver, researchArea } from "../research-location";
 import { estimatedCostUsd } from "../research-budget";
 import { fetchedDocumentText, eventFactsSchema, evidenceInstructions, verifyEventEvidence } from "@/features/events/evidence";
 import type { ResearchClient } from "../luna-client";
@@ -1455,7 +1455,7 @@ async function collectClaudeFresh(
     }
   }
   const geocode = input.geocode ?? geocodeEventVenue;
-  const resolveLocation = createLocationResolver({ venue: geocode, city: input.geocodeCity });
+  const resolveLocation = createLocationResolver({ venue: geocode, city: input.geocodeCity, near: researchArea(input.location, input.radiusKm, input.geocodeCity) });
   const candidates = await Promise.all(events.map(async (event) => {
     await resolveLocation(event);
     const resolved = !event.evidence && (event.latitude === null || event.longitude === null) && event.venue ? await geocode(event.venue) : null;
