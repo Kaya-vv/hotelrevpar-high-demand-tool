@@ -269,7 +269,7 @@ describe("coordinated long-range research", () => {
     const venue = vi.fn(async () => null);
     const city = vi.fn(async () => ({ latitude: 51.92, longitude: 4.48 }));
     await createLocationResolver({ venue, city })(candidate);
-    expect(city.mock.calls[0][0]).toBe("Rotterdam");
+    expect(city).toHaveBeenCalledWith("Rotterdam", expect.anything(), undefined);
     expect(candidate.evidence.locationResolution).toMatchObject({ method: "city_centroid", query: "Rotterdam" });
     expect(candidate.evidence.locationScope).toBe("venue");
     city.mockResolvedValue(null as never);
@@ -571,7 +571,7 @@ describe("coordinated long-range research", () => {
     test.create.mockResolvedValue({ id: "moved", stop_reason: "end_turn", usage: { input_tokens: 100, output_tokens: 100 }, content: [{ type: "text", text: JSON.stringify({ events: [{ ...event, facts: { ...facts, hostCity: "Rotterdam", locationText: "Across the city of Rotterdam." } }], reason: "Official host city changed", more: false }) }] });
     const seeds = [{ title: "Arts Week", url, lastEditionStart: "2026-10-17", lastEditionEnd: "2026-10-25", previousLocation: { venue: null, text: "Across Eindhoven", sourceUrl: url, checkedAt: "2026-09-01T00:00:00Z" } }];
     const result = await collectLongRange({ ...test.input, seeds });
-    expect(test.city.mock.calls[0][0]).toBe("Rotterdam");
+    expect(test.city).toHaveBeenCalledWith("Rotterdam", expect.anything(), expect.any(Function));
     expect(result.candidates[0].evidence?.hostCity).toBe("Rotterdam");
   });
 
